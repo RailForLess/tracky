@@ -555,11 +555,24 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       )}
       {syncState === 'done' && syncResult && (
         <View style={styles.doneRow}>
-          <Ionicons name="checkmark-circle" size={22} color={AppColors.success} />
+          <Ionicons
+            name={syncResult.failReason ? 'warning' : 'checkmark-circle'}
+            size={22}
+            color={syncResult.failReason ? '#FFA500' : AppColors.success}
+          />
           <Text style={styles.doneText}>
-            Parsed {syncResult.parsed} event{syncResult.parsed !== 1 ? 's' : ''}. Found {syncResult.added} trip
-            {syncResult.added !== 1 ? 's' : ''}
-            {syncResult.skipped > 0 && ` (${syncResult.skipped} already existed)`}
+            {syncResult.failReason === 'gtfs_not_loaded'
+              ? 'Schedule data not loaded yet. Please wait and try again.'
+              : syncResult.failReason === 'no_calendar_events'
+                ? `No events found in calendar (${scanDays === -1 ? 'all time' : `last ${scanDays} days`}).`
+                : syncResult.failReason === 'no_pattern_match'
+                  ? `Found ${syncResult.totalCalendarEvents} event${syncResult.totalCalendarEvents !== 1 ? 's' : ''} but none matched "Train to..." pattern.`
+                  : <>
+                      Parsed {syncResult.parsed} event{syncResult.parsed !== 1 ? 's' : ''}. Found {syncResult.added} trip
+                      {syncResult.added !== 1 ? 's' : ''}
+                      {syncResult.skipped > 0 && ` (${syncResult.skipped} already existed)`}
+                    </>
+            }
           </Text>
         </View>
       )}

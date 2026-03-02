@@ -32,6 +32,10 @@ export interface SyncResult {
   added: number;
   skipped: number;
   addedTrips: AddedTripInfo[];
+  /** Total events returned by the calendar API (before pattern filtering) */
+  totalCalendarEvents?: number;
+  /** Short reason if parsed is 0 */
+  failReason?: 'gtfs_not_loaded' | 'no_calendar_events' | 'no_pattern_match';
 }
 
 interface MatchedTrip {
@@ -210,12 +214,29 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
 /**
  * Fetch train events from calendars within a date range.
  */
-async function fetchTrainEvents(calendarIds: string[], startDate: Date, endDate: Date): Promise<Calendar.Event[]> {
+async function fetchTrainEvents(
+  calendarIds: string[],
+  startDate: Date,
+  endDate: Date
+): Promise<{ matched: Calendar.Event[]; totalEvents: number }> {
   logger.info(
     `Calendar sync: fetching from ${calendarIds.length} calendar(s), ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`
   );
   const events = await Calendar.getEventsAsync(calendarIds, startDate, endDate);
   logger.info(`Calendar sync: ${events.length} total events found`);
+
+  // Log first few event titles for debugging when no matches
+  if (events.length > 0 && events.length <= 20) {
+    for (const e of events) {
+      logger.info(`Calendar sync:   event: "${e.title}"`);
+    }
+  } else if (events.length > 20) {
+    for (let i = 0; i < 10; i++) {
+      logger.info(`Calendar sync:   event: "${events[i].title}"`);
+    }
+    logger.info(`Calendar sync:   ... and ${events.length - 10} more`);
+  }
+
   const matched: Calendar.Event[] = [];
   for (const e of events) {
     if (TRAIN_EVENT_PATTERN.test(e.title)) {
@@ -224,7 +245,7 @@ async function fetchTrainEvents(calendarIds: string[], startDate: Date, endDate:
     }
   }
   logger.info(`Calendar sync: ${matched.length}/${events.length} matched train pattern`);
-  return matched;
+  return { matched, totalEvents: events.length };
 }
 
 /**
@@ -235,7 +256,8 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number): Pr
   const result: SyncResult = { parsed: 0, matched: 0, added: 0, skipped: 0, addedTrips: [] };
 
   if (!gtfsParser.isLoaded) {
-    logger.error('Calendar sync: GTFS data not loaded');
+    logger.error('Calendar sync: GTFS data not loaded — cannot sync');
+    result.failReason = 'gtfs_not_loaded';
     return result;
   }
 
@@ -253,9 +275,13 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number): Pr
   }
   startDate.setHours(0, 0, 0, 0);
 
-  const trainEvents = await fetchTrainEvents(calendarIds, startDate, endDate);
+  const { matched: trainEvents, totalEvents } = await fetchTrainEvents(calendarIds, startDate, endDate);
   result.parsed = trainEvents.length;
-  if (trainEvents.length === 0) return result;
+  result.totalCalendarEvents = totalEvents;
+  if (trainEvents.length === 0) {
+    result.failReason = totalEvents === 0 ? 'no_calendar_events' : 'no_pattern_match';
+    return result;
+  }
 
   const existingHistory = await TrainStorageService.getTripHistory();
   const existingKeys = new Set(existingHistory.map(h => `${h.tripId}|${h.fromCode}|${h.toCode}|${h.travelDate}`));
@@ -334,7 +360,8 @@ export async function syncFutureTrips(calendarIds: string[]): Promise<SyncResult
   const result: SyncResult = { parsed: 0, matched: 0, added: 0, skipped: 0, addedTrips: [] };
 
   if (!gtfsParser.isLoaded) {
-    logger.error('Calendar sync (future): GTFS data not loaded');
+    logger.error('Calendar sync (future): GTFS data not loaded — cannot sync');
+    result.failReason = 'gtfs_not_loaded';
     return result;
   }
 
@@ -346,9 +373,13 @@ export async function syncFutureTrips(calendarIds: string[]): Promise<SyncResult
   endDate.setDate(endDate.getDate() + 90);
   endDate.setHours(23, 59, 59, 999);
 
-  const trainEvents = await fetchTrainEvents(calendarIds, startDate, endDate);
+  const { matched: trainEvents, totalEvents } = await fetchTrainEvents(calendarIds, startDate, endDate);
   result.parsed = trainEvents.length;
-  if (trainEvents.length === 0) return result;
+  result.totalCalendarEvents = totalEvents;
+  if (trainEvents.length === 0) {
+    result.failReason = totalEvents === 0 ? 'no_calendar_events' : 'no_pattern_match';
+    return result;
+  }
 
   // Load existing saved trains for dedup
   const existingRefs = await TrainStorageService.getSavedTrainRefs();
