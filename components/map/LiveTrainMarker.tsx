@@ -6,9 +6,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
-import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppColors } from '../../constants/theme';
+import { TrainIcon } from '../TrainIcon';
 
 interface LiveTrainMarkerProps {
   trainNumber: string;
@@ -32,8 +31,7 @@ export function LiveTrainMarker({
   clusterCount = 0,
   onPress,
 }: LiveTrainMarkerProps) {
-  // Use Ionicons train for Acela (high-speed), FontAwesome6 train for others
-  const isAcela = routeName?.toLowerCase().includes('acela');
+  // Train icon type is determined by TrainIcon component based on route name
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
@@ -110,29 +108,16 @@ export function LiveTrainMarker({
           padding: 10,
         }}
       >
-        {isAcela ? (
-          <Ionicons
-            name="train"
-            size={24}
-            color={iconColor}
-            style={{
-              textShadowColor: 'rgba(0, 0, 0, 0.75)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 3,
-            }}
-          />
-        ) : (
-          <FontAwesome6
-            name="train"
-            size={20}
-            color={iconColor}
-            style={{
-              textShadowColor: 'rgba(0, 0, 0, 0.75)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 3,
-            }}
-          />
-        )}
+        <TrainIcon
+          name={routeName}
+          size={24}
+          color={iconColor}
+          style={{
+            textShadowColor: 'rgba(0, 0, 0, 0.75)',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 3,
+          }}
+        />
         <Text
           style={{
             color: iconColor,

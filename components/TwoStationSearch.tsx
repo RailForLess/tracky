@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { ScrollView } from 'react-native-gesture-handler';
-import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppColors, BorderRadius, FontSizes, Spacing } from '../constants/theme';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
 import { getTrainDisplayName } from '../services/api';
+import { TrainIcon } from './TrainIcon';
 import { RealtimeService } from '../services/realtime';
 import { TrainStorageService } from '../services/storage';
 import type { EnrichedStopTime, Route, SearchResult, Stop, Trip } from '../types/train';
@@ -491,7 +491,6 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 }
                 return true;
               }).map(train => {
-                const isAcela = train.displayName.toLowerCase().includes('acela');
                 const isLive = liveTrainNumbers.has(train.trainNumber);
                 const subtitle = train.endpointLabel || train.headsign;
                 return (
@@ -501,11 +500,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                     onPress={() => handleSelectTrain(train.trainNumber, train.displayName)}
                   >
                     <View style={styles.stationIcon}>
-                      {isAcela ? (
-                        <Ionicons name="train" size={20} color={AppColors.primary} />
-                      ) : (
-                        <FontAwesome6 name="train" size={16} color={AppColors.primary} />
-                      )}
+                      <TrainIcon name={train.displayName} size={20} />
                     </View>
                     <View style={styles.stationInfo}>
                       <Text style={styles.stationName}>{train.displayName}</Text>
@@ -602,7 +597,6 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                       </Text>
                       {unifiedResults.trains.map(result => {
                         const trip = result.data as Trip;
-                        const isAcela = result.name.toLowerCase().includes('acela');
                         return (
                           <TouchableOpacity
                             key={result.id}
@@ -610,11 +604,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                             onPress={() => handleSelectTrain(trip.trip_short_name || '', result.name)}
                           >
                             <View style={styles.stationIcon}>
-                              {isAcela ? (
-                                <Ionicons name="train" size={20} color={AppColors.primary} />
-                              ) : (
-                                <FontAwesome6 name="train" size={16} color={AppColors.primary} />
-                              )}
+                              <TrainIcon name={result.name} size={20} />
                             </View>
                             <View style={styles.stationInfo}>
                               <Text style={styles.stationName}>{result.name}</Text>
@@ -679,11 +669,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         {/* Train pill bar */}
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.stationPill} onPress={handleClearTrain}>
-            {selectedTrainName.toLowerCase().includes('acela') ? (
-              <Ionicons name="train" size={14} color={AppColors.primary} />
-            ) : (
-              <FontAwesome6 name="train" size={12} color={AppColors.primary} />
-            )}
+            <TrainIcon name={selectedTrainName} size={14} />
             <Text style={styles.stationPillText}>{selectedTrainName || `Train ${selectedTrainNumber}`}</Text>
             <Ionicons name="close" size={14} color={AppColors.primary} />
           </TouchableOpacity>
@@ -898,7 +884,6 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             ) : (
               tripResults.map(trip => {
                 const { displayName, routeName } = getTrainDisplayName(trip.tripId);
-                const isAcela = routeName?.toLowerCase().includes('acela');
                 return (
                   <TouchableOpacity
                     key={trip.tripId}
@@ -909,11 +894,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                     }}
                   >
                     <View style={styles.tripIcon}>
-                      {isAcela ? (
-                        <Ionicons name="train" size={20} color={AppColors.primary} />
-                      ) : (
-                        <FontAwesome6 name="train" size={16} color={AppColors.primary} />
-                      )}
+                      <TrainIcon name={routeName} size={20} />
                     </View>
                     <View style={styles.tripInfo}>
                       <Text style={styles.tripName}>{displayName}</Text>
