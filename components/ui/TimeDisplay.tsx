@@ -1,12 +1,12 @@
 import React from 'react';
-import { StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { AppColors, Spacing } from '../../constants/theme';
 
 interface TimeDisplayProps {
   time: string;
   dayOffset?: number;
-  style?: TextStyle;
-  superscriptStyle?: TextStyle;
+  style?: StyleProp<TextStyle>;
+  superscriptStyle?: StyleProp<TextStyle>;
   containerStyle?: ViewStyle;
   // Delay support
   delayMinutes?: number;

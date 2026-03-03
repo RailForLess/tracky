@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Image, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { ScrollView } from 'react-native-gesture-handler';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, BorderRadius, FontSizes, Spacing } from '../constants/theme';
+import TrainCardContent from './TrainCardContent';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
 import { getTrainDisplayName } from '../services/api';
 import { TrainIcon } from './TrainIcon';
@@ -29,7 +29,7 @@ interface TwoStationSearchProps {
 }
 
 import { formatDateForDisplay } from '../utils/date-helpers';
-import { formatTime } from '../utils/time-formatting';
+import { formatTime, formatTimeWithDayOffset } from '../utils/time-formatting';
 
 const formatDateForPill = formatDateForDisplay;
 
@@ -50,13 +50,13 @@ function getCountdownFromDeparture(departureTime: string, travelDate: Date): { v
   const absSec = Math.abs(deltaSec);
 
   const days = Math.round(absSec / 86400);
-  if (days >= 1) return { value: days, unit: days === 1 ? 'DAY' : 'DAYS', past };
+  if (days >= 1) return { value: days, unit: 'DAYS', past };
   const hours = Math.round(absSec / 3600);
-  if (hours >= 1) return { value: hours, unit: hours === 1 ? 'HOUR' : 'HOURS', past };
+  if (hours >= 1) return { value: hours, unit: 'HOURS', past };
   const minutes = Math.round(absSec / 60);
-  if (minutes >= 1) return { value: minutes, unit: minutes === 1 ? 'MIN' : 'MINS', past };
+  if (minutes >= 1) return { value: minutes, unit: 'MINUTES', past };
   const seconds = Math.round(absSec);
-  return { value: seconds, unit: seconds === 1 ? 'SEC' : 'SECS', past };
+  return { value: seconds, unit: 'SECONDS', past };
 }
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -138,6 +138,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const [expandedRouteName, setExpandedRouteName] = useState<string>('');
   const [liveTrainNumbers, setLiveTrainNumbers] = useState<Set<string>>(new Set());
   const [filterLiveOnly, setFilterLiveOnly] = useState(false);
+  const [routeFilterQuery, setRouteFilterQuery] = useState('');
 
   // --- Suggestions for empty search ---
   const [suggestions, setSuggestions] = useState<Array<{
@@ -346,6 +347,8 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     setExpandedRouteTrains(null);
     setExpandedRouteName('');
     setSearchQuery('');
+    setRouteFilterQuery('');
+    setFilterLiveOnly(false);
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -401,6 +404,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     setSelectedTrainNumber(trainNumber);
     setSelectedTrainName(displayName);
     setSearchQuery('');
+    setRouteFilterQuery('');
     setShowDatePicker(true);
     setExpandedRouteTrains(null);
     setExpandedRouteName('');
@@ -450,7 +454,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   // ============================================================
   // PATH 1: Initial unified search (no station, no train selected)
   // ============================================================
-  if (!fromStation && !selectedTrainNumber) {
+  if (!fromStation && !selectedTrainNumber && !expandedRouteTrains) {
     const showingSearch = searchQuery.length > 0 && !showDatePicker;
 
     return (
@@ -461,14 +465,12 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           <TextInput
             ref={searchInputRef}
             style={styles.fullSearchInput}
-            placeholder={expandedRouteTrains ? `Search ${expandedRouteName} trains` : "Train number, route, or station"}
+            placeholder="Train number, route, or station"
             placeholderTextColor={AppColors.secondary}
             value={searchQuery}
             onChangeText={text => {
               setSearchQuery(text);
-              if (!expandedRouteTrains) {
-                setExpandedRouteName('');
-              }
+              setExpandedRouteName('');
             }}
             autoFocus
           />
@@ -482,82 +484,10 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           </TouchableOpacity>
         </View>
 
-        {/* Sticky header for expanded route train list */}
-        {expandedRouteTrains && (
-          <View>
-            <View style={[styles.sectionHeaderRow, { marginBottom: Spacing.xl }]}>
-              <TouchableOpacity
-                onPress={() => {
-                  hapticLight();
-                  setExpandedRouteTrains(null);
-                  setExpandedRouteName('');
-                  setFilterLiveOnly(false);
-                  setSearchQuery('');
-                }}
-              >
-                <Ionicons name="arrow-back" size={18} color={AppColors.secondary} />
-              </TouchableOpacity>
-              <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>{expandedRouteName.toUpperCase()} TRAINS</Text>
-              <TouchableOpacity
-                style={[styles.liveFilterBadge, filterLiveOnly && styles.liveFilterBadgeActive]}
-                onPress={() => {
-                  hapticSelection();
-                  setFilterLiveOnly(prev => !prev);
-                }}
-              >
-                <View style={[styles.liveFilterDot, filterLiveOnly && styles.liveFilterDotActive]} />
-                <Text style={[styles.liveFilterText, filterLiveOnly && styles.liveFilterTextActive]}>En Route</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
         {/* Results */}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: (isFullscreen ? 100 : SCREEN_HEIGHT * 0.5) + keyboardHeight }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} scrollEnabled={isFullscreen} waitFor={panRef} bounces={false} onScroll={e => { if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
-          {/* Expanded route train list */}
-          {expandedRouteTrains && (
-            <View style={styles.resultsContainer}>
-              {expandedRouteTrains.filter(train => {
-                if (filterLiveOnly && !liveTrainNumbers.has(train.trainNumber)) return false;
-                if (searchQuery.length > 0) {
-                  const q = searchQuery.toLowerCase();
-                  return train.trainNumber.toLowerCase().includes(q)
-                    || train.displayName.toLowerCase().includes(q)
-                    || (train.headsign && train.headsign.toLowerCase().includes(q))
-                    || (train.endpointLabel && train.endpointLabel.toLowerCase().includes(q));
-                }
-                return true;
-              }).map(train => {
-                const isLive = liveTrainNumbers.has(train.trainNumber);
-                const subtitle = train.endpointLabel || train.headsign;
-                return (
-                  <TouchableOpacity
-                    key={train.trainNumber}
-                    style={styles.stationItem}
-                    onPress={() => handleSelectTrain(train.trainNumber, train.displayName)}
-                  >
-                    <View style={styles.stationIcon}>
-                      <TrainIcon name={train.displayName} size={20} />
-                    </View>
-                    <View style={styles.stationInfo}>
-                      <Text style={styles.stationName}>{train.displayName}</Text>
-                      {subtitle ? (
-                        <Text style={styles.stationCode}>
-                          {subtitle}
-                          {isLive ? <Text style={styles.liveIndicator}> · En Route</Text> : null}
-                        </Text>
-                      ) : isLive ? (
-                        <Text style={styles.liveIndicator}>En Route</Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
           {/* Unified search results */}
-          {showingSearch && !expandedRouteTrains && (
+          {showingSearch && (
             <View style={styles.resultsContainer}>
               {!isDataLoaded ? (
                 <Text style={styles.noResults}>Loading...</Text>
@@ -658,7 +588,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           )}
 
           {/* Alternatives to my train today */}
-          {!showingSearch && !expandedRouteTrains && todayTrain && (
+          {!showingSearch && todayTrain && (
             <View style={styles.resultsContainer}>
               <Text style={styles.sectionLabel}>TODAY&apos;S TRIP</Text>
               <TouchableOpacity
@@ -688,7 +618,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           )}
 
           {/* Suggestions when search is empty */}
-          {!showingSearch && !expandedRouteTrains && suggestions.length > 0 && (
+          {!showingSearch && suggestions.length > 0 && (
             <View style={styles.resultsContainer}>
               <Text style={styles.sectionLabel}>SUGGESTED</Text>
               {suggestions.map((suggestion, index) => (
@@ -731,32 +661,54 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   }
 
   // ============================================================
-  // PATH 2b: Train-number flow
+  // PATH 2b: Train-number / route flow
   // ============================================================
-  if (selectedTrainNumber) {
-    const showingTrainDatePicker = !selectedDate;
-    const showingStopList = resolvedTripId && trainStops.length > 0;
+  if (selectedTrainNumber || expandedRouteTrains) {
+    const isRouteMode = !!expandedRouteTrains && !selectedTrainNumber;
+    const showingTrainDatePicker = !isRouteMode && !selectedDate;
+    const showingStopList = !isRouteMode && resolvedTripId && trainStops.length > 0;
 
     return (
       <View style={styles.container}>
-        {/* Train pill bar */}
-        <View style={styles.inputRow}>
-          <TouchableOpacity style={styles.stationPill} onPress={handleClearTrain}>
-            <TrainIcon name={selectedTrainName} size={14} />
-            <Text style={styles.stationPillText}>{selectedTrainName || `Train ${selectedTrainNumber}`}</Text>
-            <Ionicons name="close" size={14} color={AppColors.primary} />
+        {/* Segment row */}
+        <View style={styles.segmentRow}>
+          {/* Left segment: Route or Train */}
+          <TouchableOpacity
+            style={[styles.segment, { flexShrink: 1 }]}
+            onPress={handleClearTrain}
+          >
+            <TrainIcon name={isRouteMode ? expandedRouteName : selectedTrainName} size={14} />
+            <Text style={styles.segmentText} numberOfLines={1}>
+              {isRouteMode ? expandedRouteName : (selectedTrainName || `Train ${selectedTrainNumber}`)}
+            </Text>
+            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
           </TouchableOpacity>
 
-          {/* Date Pill (after date is selected) */}
-          {selectedDate && (
-            <>
-              <View style={styles.dateSeparator} />
-              <TouchableOpacity style={styles.datePill} onPress={handleClearDate}>
-                <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
-                <Text style={styles.datePillText}>{formatDateForPill(selectedDate)}</Text>
-                <Ionicons name="close" size={14} color={AppColors.primary} />
-              </TouchableOpacity>
-            </>
+          {/* Right segment: Input (route mode) or Date (train mode) */}
+          {isRouteMode ? (
+            <View style={[styles.segment, styles.segmentInput]}>
+              <TextInput
+                ref={searchInputRef}
+                style={styles.segmentTextInput}
+                placeholder="Enter number"
+                placeholderTextColor={AppColors.secondary}
+                value={routeFilterQuery}
+                onChangeText={setRouteFilterQuery}
+                autoFocus
+                keyboardType="number-pad"
+              />
+            </View>
+          ) : !selectedDate ? (
+            <View style={[styles.segment, styles.segmentDatePlaceholder]}>
+              <Ionicons name="calendar-outline" size={14} color={AppColors.secondary} />
+              <Text style={[styles.segmentText, { color: AppColors.secondary }]}>Select date</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={[styles.segment, styles.segmentDate]} onPress={handleClearDate}>
+              <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
+              <Text style={styles.segmentText}>{formatDateForPill(selectedDate)}</Text>
+              <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
+            </TouchableOpacity>
           )}
 
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -765,8 +717,65 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         </View>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: (isFullscreen ? 100 : SCREEN_HEIGHT * 0.5) + keyboardHeight }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} scrollEnabled={isFullscreen} waitFor={panRef} bounces={false} onScroll={e => { if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
-          {/* Date picker */}
-          {showingTrainDatePicker && (
+          {/* Route mode: filtered train list */}
+          {isRouteMode && expandedRouteTrains && (
+            <View>
+              <View style={[styles.sectionHeaderRow, { marginBottom: Spacing.xl }]}>
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>{expandedRouteName.toUpperCase()} TRAINS</Text>
+                <TouchableOpacity
+                  style={[styles.liveFilterBadge, filterLiveOnly && styles.liveFilterBadgeActive]}
+                  onPress={() => {
+                    hapticSelection();
+                    setFilterLiveOnly(prev => !prev);
+                  }}
+                >
+                  <View style={[styles.liveFilterDot, filterLiveOnly && styles.liveFilterDotActive]} />
+                  <Text style={[styles.liveFilterText, filterLiveOnly && styles.liveFilterTextActive]}>En Route</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.resultsContainer}>
+                {expandedRouteTrains.filter(train => {
+                  if (filterLiveOnly && !liveTrainNumbers.has(train.trainNumber)) return false;
+                  if (routeFilterQuery.length > 0) {
+                    const q = routeFilterQuery.toLowerCase();
+                    return train.trainNumber.toLowerCase().includes(q)
+                      || train.displayName.toLowerCase().includes(q)
+                      || (train.headsign && train.headsign.toLowerCase().includes(q))
+                      || (train.endpointLabel && train.endpointLabel.toLowerCase().includes(q));
+                  }
+                  return true;
+                }).map(train => {
+                  const isLive = liveTrainNumbers.has(train.trainNumber);
+                  const subtitle = train.endpointLabel || train.headsign;
+                  return (
+                    <TouchableOpacity
+                      key={train.trainNumber}
+                      style={styles.stationItem}
+                      onPress={() => handleSelectTrain(train.trainNumber, train.displayName)}
+                    >
+                      <View style={styles.stationIcon}>
+                        <TrainIcon name={train.displayName} size={20} />
+                      </View>
+                      <View style={styles.stationInfo}>
+                        <Text style={styles.stationName}>{train.displayName}</Text>
+                        {subtitle ? (
+                          <Text style={styles.stationCode}>
+                            {subtitle}
+                            {isLive ? <Text style={styles.liveIndicator}> · En Route</Text> : null}
+                          </Text>
+                        ) : isLive ? (
+                          <Text style={styles.liveIndicator}>En Route</Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Date picker (train mode) */}
+          {!isRouteMode && showingTrainDatePicker && (
             <View style={styles.datePickerContainer}>
               <Text style={styles.sectionLabel}>SELECT TRAVEL DATE</Text>
               <View style={styles.datePickerWrapper}>
@@ -784,7 +793,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           )}
 
           {/* Train doesn't run message */}
-          {trainNotRunning && selectedDate && (
+          {!isRouteMode && trainNotRunning && selectedDate && (
             <View style={styles.hintContainer}>
               <Ionicons name="alert-circle-outline" size={20} color={AppColors.error} />
               <Text style={[styles.hintText, { color: AppColors.error }]}>
@@ -857,26 +866,28 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
 
   return (
     <View style={styles.container}>
-      {/* Split Station Input Row */}
-      <View style={styles.inputRow}>
-        <TouchableOpacity style={styles.stationPill} onPress={handleClearFrom}>
-          <Text style={styles.stationPillText}>{from.stop_id}</Text>
-          <Ionicons name="close" size={14} color={AppColors.primary} />
+      {/* Segment row */}
+      <View style={styles.segmentRow}>
+        {/* From segment */}
+        <TouchableOpacity style={styles.segment} onPress={handleClearFrom}>
+          <Text style={styles.segmentText}>{from.stop_id}</Text>
+          <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
         </TouchableOpacity>
 
-        <Ionicons name="arrow-forward" size={16} color={AppColors.secondary} style={styles.arrow} />
+        <Ionicons name="arrow-forward" size={14} color={AppColors.secondary} style={styles.segmentArrow} />
 
+        {/* To segment: input or filled */}
         {toStation ? (
-          <TouchableOpacity style={styles.stationPill} onPress={handleClearTo}>
-            <Text style={styles.stationPillText}>{toStation.stop_id}</Text>
-            <Ionicons name="close" size={14} color={AppColors.primary} />
+          <TouchableOpacity style={styles.segment} onPress={handleClearTo}>
+            <Text style={styles.segmentText}>{toStation.stop_id}</Text>
+            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
           </TouchableOpacity>
         ) : (
-          <View style={styles.activeInputContainer}>
+          <View style={[styles.segment, styles.segmentInput]}>
             <TextInput
               ref={searchInputRef}
-              style={styles.searchInput}
-              placeholder="Arrival station"
+              style={styles.segmentTextInput}
+              placeholder="Enter arrival station"
               placeholderTextColor={AppColors.secondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -885,15 +896,21 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           </View>
         )}
 
+        {/* Date segment: placeholder when toStation set but no date */}
+        {toStation && !selectedDate && (
+          <View style={[styles.segment, styles.segmentDatePlaceholder]}>
+            <Ionicons name="calendar-outline" size={14} color={AppColors.secondary} />
+            <Text style={[styles.segmentText, { color: AppColors.secondary }]}>Select date</Text>
+          </View>
+        )}
+
+        {/* Date segment: filled when date is selected */}
         {selectedDate && (
-          <>
-            <View style={styles.dateSeparator} />
-            <TouchableOpacity style={styles.datePill} onPress={handleClearDate}>
-              <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
-              <Text style={styles.datePillText}>{formatDateForPill(selectedDate)}</Text>
-              <Ionicons name="close" size={14} color={AppColors.primary} />
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity style={[styles.segment, styles.segmentDate]} onPress={handleClearDate}>
+            <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
+            <Text style={styles.segmentText}>{formatDateForPill(selectedDate)}</Text>
+            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -978,7 +995,11 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 const { displayName, routeName } = getTrainDisplayName(trip.tripId);
                 const isLast = index === tripResults.length - 1;
                 const countdown = getCountdownFromDeparture(trip.fromStop.departure_time, selectedDate);
-                const countdownLabel = `${countdown.unit}${countdown.past ? ' AGO' : ''}`;
+                const singularUnit = countdown.unit.slice(0, -1);
+                const unitText = countdown.value === 1 ? singularUnit : countdown.unit;
+                const countdownLabel = `${unitText}${countdown.past ? ' AGO' : ''}`;
+                const depart = formatTimeWithDayOffset(trip.fromStop.departure_time);
+                const arrive = formatTimeWithDayOffset(trip.toStop.arrival_time);
                 return (
                   <TouchableOpacity
                     key={trip.tripId}
@@ -988,40 +1009,22 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                       onSelectTrip(trip.tripId, from.stop_id, toStation.stop_id, selectedDate);
                     }}
                   >
-                    <View style={styles.tripCardRow}>
-                      <View style={styles.tripCardLeft}>
-                        <Text style={[styles.tripCardCountdown, countdown.past && { color: AppColors.secondary }]}>{countdown.value}</Text>
-                        <Text style={styles.tripCardCountdownLabel}>{countdownLabel}</Text>
-                      </View>
-                      <View style={styles.tripCardCenter}>
-                        <View style={styles.tripCardHeader}>
-                          <Image source={require('../assets/images/amtrak.png')} style={styles.tripCardLogo} fadeDuration={0} />
-                          <Text style={styles.tripCardTrainNumber}>{routeName} {displayName.replace(routeName || '', '').trim()}</Text>
-                          {trip.intermediateStops.length > 0 && (
-                            <Text style={styles.tripCardStops}>
-                              {trip.intermediateStops.length} stop{trip.intermediateStops.length !== 1 ? 's' : ''}
-                            </Text>
-                          )}
-                        </View>
-                        <Text style={styles.tripCardRoute}>{from.stop_name} to {toStation.stop_name}</Text>
-                        <View style={styles.tripCardTimeRow}>
-                          <View style={styles.tripCardTimeInfo}>
-                            <View style={[styles.tripCardArrowIcon, styles.tripCardDepartureIcon]}>
-                              <MaterialCommunityIcons name="arrow-top-right" size={8} color={AppColors.secondary} />
-                            </View>
-                            <Text style={styles.tripCardTimeCode}>{from.stop_id}</Text>
-                            <Text style={styles.tripCardTimeValue}>{formatTime(trip.fromStop.departure_time)}</Text>
-                          </View>
-                          <View style={styles.tripCardTimeInfo}>
-                            <View style={[styles.tripCardArrowIcon, styles.tripCardArrivalIcon]}>
-                              <MaterialCommunityIcons name="arrow-bottom-left" size={8} color={AppColors.secondary} />
-                            </View>
-                            <Text style={styles.tripCardTimeCode}>{toStation.stop_id}</Text>
-                            <Text style={styles.tripCardTimeValue}>{formatTime(trip.toStop.arrival_time)}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
+                    <TrainCardContent
+                      countdownValue={countdown.value}
+                      countdownLabel={countdownLabel}
+                      isPast={countdown.past}
+                      routeName={routeName || ''}
+                      trainNumber={displayName.replace(routeName || '', '').trim()}
+                      fromName={from.stop_name}
+                      toName={toStation.stop_name}
+                      fromCode={from.stop_id}
+                      toCode={toStation.stop_id}
+                      departTime={depart.time}
+                      arriveTime={arrive.time}
+                      departDayOffset={depart.dayOffset}
+                      arriveDayOffset={arrive.dayOffset}
+                      intermediateStopCount={trip.intermediateStops.length}
+                    />
                     {!isLast && <View style={styles.tripCardSeparator} />}
                   </TouchableOpacity>
                 );
@@ -1062,66 +1065,52 @@ const styles = StyleSheet.create({
     color: AppColors.primary,
     fontSize: FontSizes.searchLabel,
   },
-  // Split input row (after first station selected)
-  inputRow: {
+  // Segment row (after first selection)
+  segmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: AppColors.background.tertiary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
     marginBottom: Spacing.md,
     gap: Spacing.sm,
-    flexWrap: 'wrap',
   },
-  stationPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: AppColors.background.primary,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderWidth: 1,
-    borderColor: AppColors.border.primary,
-    gap: 4,
-  },
-  stationPillText: {
-    color: AppColors.primary,
-    fontSize: FontSizes.searchLabel,
-    fontWeight: '600',
-  },
-  dateSeparator: {
-    width: 1,
-    height: 20,
-    backgroundColor: AppColors.border.secondary,
-    marginHorizontal: 4,
-  },
-  datePill: {
+  segment: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: AppColors.background.tertiary,
     borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderWidth: 1,
-    borderColor: AppColors.primary,
-    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: 6,
   },
-  datePillText: {
+  segmentText: {
     color: AppColors.primary,
     fontSize: FontSizes.searchLabel,
     fontWeight: '600',
+    flexShrink: 1,
   },
-  activeInputContainer: {
+  segmentInput: {
     flex: 1,
+    paddingVertical: 0,
   },
-  searchInput: {
+  segmentTextInput: {
     color: AppColors.primary,
     fontSize: FontSizes.searchLabel,
-    paddingVertical: Spacing.xs,
+    flex: 1,
+    paddingVertical: Spacing.sm,
   },
-  arrow: {
+  segmentDate: {
+    borderWidth: 1,
+    borderColor: AppColors.primary,
+  },
+  segmentDatePlaceholder: {
+    borderWidth: 1,
+    borderColor: AppColors.border.secondary,
+    borderStyle: 'dashed' as const,
+  },
+  segmentArrow: {
     marginHorizontal: 2,
+  },
+  segmentClose: {
+    marginLeft: 2,
   },
   closeButton: {
     marginLeft: 'auto',
@@ -1223,92 +1212,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden' as const,
   },
   tripCard: {
-  },
-  tripCardRow: {
-    flexDirection: 'row',
-    padding: Spacing.lg,
-  },
-  tripCardLeft: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.lg,
-    minWidth: 60,
-  },
-  tripCardCountdown: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: AppColors.primary,
-    lineHeight: 36,
-  },
-  tripCardCountdownLabel: {
-    fontSize: FontSizes.daysLabel,
-    color: AppColors.secondary,
-    marginTop: Spacing.xs,
-    letterSpacing: 0.5,
-  },
-  tripCardCenter: {
-    flex: 1,
-  },
-  tripCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  tripCardLogo: {
-    width: 16,
-    height: 16,
-    marginRight: 3,
-    resizeMode: 'contain' as const,
-  },
-  tripCardTrainNumber: {
-    fontSize: FontSizes.trainDate,
-    color: AppColors.secondary,
-    fontWeight: '400',
-    marginLeft: 3,
-    marginRight: Spacing.md,
-  },
-  tripCardStops: {
-    fontSize: FontSizes.daysLabel,
-    color: AppColors.secondary,
-    marginLeft: 'auto',
-  },
-  tripCardRoute: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: AppColors.primary,
-    marginBottom: Spacing.sm,
-  },
-  tripCardTimeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tripCardTimeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tripCardArrowIcon: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.sm,
-  },
-  tripCardDepartureIcon: {
-    backgroundColor: AppColors.tertiary,
-  },
-  tripCardArrivalIcon: {
-    backgroundColor: AppColors.tertiary,
-  },
-  tripCardTimeCode: {
-    fontSize: FontSizes.timeCode,
-    color: AppColors.secondary,
-    marginRight: Spacing.sm,
-  },
-  tripCardTimeValue: {
-    fontSize: FontSizes.timeValue,
-    color: AppColors.primary,
-    fontWeight: '500',
   },
   tripCardSeparator: {
     height: StyleSheet.hairlineWidth,

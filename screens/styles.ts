@@ -116,9 +116,7 @@ export const styles = StyleSheet.create({
   },
   frequentlyUsedSubtitle: { fontSize: FontSizes.daysLabel, fontFamily: FONTS.family, color: COLORS.secondary },
   trainCard: {
-    flexDirection: 'row',
     backgroundColor: COLORS.background.primary,
-    padding: Spacing.lg,
   },
   trainLeft: { alignItems: 'center', justifyContent: 'center', marginRight: Spacing.lg, minWidth: 60 },
   daysAway: {

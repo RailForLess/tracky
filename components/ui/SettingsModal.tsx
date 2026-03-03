@@ -16,7 +16,6 @@ import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handl
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppColors, BorderRadius, CloseButtonStyle, Spacing } from '../../constants/theme';
-import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { type DistanceUnit, type TempUnit, useUnits } from '../../context/UnitsContext';
 import {
   type DeviceCalendar,
@@ -27,7 +26,8 @@ import {
 } from '../../services/calendar-sync';
 import { TrainStorageService } from '../../services/storage';
 import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
-import { type LogEntry, LogLevel, logger, openReportBugEmail, openReportBadDataEmail } from '../../utils/logger';
+import { type LogEntry, LogLevel, logger, openReportBadDataEmail, openReportBugEmail } from '../../utils/logger';
+import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { SlideUpModalContext } from './slide-up-modal';
 
 
@@ -568,8 +568,8 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
           <Text style={styles.sectionHeader}>MATCH TRIPS (GTFS LOOKUP)</Text>
           <View style={styles.settingsList}>
             {[
-              { label: 'Yes', value: true, desc: 'Cross-reference with schedule data' },
-              { label: 'No', value: false, desc: 'Trust calendar events as-is' },
+              { label: 'Yes', value: true, desc: 'Cross-reference with timetables (more accurate)' },
+              { label: 'No', value: false, desc: 'Sync events as-is (may sync missed trips)' },
             ].map((opt, i) => (
               <TouchableOpacity
                 key={opt.label}

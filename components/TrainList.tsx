@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { light as hapticLight } from '../utils/haptics';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -13,12 +13,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, Spacing } from '../constants/theme';
 import { PlaceholderBlurb } from './PlaceholderBlurb';
-import { COLORS, styles } from '../screens/styles';
+import { styles } from '../screens/styles';
 import type { Train } from '../types/train';
-import TimeDisplay from './ui/TimeDisplay';
+import TrainCardContent from './TrainCardContent';
 import { SlideUpModalContext } from './ui/slide-up-modal';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { getCountdownForTrain } from '../utils/train-display';
@@ -209,52 +208,22 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, content
       {/* The actual card */}
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.trainCard, cardAnimatedStyle]}>
-          <View style={styles.trainLeft}>
-            <Text style={[styles.daysAway, isPast && { color: COLORS.secondary }]}>{countdown.value}</Text>
-            <Text style={[styles.daysLabel, isPast && { color: COLORS.secondary }]}>{unitLabel}</Text>
-          </View>
-
-          <View style={styles.trainCenter}>
-            <View style={styles.trainHeader}>
-              <Image source={require('../assets/images/amtrak.png')} style={styles.amtrakLogo} fadeDuration={0} />
-              <Text style={[styles.trainNumber, { color: COLORS.secondary, fontWeight: '400' }]}>
-                {train.routeName ? train.routeName : train.operator} {train.trainNumber}
-              </Text>
-              <Text style={styles.trainDate}>{train.date}</Text>
-            </View>
-
-            <Text style={[styles.route, { fontSize: 18 }]}>
-              {train.from} to {train.to}
-            </Text>
-
-            <View style={styles.timeRow}>
-              <View style={styles.timeInfo}>
-                <View style={[styles.arrowIcon, styles.departureIcon]}>
-                  <MaterialCommunityIcons name="arrow-top-right" size={8} color={AppColors.secondary} />
-                </View>
-                <Text style={styles.timeCode}>{train.fromCode}</Text>
-                <TimeDisplay
-                  time={train.departTime}
-                  dayOffset={train.departDayOffset}
-                  style={styles.timeValue}
-                  superscriptStyle={swipeStyles.timeSuperscript}
-                />
-              </View>
-
-              <View style={styles.timeInfo}>
-                <View style={[styles.arrowIcon, styles.arrivalIcon]}>
-                  <MaterialCommunityIcons name="arrow-bottom-left" size={8} color={AppColors.secondary} />
-                </View>
-                <Text style={styles.timeCode}>{train.toCode}</Text>
-                <TimeDisplay
-                  time={train.arriveTime}
-                  dayOffset={train.arriveDayOffset}
-                  style={styles.timeValue}
-                  superscriptStyle={swipeStyles.timeSuperscript}
-                />
-              </View>
-            </View>
-          </View>
+          <TrainCardContent
+            countdownValue={countdown.value}
+            countdownLabel={unitLabel}
+            isPast={isPast}
+            routeName={train.routeName || train.operator}
+            trainNumber={train.trainNumber}
+            date={train.date}
+            fromName={train.from}
+            toName={train.to}
+            fromCode={train.fromCode}
+            toCode={train.toCode}
+            departTime={train.departTime}
+            arriveTime={train.arriveTime}
+            departDayOffset={train.departDayOffset}
+            arriveDayOffset={train.arriveDayOffset}
+          />
         </Animated.View>
       </GestureDetector>
       {!isLast && <View style={swipeStyles.separator} />}
@@ -329,12 +298,5 @@ const swipeStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
-  },
-  timeSuperscript: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.secondary,
-    marginLeft: 2,
-    marginTop: -2,
   },
 });
