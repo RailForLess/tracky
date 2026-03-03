@@ -19,7 +19,7 @@ import { styles } from '../screens/styles';
 import type { Train } from '../types/train';
 import TrainCardContent from './TrainCardContent';
 import { SlideUpModalContext } from './ui/slide-up-modal';
-import { parseTimeToDate } from '../utils/time-formatting';
+import { addDelayToTime, parseTimeToDate } from '../utils/time-formatting';
 import { getCountdownForTrain } from '../utils/train-display';
 
 // Re-export for backwards compatibility
@@ -165,6 +165,16 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, content
   const unitLabel = `${unitText}${countdown.past ? ' AGO' : ''}`;
   const isPast = countdown.past;
 
+  // Compute delayed times for today's trains
+  const departDelay = train.daysAway <= 0 ? train.realtime?.delay : undefined;
+  const arriveDelay = train.daysAway <= 0 ? train.realtime?.arrivalDelay : undefined;
+  const departDelayed = departDelay && departDelay > 0
+    ? addDelayToTime(train.departTime, departDelay, train.departDayOffset)
+    : undefined;
+  const arriveDelayed = arriveDelay && arriveDelay > 0
+    ? addDelayToTime(train.arriveTime, arriveDelay, train.arriveDayOffset)
+    : undefined;
+
   // Animated margin for first item - increases as modal collapses
   const firstItemMarginStyle = useAnimatedStyle(() => {
     if (!isFirst || !contentOpacity) {
@@ -223,6 +233,12 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, content
             arriveTime={train.arriveTime}
             departDayOffset={train.departDayOffset}
             arriveDayOffset={train.arriveDayOffset}
+            departDelayMinutes={departDelay}
+            departDelayedTime={departDelayed?.time}
+            departDelayedDayOffset={departDelayed?.dayOffset}
+            arriveDelayMinutes={arriveDelay}
+            arriveDelayedTime={arriveDelayed?.time}
+            arriveDelayedDayOffset={arriveDelayed?.dayOffset}
           />
         </Animated.View>
       </GestureDetector>

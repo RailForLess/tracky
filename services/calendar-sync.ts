@@ -301,6 +301,45 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
 }
 
 /**
+ * Fetch events from the Calendar API, chunking into 6-month intervals
+ * to avoid iOS EventKit silently truncating results on large date ranges.
+ */
+async function fetchCalendarEventsChunked(
+  calendarIds: string[],
+  startDate: Date,
+  endDate: Date
+): Promise<Calendar.Event[]> {
+  const SIX_MONTHS_MS = 180 * 24 * 60 * 60 * 1000;
+  const rangeMs = endDate.getTime() - startDate.getTime();
+
+  // Small range — single fetch is fine
+  if (rangeMs <= SIX_MONTHS_MS) {
+    return Calendar.getEventsAsync(calendarIds, startDate, endDate);
+  }
+
+  // Large range — chunk into 6-month windows
+  const allEvents: Calendar.Event[] = [];
+  const seenIds = new Set<string>();
+  let chunkStart = new Date(startDate);
+
+  while (chunkStart.getTime() < endDate.getTime()) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + SIX_MONTHS_MS, endDate.getTime()));
+    const chunk = await Calendar.getEventsAsync(calendarIds, chunkStart, chunkEnd);
+    for (const event of chunk) {
+      const eid = event.id ?? `${event.title}-${event.startDate}`;
+      if (!seenIds.has(eid)) {
+        seenIds.add(eid);
+        allEvents.push(event);
+      }
+    }
+    logger.info(`Calendar sync: chunk ${chunkStart.toLocaleDateString()}–${chunkEnd.toLocaleDateString()}: ${chunk.length} events`);
+    chunkStart = chunkEnd;
+  }
+
+  return allEvents;
+}
+
+/**
  * Fetch train events from calendars within a date range.
  */
 async function fetchTrainEvents(
@@ -311,7 +350,7 @@ async function fetchTrainEvents(
   logger.info(
     `Calendar sync: fetching from ${calendarIds.length} calendar(s), ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`
   );
-  const events = await Calendar.getEventsAsync(calendarIds, startDate, endDate);
+  const events = await fetchCalendarEventsChunked(calendarIds, startDate, endDate);
   logger.info(`Calendar sync: ${events.length} total events found`);
 
   // Log first few event titles for debugging when no matches
@@ -353,12 +392,17 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number, mat
 
   const now = new Date();
   const endDate = new Date(now);
-  endDate.setDate(endDate.getDate() - 1);
-  endDate.setHours(23, 59, 59, 999);
+  if (scanDays === -1) {
+    // "All" — include through today
+    endDate.setHours(23, 59, 59, 999);
+  } else {
+    endDate.setDate(endDate.getDate() - 1);
+    endDate.setHours(23, 59, 59, 999);
+  }
 
   const startDate = new Date(now);
   if (scanDays === -1) {
-    // "All" option - scan as far back as possible (10 years)
+    // "All" option - scan as far back as possible
     startDate.setFullYear(startDate.getFullYear() - 10);
   } else {
     startDate.setDate(startDate.getDate() - scanDays);

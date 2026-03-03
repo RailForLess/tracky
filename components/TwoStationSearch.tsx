@@ -15,6 +15,7 @@ import { useTrainContext } from '../context/TrainContext';
 import { SlideUpModalContext } from './ui/slide-up-modal';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
+import { LocationSuggestionsService } from '../services/location-suggestions';
 
 interface TripResult {
   tripId: string;
@@ -140,15 +141,22 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const [filterLiveOnly, setFilterLiveOnly] = useState(false);
   const [routeFilterQuery, setRouteFilterQuery] = useState('');
 
-  // --- Suggestions for empty search ---
-  const [suggestions, setSuggestions] = useState<Array<{
-    type: 'route' | 'station';
+  // --- Suggestion item type ---
+  type SuggestionItem = {
+    type: 'route' | 'station' | 'train';
     label: string;
     subtitle: string;
     routeId?: string;
     stop?: Stop;
     toStop?: Stop;
-  }>>([]);
+    trainNumber?: string;
+    displayName?: string;
+  };
+
+  // --- Suggestions for empty search (three independent sections) ---
+  const [nearbySuggestions, setNearbySuggestions] = useState<SuggestionItem[]>([]);
+  const [historySuggestions, setHistorySuggestions] = useState<SuggestionItem[]>([]);
+  const [popularSuggestions, setPopularSuggestions] = useState<SuggestionItem[]>([]);
 
   // --- "Alternatives to my train today" ---
   const { savedTrains } = useTrainContext();
@@ -159,9 +167,33 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
 
   useEffect(() => {
     if (!isDataLoaded) return;
+
+    // Popular (always shown)
+    const allRoutes = gtfsParser.getAllRoutes();
+    const popular: SuggestionItem[] = [];
+    const nerRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('northeast regional'));
+    if (nerRoute) {
+      popular.push({ type: 'route', label: 'Northeast Regional', subtitle: 'Route', routeId: nerRoute.route_id });
+    }
+    const acelaRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('acela'));
+    if (acelaRoute) {
+      popular.push({ type: 'route', label: 'Acela', subtitle: 'Route', routeId: acelaRoute.route_id });
+    }
+    const nyp = gtfsParser.getStop('NYP');
+    if (nyp) {
+      popular.push({ type: 'station', label: nyp.stop_name, subtitle: 'NYP · Station', stop: nyp });
+    }
+    setPopularSuggestions(popular);
+
+    // Nearby (from location service)
+    const locationSuggestions = LocationSuggestionsService.getCachedSuggestions();
+    if (locationSuggestions && locationSuggestions.length > 0) {
+      setNearbySuggestions(locationSuggestions);
+    }
+
+    // History
     TrainStorageService.getTripHistory().then(history => {
       if (history.length > 0) {
-        // Count route frequency
         const routeCounts = new Map<string, { count: number; routeName: string; fromCode: string; toCode: string }>();
         for (const trip of history) {
           const key = `${trip.fromCode}-${trip.toCode}`;
@@ -172,31 +204,14 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             routeCounts.set(key, { count: 1, routeName: trip.routeName, fromCode: trip.fromCode, toCode: trip.toCode });
           }
         }
-        const sorted = [...routeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 3);
-        setSuggestions(sorted.map(r => ({
+        const sorted = [...routeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 1);
+        setHistorySuggestions(sorted.map(r => ({
           type: 'station' as const,
           label: `${r.fromCode} → ${r.toCode}`,
-          subtitle: `${r.routeName} • ${r.count} ${r.count === 1 ? 'trip' : 'trips'}`,
+          subtitle: `${r.routeName} · ${r.count} ${r.count === 1 ? 'trip' : 'trips'}`,
           stop: gtfsParser.getStop(r.fromCode) || undefined,
           toStop: gtfsParser.getStop(r.toCode) || undefined,
         })));
-      } else {
-        // Fallback defaults
-        const allRoutes = gtfsParser.getAllRoutes();
-        const items: typeof suggestions = [];
-        const nerRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('northeast regional'));
-        if (nerRoute) {
-          items.push({ type: 'route', label: 'Northeast Regional', subtitle: 'Route', routeId: nerRoute.route_id });
-        }
-        const acelaRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('acela'));
-        if (acelaRoute) {
-          items.push({ type: 'route', label: 'Acela', subtitle: 'Route', routeId: acelaRoute.route_id });
-        }
-        const nyp = gtfsParser.getStop('NYP');
-        if (nyp) {
-          items.push({ type: 'station', label: nyp.stop_name, subtitle: 'NYP • Station', stop: nyp });
-        }
-        setSuggestions(items);
       }
     });
   }, [isDataLoaded]);
@@ -606,7 +621,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 }}
               >
                 <View style={styles.stationIcon}>
-                  <Ionicons name="swap-horizontal" size={20} color={AppColors.primary} />
+                  <Ionicons name="git-branch-outline" size={20} color={AppColors.primary} />
                 </View>
                 <View style={styles.stationInfo}>
                   <Text style={styles.stationName}>Alternatives to {todayTrain.trainNumber}</Text>
@@ -617,20 +632,25 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             </View>
           )}
 
-          {/* Suggestions when search is empty */}
-          {!showingSearch && suggestions.length > 0 && (
-            <View style={styles.resultsContainer}>
-              <Text style={styles.sectionLabel}>SUGGESTED</Text>
-              {suggestions.map((suggestion, index) => (
+          {/* Suggestion sections when search is empty */}
+          {!showingSearch && [
+            { key: 'history', label: 'BASED ON YOUR HISTORY', items: historySuggestions },
+            { key: 'nearby', label: 'NEARBY', items: nearbySuggestions },
+            { key: 'popular', label: 'POPULAR', items: popularSuggestions },
+          ].map(section => section.items.length > 0 && (
+            <View key={section.key} style={styles.resultsContainer}>
+              <Text style={styles.sectionLabel}>{section.label}</Text>
+              {section.items.map((suggestion, index) => (
                 <TouchableOpacity
                   key={index}
                   style={styles.stationItem}
                   onPress={() => {
-                    if (suggestion.type === 'route' && suggestion.routeId) {
+                    if (suggestion.type === 'train' && suggestion.trainNumber) {
+                      handleSelectTrain(suggestion.trainNumber, suggestion.displayName || suggestion.label);
+                    } else if (suggestion.type === 'route' && suggestion.routeId) {
                       const route = gtfsParser.getRoute(suggestion.routeId);
                       if (route) handleSelectRoute(route);
                     } else if (suggestion.stop && suggestion.toStop) {
-                      // Route suggestion with both stations — set both
                       hapticSelection();
                       setFromStation(suggestion.stop);
                       setToStation(suggestion.toStop);
@@ -641,7 +661,9 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                   }}
                 >
                   <View style={styles.stationIcon}>
-                    {suggestion.type === 'route' ? (
+                    {suggestion.type === 'train' ? (
+                      <TrainIcon name={suggestion.label} size={20} />
+                    ) : suggestion.type === 'route' || (suggestion.stop && suggestion.toStop) ? (
                       <Ionicons name="git-branch-outline" size={20} color={AppColors.primary} />
                     ) : (
                       <Ionicons name="location" size={20} color={AppColors.primary} />
@@ -654,7 +676,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 </TouchableOpacity>
               ))}
             </View>
-          )}
+          ))}
         </ScrollView>
       </View>
     );
@@ -681,7 +703,6 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             <Text style={styles.segmentText} numberOfLines={1}>
               {isRouteMode ? expandedRouteName : (selectedTrainName || `Train ${selectedTrainNumber}`)}
             </Text>
-            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
           </TouchableOpacity>
 
           {/* Right segment: Input (route mode) or Date (train mode) */}
@@ -707,13 +728,9 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             <TouchableOpacity style={[styles.segment, styles.segmentDate]} onPress={handleClearDate}>
               <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
               <Text style={styles.segmentText}>{formatDateForPill(selectedDate)}</Text>
-              <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close-circle" size={20} color={AppColors.secondary} />
-          </TouchableOpacity>
         </View>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: (isFullscreen ? 100 : SCREEN_HEIGHT * 0.5) + keyboardHeight }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} scrollEnabled={isFullscreen} waitFor={panRef} bounces={false} onScroll={e => { if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
@@ -778,6 +795,14 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           {!isRouteMode && showingTrainDatePicker && (
             <View style={styles.datePickerContainer}>
               <Text style={styles.sectionLabel}>SELECT TRAVEL DATE</Text>
+              <View style={styles.quickDateRow}>
+                <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
+                  <Text style={styles.quickDateText}>Today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); d.setDate(d.getDate()+1); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
+                  <Text style={styles.quickDateText}>Tomorrow</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.datePickerWrapper}>
                 <Calendar
                   theme={calendarTheme}
@@ -871,16 +896,12 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         {/* From segment */}
         <TouchableOpacity style={styles.segment} onPress={handleClearFrom}>
           <Text style={styles.segmentText}>{from.stop_id}</Text>
-          <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
         </TouchableOpacity>
-
-        <Ionicons name="arrow-forward" size={14} color={AppColors.secondary} style={styles.segmentArrow} />
 
         {/* To segment: input or filled */}
         {toStation ? (
           <TouchableOpacity style={styles.segment} onPress={handleClearTo}>
             <Text style={styles.segmentText}>{toStation.stop_id}</Text>
-            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
           </TouchableOpacity>
         ) : (
           <View style={[styles.segment, styles.segmentInput]}>
@@ -909,13 +930,9 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           <TouchableOpacity style={[styles.segment, styles.segmentDate]} onPress={handleClearDate}>
             <Ionicons name="calendar-outline" size={14} color={AppColors.primary} />
             <Text style={styles.segmentText}>{formatDateForPill(selectedDate)}</Text>
-            <Ionicons name="close" size={14} color={AppColors.primary} style={styles.segmentClose} />
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <Ionicons name="close-circle" size={20} color={AppColors.secondary} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: (isFullscreen ? 100 : SCREEN_HEIGHT * 0.5) + keyboardHeight }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} scrollEnabled={isFullscreen} waitFor={panRef} bounces={false} onScroll={e => { if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
@@ -951,6 +968,14 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         {showingDatePicker && (
           <View style={styles.datePickerContainer}>
             <Text style={styles.sectionLabel}>SELECT TRAVEL DATE</Text>
+            <View style={styles.quickDateRow}>
+              <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
+                <Text style={styles.quickDateText}>Today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); d.setDate(d.getDate()+1); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
+                <Text style={styles.quickDateText}>Tomorrow</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.datePickerWrapper}>
               <Calendar
                 theme={calendarTheme}
@@ -1100,19 +1125,10 @@ const styles = StyleSheet.create({
   segmentDate: {
   },
   segmentDatePlaceholder: {
+    flex: 1,
     borderWidth: 1,
     borderColor: AppColors.border.secondary,
     borderStyle: 'dashed' as const,
-  },
-  segmentArrow: {
-    marginHorizontal: 2,
-  },
-  segmentClose: {
-    marginLeft: 2,
-  },
-  closeButton: {
-    marginLeft: 'auto',
-    padding: 4,
   },
   resultsContainer: {
     flex: 1,
@@ -1202,6 +1218,22 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     flex: 1,
+  },
+  quickDateRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  quickDateButton: {
+    backgroundColor: AppColors.background.tertiary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  quickDateText: {
+    color: AppColors.primary,
+    fontSize: FontSizes.searchLabel,
+    fontWeight: '600',
   },
   datePickerWrapper: {
     backgroundColor: AppColors.background.tertiary,

@@ -24,7 +24,8 @@ export interface Train {
   tripId?: string;
   realtime?: {
     position?: { lat: number; lon: number };
-    delay?: number; // minutes
+    delay?: number; // departure delay in minutes at origin
+    arrivalDelay?: number; // arrival delay in minutes at destination
     status?: string;
     lastUpdated?: number;
   };

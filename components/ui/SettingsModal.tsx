@@ -226,14 +226,18 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         message = `Scanned ${result.totalCalendarEvents} event${result.totalCalendarEvents !== 1 ? 's' : ''} (${range}) but none matched the "Train to ..." pattern.\n\nEvents must be titled like "Train to Philadelphia" to be detected.`;
       } else if (result.added === 0 && result.skipped > 0) {
         title = 'Already Synced';
-        message = `Found ${result.matched} trip${result.matched !== 1 ? 's' : ''} but all ${result.skipped} already exist in your history.`;
+        const indexed = result.totalCalendarEvents ?? 0;
+        message = `Scanned ${indexed} event${indexed !== 1 ? 's' : ''}, found ${result.matched} trip${result.matched !== 1 ? 's' : ''}.\n\nAll ${result.skipped} already exist in your history.`;
       } else if (result.matched === 0) {
         title = 'No Matches';
-        message = `Found ${result.parsed} train event${result.parsed !== 1 ? 's' : ''} but couldn\'t match any to ${matchGtfs ? 'current timetables' : 'known stations'}.\n\nCheck that event locations and destinations use valid station names.`;
+        const indexed = result.totalCalendarEvents ?? 0;
+        message = `Scanned ${indexed} event${indexed !== 1 ? 's' : ''}, found ${result.parsed} train event${result.parsed !== 1 ? 's' : ''} but couldn\'t match any to ${matchGtfs ? 'current timetables' : 'known stations'}.\n\nCheck that event locations and destinations use valid station names.`;
       } else {
         title = 'Sync Complete';
+        const indexed = result.totalCalendarEvents ?? 0;
         const lines: string[] = [];
-        lines.push(`${result.added} trip${result.added !== 1 ? 's' : ''} added to history.`);
+        lines.push(`Scanned ${indexed} event${indexed !== 1 ? 's' : ''}, found ${result.matched} trip${result.matched !== 1 ? 's' : ''}.`);
+        lines.push(`${result.added} added to history.`);
         if (result.skipped > 0) {
           lines.push(`${result.skipped} already existed.`);
         }

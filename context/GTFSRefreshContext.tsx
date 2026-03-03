@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { ensureFreshGTFS, isCacheStale, loadCachedGTFS } from '../services/gtfs-sync';
+import { LocationSuggestionsService } from '../services/location-suggestions';
+import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
 
 interface GTFSRefreshState {
@@ -58,6 +60,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       setRefreshProgress(1);
       setRefreshStep('Refresh complete');
       logger.info(`[GTFS] Refresh complete (usedCache=${result.usedCache})`);
+      LocationSuggestionsService.initialize(gtfsParser).catch(() => {});
       onRefreshCompleteRef.current?.();
       // Brief display of completion then clear
       setTimeout(() => {
@@ -92,6 +95,9 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
         setRefreshProgress(0);
         setRefreshStep('');
         onCacheLoaded?.();
+
+        // Pre-compute location-based suggestions in background
+        LocationSuggestionsService.initialize(gtfsParser).catch(() => {});
 
         // Check staleness in background
         const stale = await isCacheStale();

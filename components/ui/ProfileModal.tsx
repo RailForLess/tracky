@@ -28,6 +28,22 @@ interface ProfileModalProps {
   onOpenSettings: () => void;
 }
 
+function buildTicketArt(header: string, rows: [string, string][]): string {
+  const edge = '✂ - - - - - - - -';
+  const lines = [
+    edge,
+    '',
+    `  ${header}`,
+    '',
+    ...rows.map(([l, v]) => `  ${l}: ${v}`),
+    '',
+    '  🚂 via Tracky',
+    '',
+    edge,
+  ];
+  return lines.join('\n');
+}
+
 const FIRST_THRESHOLD = -80;
 const SECOND_THRESHOLD = -200;
 
@@ -304,14 +320,17 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 
   const handleSharePassport = useCallback(async () => {
     hapticLight();
-    const yearText = selectedYear || 'All-Time';
-    const message =
-      `🚂 My Train Passport ${yearText}\n\n` +
-      `✈️ Trips: ${stats.totalTrips}\n` +
-      `📍 Distance: ${formatDistance(stats.totalDistance, distanceUnit)}\n` +
-      `⏱️ Travel Time: ${formatDuration(stats.totalDuration)}\n` +
-      `🚉 Stations: ${stats.uniqueStations}\n` +
-      `🛤️ Routes: ${stats.uniqueRoutes}`;
+    const yearText = `${selectedYear || 'All-Time'}`;
+    const message = buildTicketArt(
+      `SUPERTICKET ${yearText}`,
+      [
+        ['Trips', `${stats.totalTrips}`],
+        ['Distance', formatDistance(stats.totalDistance, distanceUnit)],
+        ['Travel Time', formatDuration(stats.totalDuration)],
+        ['Stations', `${stats.uniqueStations}`],
+        ['Routes', `${stats.uniqueRoutes}`],
+      ],
+    );
 
     try {
       await Share.share({ message });
@@ -322,14 +341,18 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 
   const handleShareDelays = useCallback(async () => {
     hapticLight();
-    const yearText = selectedYear || 'All-Time';
+    const yearText = `${selectedYear || 'All-Time'}`;
     const totalHours = Math.floor(stats.totalDelayMinutes / 60);
     const avgMinutes = Math.round(stats.averageDelayMinutes);
 
-    const message =
-      `🚂 My Train Delay Stats ${yearText}\n\n` +
-      `⏰ ${totalHours} hours lost from delays\n` +
-      `📊 Delayed trips averaged ${avgMinutes}m late`;
+    const message = buildTicketArt(
+      `DELAY REPORT ${yearText}`,
+      [
+        ['Hours Lost', `${totalHours}`],
+        ['Avg Delay', `${avgMinutes}m`],
+        ['Delayed Trips', `${stats.delayedTripsCount}`],
+      ],
+    );
 
     try {
       await Share.share({ message });
@@ -342,8 +365,13 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
     hapticLight();
     if (!stats.mostRiddenRoute) return;
 
-    const message =
-      `🚂 Most Ridden Route\n\n` + `${stats.mostRiddenRoute.routeName}\n` + `${stats.mostRiddenRoute.count} trips`;
+    const message = buildTicketArt(
+      'FREQUENT RIDER',
+      [
+        ['Route', stats.mostRiddenRoute.routeName],
+        ['Trips', `${stats.mostRiddenRoute.count}`],
+      ],
+    );
 
     try {
       await Share.share({ message });
@@ -443,12 +471,12 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
         waitFor={panRef}
         contentContainerStyle={[styles.scrollContent, { paddingHorizontal: Spacing.xl, paddingBottom: isFullscreen ? 100 : 400 }]}
       >
-        {/* Passport Card */}
+        {/* Superticket Card */}
         <View style={styles.passportCard}>
           <View style={styles.passportHeader}>
             <View style={styles.passportTitleRow}>
               <MaterialCommunityIcons name="train" size={16} color={AppColors.primary} />
-              <Text style={styles.passportTitle}>{selectedYear || 'ALL-TIME'} TRAIN PASSPORT</Text>
+              <Text style={styles.passportTitle}>{selectedYear || 'ALL-TIME'} SUPERTICKET</Text>
             </View>
             <TouchableOpacity
               onPress={handleSharePassport}
@@ -458,7 +486,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
               <Ionicons name="share-outline" size={22} color={AppColors.primary} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.passportSubtitle}>🎫 PASSPORT • PASS • RAIL PASS</Text>
+          <Text style={styles.passportSubtitle}>🎫 SUPERTICKET • RAIL • EXPRESS</Text>
 
           <View style={styles.passportStatsGrid}>
             <View style={styles.passportStatBlock}>

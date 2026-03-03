@@ -634,6 +634,67 @@ export class GTFSParser {
   }
 
   /**
+   * Get unique routes that serve a given stop (by scanning stop_times).
+   */
+  getRoutesServingStop(stopId: string): Route[] {
+    const routeIds = new Set<string>();
+    this.stopTimes.forEach((times, tripId) => {
+      if (routeIds.size >= 10) return; // enough
+      if (times.some(t => t.stop_id === stopId)) {
+        const trip = this.trips.get(tripId);
+        if (trip) routeIds.add(trip.route_id);
+      }
+    });
+    const routes: Route[] = [];
+    for (const rid of routeIds) {
+      const route = this.routes.get(rid);
+      if (route) routes.push(route);
+    }
+    return routes;
+  }
+
+  /**
+   * Get upcoming trains departing from a stop today.
+   * Returns trips sorted by departure time, filtered to active services and future departures.
+   */
+  getUpcomingTrainsFromStop(stopId: string, limit = 2): Array<{ trip: Trip; departureTime: string; trainNumber: string; routeName: string }> {
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const results: Array<{ trip: Trip; departureTime: string; trainNumber: string; routeName: string; depMinutes: number }> = [];
+    const seenTrainNumbers = new Set<string>();
+
+    this.stopTimes.forEach((times, tripId) => {
+      const stopTime = times.find(t => t.stop_id === stopId);
+      if (!stopTime) return;
+
+      const trip = this.trips.get(tripId);
+      if (!trip) return;
+      if (!this.isServiceActiveOnDate(trip.service_id, now)) return;
+
+      const [hStr, mStr] = stopTime.departure_time.split(':');
+      const depMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
+      if (depMinutes <= nowMinutes) return; // already departed
+
+      const trainNumber = trip.trip_short_name || tripId;
+      if (seenTrainNumbers.has(trainNumber)) return;
+      seenTrainNumbers.add(trainNumber);
+
+      results.push({
+        trip,
+        departureTime: stopTime.departure_time,
+        trainNumber,
+        routeName: this.getRouteName(trip.route_id),
+        depMinutes,
+      });
+    });
+
+    results.sort((a, b) => a.depMinutes - b.depMinutes);
+    return results.slice(0, limit).map(({ trip, departureTime, trainNumber, routeName }) => ({
+      trip, departureTime, trainNumber, routeName,
+    }));
+  }
+
+  /**
    * Search for stations only (for the two-station search flow)
    */
   searchStations(query: string): Stop[] {

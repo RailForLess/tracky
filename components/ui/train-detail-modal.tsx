@@ -7,7 +7,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, CloseButtonStyle, Spacing } from '../../constants/theme';
 import { TrainIcon } from '../TrainIcon';
-import { formatTimeWithDayOffset, timeToMinutes } from '../../utils/time-formatting';
+import { addDelayToTime, formatTimeWithDayOffset, timeToMinutes } from '../../utils/time-formatting';
+import { RealtimeService } from '../../services/realtime';
 
 import { useTrainContext } from '../../context/TrainContext';
 import { useUnits } from '../../context/UnitsContext';
@@ -66,6 +67,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   const [error, setError] = React.useState<string | null>(null);
   const [stopWeather, setStopWeather] = React.useState<Record<string, { temp: number; icon: string }>>({});
   const stopWeatherKeyRef = React.useRef<string | null>(null);
+  const [stopDelays, setStopDelays] = React.useState<Map<string, { departureDelay?: number; arrivalDelay?: number }>>(new Map());
 
   const isLiveTrain = trainData?.realtime?.position !== undefined;
 
@@ -90,6 +92,21 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     } catch (e) {
       logger.error('Failed to load stops:', e);
     }
+  }, [trainData]);
+
+  // Fetch per-stop delays for the timeline
+  React.useEffect(() => {
+    if (!trainData?.tripId || trainData.daysAway > 0) {
+      setStopDelays(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchDelays = async () => {
+      const delays = await RealtimeService.getDelaysForAllStops(trainData.tripId!);
+      if (!cancelled) setStopDelays(delays);
+    };
+    fetchDelays();
+    return () => { cancelled = true; };
   }, [trainData]);
 
   // Fetch weather data for destination
@@ -510,12 +527,21 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                   <Text style={styles.locationName}> • {trainData.from}</Text>
                 </TouchableOpacity>
               </View>
-              <TimeDisplay
-                time={trainData.departTime}
-                dayOffset={0}
-                style={styles.timeText}
-                superscriptStyle={styles.timeSuperscript}
-              />
+              {(() => {
+                const dDelay = trainData.daysAway <= 0 ? trainData.realtime?.delay : undefined;
+                const dDelayed = dDelay && dDelay > 0 ? addDelayToTime(trainData.departTime, dDelay, 0) : undefined;
+                return (
+                  <TimeDisplay
+                    time={trainData.departTime}
+                    dayOffset={0}
+                    style={styles.timeText}
+                    superscriptStyle={styles.timeSuperscript}
+                    delayMinutes={dDelay}
+                    delayedTime={dDelayed?.time}
+                    delayedDayOffset={dDelayed?.dayOffset}
+                  />
+                );
+              })()}
               <View style={styles.durationLineRow}>
                 <View style={styles.durationContentRow}>
                   <MaterialCommunityIcons
@@ -555,12 +581,21 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                   <Text style={styles.locationName}> • {trainData.to}</Text>
                 </TouchableOpacity>
               </View>
-              <TimeDisplay
-                time={trainData.arriveTime}
-                dayOffset={trainData.arriveDayOffset || 0}
-                style={styles.timeText}
-                superscriptStyle={styles.timeSuperscript}
-              />
+              {(() => {
+                const aDelay = trainData.daysAway <= 0 ? trainData.realtime?.arrivalDelay : undefined;
+                const aDelayed = aDelay && aDelay > 0 ? addDelayToTime(trainData.arriveTime, aDelay, trainData.arriveDayOffset || 0) : undefined;
+                return (
+                  <TimeDisplay
+                    time={trainData.arriveTime}
+                    dayOffset={trainData.arriveDayOffset || 0}
+                    style={styles.timeText}
+                    superscriptStyle={styles.timeSuperscript}
+                    delayMinutes={aDelay}
+                    delayedTime={aDelayed?.time}
+                    delayedDayOffset={aDelayed?.dayOffset}
+                  />
+                );
+              })()}
             </View>
           </View>
 
@@ -637,6 +672,15 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                       const isOrigin = index === 0;
                       const isDest = index === allStops.length - 1;
 
+                      // Per-stop delay: use arrivalDelay for last stop, departureDelay for others
+                      const stopDelayData = trainData.daysAway <= 0 ? stopDelays.get(stop.code) : undefined;
+                      const stopDelayMin = isDest
+                        ? (stopDelayData?.arrivalDelay ?? stopDelayData?.departureDelay)
+                        : (stopDelayData?.departureDelay ?? stopDelayData?.arrivalDelay);
+                      const stopDelayed = stopDelayMin && stopDelayMin > 0
+                        ? addDelayToTime(stop.time, stopDelayMin, stop.dayOffset)
+                        : undefined;
+
                       return (
                         <View key={index} style={styles.timelineStop}>
                           {!isOrigin && isPast && <View style={[styles.timelineConnector, styles.timelineConnectorPast]} />}
@@ -678,8 +722,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                                 {isCurrent && (() => {
                                   const now = new Date();
                                   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                                  const stopMinutes = timeToMinutes(stop.time) + stop.dayOffset * 24 * 60;
-                                  const diffMin = Math.max(0, Math.round(stopMinutes - currentMinutes));
+                                  const scheduledMinutes = timeToMinutes(stop.time) + stop.dayOffset * 24 * 60;
+                                  const delayOffset = stopDelayMin && stopDelayMin > 0 ? stopDelayMin : 0;
+                                  const diffMin = Math.max(0, Math.round(scheduledMinutes + delayOffset - currentMinutes));
                                   const arrivalText = diffMin >= 60
                                     ? `In ${Math.floor(diffMin / 60)}h${diffMin % 60 > 0 ? `${diffMin % 60}m` : ''}`
                                     : `In ${diffMin} min`;
@@ -700,6 +745,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                                 ...(isPast ? styles.timelineTextPast : {}),
                                 ...(isCurrent ? { color: '#FFFFFF', fontWeight: 'bold' as const } : {}),
                               }}
+                              delayMinutes={stopDelayMin}
+                              delayedTime={stopDelayed?.time}
+                              delayedDayOffset={stopDelayed?.dayOffset}
                             />
                           </View>
                         </View>

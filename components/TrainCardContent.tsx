@@ -21,6 +21,14 @@ interface TrainCardContentProps {
   departDayOffset?: number;
   arriveDayOffset?: number;
   intermediateStopCount?: number;
+  // Delay props for departure
+  departDelayMinutes?: number;
+  departDelayedTime?: string;
+  departDelayedDayOffset?: number;
+  // Delay props for arrival
+  arriveDelayMinutes?: number;
+  arriveDelayedTime?: string;
+  arriveDelayedDayOffset?: number;
 }
 
 export default function TrainCardContent({
@@ -39,6 +47,12 @@ export default function TrainCardContent({
   departDayOffset,
   arriveDayOffset,
   intermediateStopCount,
+  departDelayMinutes,
+  departDelayedTime,
+  departDelayedDayOffset,
+  arriveDelayMinutes,
+  arriveDelayedTime,
+  arriveDelayedDayOffset,
 }: TrainCardContentProps) {
   const pastColor = isPast ? { color: AppColors.secondary } : undefined;
 
@@ -82,6 +96,9 @@ export default function TrainCardContent({
               dayOffset={departDayOffset}
               style={[styles.timeValue, pastColor]}
               superscriptStyle={localStyles.timeSuperscript}
+              delayMinutes={departDelayMinutes}
+              delayedTime={departDelayedTime}
+              delayedDayOffset={departDelayedDayOffset}
             />
           </View>
 
@@ -95,6 +112,9 @@ export default function TrainCardContent({
               dayOffset={arriveDayOffset}
               style={[styles.timeValue, pastColor]}
               superscriptStyle={localStyles.timeSuperscript}
+              delayMinutes={arriveDelayMinutes}
+              delayedTime={arriveDelayedTime}
+              delayedDayOffset={arriveDelayedDayOffset}
             />
           </View>
         </View>

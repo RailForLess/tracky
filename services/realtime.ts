@@ -298,6 +298,53 @@ export class RealtimeService {
   }
 
   /**
+   * Get arrival delay in minutes for a trip at a specific stop.
+   * Returns arrival_delay with fallback to departure_delay (last stop has no departure).
+   */
+  static async getArrivalDelayForStop(tripIdOrTrainNumber: string, stopId: string): Promise<number | null> {
+    try {
+      const updates = await this.getUpdatesForTrip(tripIdOrTrainNumber);
+      const stopUpdate = updates.find(u => u.stop_id === stopId);
+
+      if (stopUpdate) {
+        const delaySeconds = stopUpdate.arrival_delay ?? stopUpdate.departure_delay;
+        if (delaySeconds !== undefined) {
+          return Math.round(delaySeconds / 60);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('Error getting arrival delay:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get delays for all stops of a trip.
+   * Returns Map<stopId, { departureDelay?, arrivalDelay? }> in minutes.
+   */
+  static async getDelaysForAllStops(
+    tripIdOrTrainNumber: string
+  ): Promise<Map<string, { departureDelay?: number; arrivalDelay?: number }>> {
+    const result = new Map<string, { departureDelay?: number; arrivalDelay?: number }>();
+    try {
+      const updates = await this.getUpdatesForTrip(tripIdOrTrainNumber);
+      for (const u of updates) {
+        if (u.stop_id) {
+          result.set(u.stop_id, {
+            departureDelay: u.departure_delay != null ? Math.round(u.departure_delay / 60) : undefined,
+            arrivalDelay: u.arrival_delay != null ? Math.round(u.arrival_delay / 60) : undefined,
+          });
+        }
+      }
+    } catch (error) {
+      logger.error('Error getting delays for all stops:', error);
+    }
+    return result;
+  }
+
+  /**
    * Format delay for display
    */
   static formatDelay(delayMinutes: number | null): string {
