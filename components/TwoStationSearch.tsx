@@ -30,7 +30,7 @@ interface TwoStationSearchProps {
 }
 
 import { formatDateForDisplay } from '../utils/date-helpers';
-import { formatTime, formatTimeWithDayOffset } from '../utils/time-formatting';
+import { addDelayToTime, formatTime, formatTimeWithDayOffset } from '../utils/time-formatting';
 
 const formatDateForPill = formatDateForDisplay;
 
@@ -121,6 +121,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const [toStation, setToStation] = useState<Stop | null>(null);
   const [stationResults, setStationResults] = useState<Stop[]>([]);
   const [tripResults, setTripResults] = useState<TripResult[]>([]);
+  const [tripDelays, setTripDelays] = useState<Map<string, { departDelay?: number; arriveDelay?: number }>>(new Map());
   const [activeField, setActiveField] = useState<'from' | 'to'>('from');
 
   // --- Train-number flow state (Path 2b) ---
@@ -266,6 +267,48 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
       setTripResults([]);
     }
   }, [fromStation, toStation, selectedDate]);
+
+  // Fetch delays for today's search results
+  useEffect(() => {
+    if (tripResults.length === 0 || !selectedDate) {
+      setTripDelays(new Map());
+      return;
+    }
+    // Only fetch delays if the selected date is today
+    const now = new Date();
+    const isToday =
+      selectedDate.getFullYear() === now.getFullYear() &&
+      selectedDate.getMonth() === now.getMonth() &&
+      selectedDate.getDate() === now.getDate();
+    if (!isToday) {
+      setTripDelays(new Map());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchDelays = async () => {
+      const delays = new Map<string, { departDelay?: number; arriveDelay?: number }>();
+      await Promise.all(
+        tripResults.map(async (trip) => {
+          const [depDelay, arrDelay] = await Promise.all([
+            RealtimeService.getDelayForStop(trip.tripId, trip.fromStop.stop_id),
+            RealtimeService.getArrivalDelayForStop(trip.tripId, trip.toStop.stop_id),
+          ]);
+          if (depDelay != null || arrDelay != null) {
+            delays.set(trip.tripId, {
+              departDelay: depDelay ?? undefined,
+              arriveDelay: arrDelay ?? undefined,
+            });
+          }
+        })
+      );
+      if (!cancelled) setTripDelays(delays);
+    };
+
+    fetchDelays();
+    const interval = setInterval(fetchDelays, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [tripResults, selectedDate]);
 
   // Show date picker when both stations are selected but no date yet (station flow)
   useEffect(() => {
@@ -795,14 +838,25 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           {!isRouteMode && showingTrainDatePicker && (
             <View style={styles.datePickerContainer}>
               <Text style={styles.sectionLabel}>SELECT TRAVEL DATE</Text>
-              <View style={styles.quickDateRow}>
-                <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
-                  <Text style={styles.quickDateText}>Today</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); d.setDate(d.getDate()+1); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
-                  <Text style={styles.quickDateText}>Tomorrow</Text>
-                </TouchableOpacity>
-              </View>
+              {[
+                { label: 'Today', offset: 0 },
+                { label: 'Tomorrow', offset: 1 },
+              ].map(({ label, offset }) => {
+                const d = new Date();
+                d.setDate(d.getDate() + offset);
+                return (
+                  <TouchableOpacity key={label} style={styles.stationItem} onPress={() => handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() })}>
+                    <View style={styles.stationIcon}>
+                      <Ionicons name="calendar-outline" size={20} color={AppColors.primary} />
+                    </View>
+                    <View style={styles.stationInfo}>
+                      <Text style={styles.stationName}>{label}</Text>
+                      <Text style={styles.stationCode}>{formatDateForPill(d)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={AppColors.secondary} />
+                  </TouchableOpacity>
+                );
+              })}
               <View style={styles.datePickerWrapper}>
                 <Calendar
                   theme={calendarTheme}
@@ -968,14 +1022,25 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         {showingDatePicker && (
           <View style={styles.datePickerContainer}>
             <Text style={styles.sectionLabel}>SELECT TRAVEL DATE</Text>
-            <View style={styles.quickDateRow}>
-              <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
-                <Text style={styles.quickDateText}>Today</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickDateButton} onPress={() => { const d = new Date(); d.setDate(d.getDate()+1); handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() }); }}>
-                <Text style={styles.quickDateText}>Tomorrow</Text>
-              </TouchableOpacity>
-            </View>
+            {[
+              { label: 'Today', offset: 0 },
+              { label: 'Tomorrow', offset: 1 },
+            ].map(({ label, offset }) => {
+              const d = new Date();
+              d.setDate(d.getDate() + offset);
+              return (
+                <TouchableOpacity key={label} style={styles.stationItem} onPress={() => handleDayPress({ dateString: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, day: d.getDate(), month: d.getMonth()+1, year: d.getFullYear(), timestamp: d.getTime() })}>
+                  <View style={styles.stationIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={AppColors.primary} />
+                  </View>
+                  <View style={styles.stationInfo}>
+                    <Text style={styles.stationName}>{label}</Text>
+                    <Text style={styles.stationCode}>{formatDateForPill(d)}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={AppColors.secondary} />
+                </TouchableOpacity>
+              );
+            })}
             <View style={styles.datePickerWrapper}>
               <Calendar
                 theme={calendarTheme}
@@ -1025,6 +1090,11 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 const countdownLabel = `${unitText}${countdown.past ? ' AGO' : ''}`;
                 const depart = formatTimeWithDayOffset(trip.fromStop.departure_time);
                 const arrive = formatTimeWithDayOffset(trip.toStop.arrival_time);
+                const delays = tripDelays.get(trip.tripId);
+                const depDelay = delays?.departDelay;
+                const arrDelay = delays?.arriveDelay;
+                const depDelayed = depDelay && depDelay > 0 ? addDelayToTime(depart.time, depDelay, depart.dayOffset) : undefined;
+                const arrDelayed = arrDelay && arrDelay > 0 ? addDelayToTime(arrive.time, arrDelay, arrive.dayOffset) : undefined;
                 return (
                   <TouchableOpacity
                     key={trip.tripId}
@@ -1049,6 +1119,12 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                       departDayOffset={depart.dayOffset}
                       arriveDayOffset={arrive.dayOffset}
                       intermediateStopCount={trip.intermediateStops.length}
+                      departDelayMinutes={depDelay}
+                      departDelayedTime={depDelayed?.time}
+                      departDelayedDayOffset={depDelayed?.dayOffset}
+                      arriveDelayMinutes={arrDelay}
+                      arriveDelayedTime={arrDelayed?.time}
+                      arriveDelayedDayOffset={arrDelayed?.dayOffset}
                     />
                     {!isLast && <View style={styles.tripCardSeparator} />}
                   </TouchableOpacity>
@@ -1123,6 +1199,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   segmentDate: {
+    flex: 1,
   },
   segmentDatePlaceholder: {
     flex: 1,
@@ -1218,22 +1295,6 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     flex: 1,
-  },
-  quickDateRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  quickDateButton: {
-    backgroundColor: AppColors.background.tertiary,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  quickDateText: {
-    color: AppColors.primary,
-    fontSize: FontSizes.searchLabel,
-    fontWeight: '600',
   },
   datePickerWrapper: {
     backgroundColor: AppColors.background.tertiary,
