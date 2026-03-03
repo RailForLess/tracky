@@ -34,9 +34,11 @@ const SECOND_THRESHOLD = -200;
 const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
   trip,
   onDelete,
+  isLast,
 }: {
   trip: CompletedTrip;
   onDelete: () => void;
+  isLast?: boolean;
 }) {
   const translateX = useSharedValue(0);
   const hasTriggeredSecondHaptic = useSharedValue(false);
@@ -151,38 +153,21 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
 
       {/* The actual card */}
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.historyCard, { marginBottom: 0 }, cardAnimatedStyle]}>
-          <View style={styles.historyHeader}>
+        <Animated.View style={[styles.historyCard, cardAnimatedStyle]}>
+          <View style={styles.historyDetailRow}>
             <Image source={require('../../assets/images/amtrak.png')} style={styles.amtrakLogo} fadeDuration={0} />
-            <Text style={styles.historyTrainNumber}>
-              {trip.routeName || 'Amtrak'} {trip.trainNumber}
+            <Text style={styles.historyDetailText}>
+              {trip.routeName || 'Amtrak'} · {trip.fromCode} → {trip.toCode} · {trip.duration ? formatDuration(trip.duration) : '—'}
             </Text>
             <Text style={styles.historyDate}>{trip.date}</Text>
           </View>
 
-          <Text style={styles.historyRoute}>
+          <Text style={styles.historyRouteName}>
             {trip.from} to {trip.to}
           </Text>
-
-          <View style={styles.historyTimeRow}>
-            <View style={styles.timeInfo}>
-              <View style={[styles.arrowIcon, styles.departureIcon]}>
-                <MaterialCommunityIcons name="arrow-top-right" size={8} color={AppColors.secondary} />
-              </View>
-              <Text style={styles.timeCode}>{trip.fromCode}</Text>
-              <Text style={styles.timeValue}>{trip.departTime}</Text>
-            </View>
-
-            <View style={styles.timeInfo}>
-              <View style={[styles.arrowIcon, styles.arrivalIcon]}>
-                <MaterialCommunityIcons name="arrow-bottom-left" size={8} color={AppColors.secondary} />
-              </View>
-              <Text style={styles.timeCode}>{trip.toCode}</Text>
-              <Text style={styles.timeValue}>{trip.arriveTime}</Text>
-            </View>
-          </View>
         </Animated.View>
       </GestureDetector>
+      {!isLast && <View style={swipeStyles.separator} />}
     </View>
   );
 });
@@ -388,9 +373,9 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
   }, []);
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, marginHorizontal: -Spacing.xl }}>
       {/* Header with Profile Info */}
-      <View style={styles.profileHeader}>
+      <View style={[styles.profileHeader, { paddingHorizontal: Spacing.xl }]}>
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
             <Text style={styles.avatarEmoji}>🚂</Text>
@@ -406,7 +391,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
       </View>
 
       {/* Action Pills */}
-      <View style={styles.actionPillsContainer}>
+      <View style={[styles.actionPillsContainer, { paddingHorizontal: Spacing.xl }]}>
         {/* <TouchableOpacity
           style={styles.actionPill}
           activeOpacity={0.7}
@@ -423,7 +408,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 
       {/* Year Filter */}
       {history.length > 0 && (
-        <View style={styles.yearFilterContainer}>
+        <View style={[styles.yearFilterContainer, { paddingHorizontal: Spacing.xl }]}>
           <TouchableOpacity
             style={[styles.yearButton, selectedYear === null && styles.yearButtonActive]}
             onPress={() => handleYearPress(null)}
@@ -456,7 +441,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
         }}
         scrollEventThrottle={16}
         waitFor={panRef}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: Spacing.xl, paddingBottom: isFullscreen ? 100 : 400 }]}
       >
         {/* Passport Card */}
         <View style={styles.passportCard}>
@@ -637,11 +622,13 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
                     {trips.length} {trips.length === 1 ? 'TRIP' : 'TRIPS'}
                   </Text>
                 </View>
+                <View style={styles.groupDivider} />
                 {trips.map((trip, index) => (
                   <SwipeableHistoryCard
                     key={`${trip.tripId}-${trip.fromCode}-${index}`}
                     trip={trip}
                     onDelete={() => handleDeleteHistory(trip)}
+                    isLast={index === trips.length - 1}
                   />
                 ))}
               </View>
@@ -655,7 +642,10 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 const swipeStyles = StyleSheet.create({
   container: {
     position: 'relative',
-    marginBottom: Spacing.md,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: AppColors.border.primary,
   },
   deleteButtonContainer: {
     position: 'absolute',
@@ -765,9 +755,7 @@ const styles = StyleSheet.create({
   yearButtonTextActive: {
     color: AppColors.primary,
   },
-  scrollContent: {
-    paddingBottom: Spacing.xxl,
-  },
+  scrollContent: {},
   passportCard: {
     backgroundColor: '#3949AB',
     borderRadius: BorderRadius.lg,
@@ -991,18 +979,18 @@ const styles = StyleSheet.create({
     color: AppColors.secondary,
     letterSpacing: 0.5,
   },
+  groupDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: AppColors.border.primary,
+  },
   historyCard: {
     backgroundColor: AppColors.background.primary,
-    borderRadius: BorderRadius.md,
     padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: AppColors.border.primary,
   },
-  historyHeader: {
+  historyDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.xs,
+    marginBottom: 2,
   },
   amtrakLogo: {
     width: 16,
@@ -1010,54 +998,18 @@ const styles = StyleSheet.create({
     marginRight: 3,
     resizeMode: 'contain',
   },
-  historyTrainNumber: {
-    fontSize: FontSizes.trainNumber,
+  historyDetailText: {
+    fontSize: 13,
     color: AppColors.secondary,
-    fontWeight: '400',
-    marginLeft: 3,
-    marginRight: Spacing.md,
   },
   historyDate: {
     fontSize: FontSizes.trainDate,
     color: AppColors.secondary,
     marginLeft: 'auto',
   },
-  historyRoute: {
+  historyRouteName: {
     fontSize: 16,
     fontWeight: '600',
     color: AppColors.primary,
-    marginBottom: Spacing.sm,
-  },
-  historyTimeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  arrowIcon: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.sm,
-  },
-  departureIcon: {
-    backgroundColor: AppColors.tertiary,
-  },
-  arrivalIcon: {
-    backgroundColor: AppColors.tertiary,
-  },
-  timeCode: {
-    fontSize: FontSizes.timeCode,
-    color: AppColors.secondary,
-    marginRight: Spacing.sm,
-  },
-  timeValue: {
-    fontSize: FontSizes.timeValue,
-    color: AppColors.primary,
-    fontWeight: '500',
   },
 });

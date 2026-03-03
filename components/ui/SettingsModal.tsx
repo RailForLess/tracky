@@ -81,6 +81,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const [calendarsLoaded, setCalendarsLoaded] = useState(false);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<Set<string>>(new Set());
   const [scanDays, setScanDays] = useState(30);
+  const [matchGtfs, setMatchGtfs] = useState(false);
   const [debugLogs, setDebugLogs] = useState<LogEntry[]>([]);
   const [logFilter, setLogFilter] = useState<LogLevel | 'ALL'>('ALL');
   const [forceCrash, setForceCrash] = useState(false);
@@ -135,6 +136,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       if (prefs) {
         setSelectedCalendarIds(new Set(prefs.calendarIds));
         setScanDays(prefs.scanDays);
+        setMatchGtfs(prefs.matchGtfs ?? false);
       }
     });
 
@@ -205,10 +207,10 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       Alert.alert('No Calendars Selected', 'Please select at least one calendar to scan.');
       return;
     }
-    await TrainStorageService.saveCalendarSyncPrefs({ calendarIds: ids, scanDays });
+    await TrainStorageService.saveCalendarSyncPrefs({ calendarIds: ids, scanDays, matchGtfs });
     setSyncState('syncing');
     try {
-      const result = await syncPastTrips(ids, scanDays);
+      const result = await syncPastTrips(ids, scanDays, matchGtfs);
       const message = result.failReason === 'gtfs_not_loaded'
         ? 'Schedule data not loaded yet. Please wait and try again.'
         : result.failReason === 'no_calendar_events'
@@ -222,7 +224,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       Alert.alert('Sync Error', 'Something went wrong while scanning your calendar.');
       setSyncState('selecting');
     }
-  }, [selectedCalendarIds, scanDays]);
+  }, [selectedCalendarIds, scanDays, matchGtfs]);
 
   const handleDeleteGTFS = useCallback(() => {
     Alert.alert(
@@ -560,6 +562,29 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
                   <Text style={styles.itemTitle}>{opt.label}</Text>
                 </View>
                 {scanDays === opt.value && <Ionicons name="checkmark" size={20} color={AppColors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.sectionHeader}>MATCH TRIPS (GTFS LOOKUP)</Text>
+          <View style={styles.settingsList}>
+            {[
+              { label: 'Yes', value: true, desc: 'Cross-reference with schedule data' },
+              { label: 'No', value: false, desc: 'Trust calendar events as-is' },
+            ].map((opt, i) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[styles.settingsItem, { paddingHorizontal: Spacing.lg }, i === 1 && styles.settingsItemLast]}
+                onPress={() => {
+                  hapticSelection();
+                  setMatchGtfs(opt.value);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemContent}>
+                  <Text style={styles.itemTitle}>{opt.label}</Text>
+                  <Text style={styles.itemSubtitle}>{opt.desc}</Text>
+                </View>
+                {matchGtfs === opt.value && <Ionicons name="checkmark" size={20} color={AppColors.primary} />}
               </TouchableOpacity>
             ))}
           </View>

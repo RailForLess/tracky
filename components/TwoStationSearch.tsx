@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { ScrollView } from 'react-native-gesture-handler';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, BorderRadius, FontSizes, Spacing } from '../constants/theme';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
 import { getTrainDisplayName } from '../services/api';
@@ -10,6 +11,7 @@ import { TrainIcon } from './TrainIcon';
 import { RealtimeService } from '../services/realtime';
 import { TrainStorageService } from '../services/storage';
 import type { EnrichedStopTime, Route, SearchResult, Stop, Trip } from '../types/train';
+import { useTrainContext } from '../context/TrainContext';
 import { SlideUpModalContext } from './ui/slide-up-modal';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
@@ -30,6 +32,32 @@ import { formatDateForDisplay } from '../utils/date-helpers';
 import { formatTime } from '../utils/time-formatting';
 
 const formatDateForPill = formatDateForDisplay;
+
+function getCountdownFromDeparture(departureTime: string, travelDate: Date): { value: number; unit: string; past: boolean } {
+  const [hStr, mStr] = departureTime.split(':');
+  let h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const dayOffset = Math.floor(h / 24);
+  h = h % 24;
+
+  const depart = new Date(travelDate);
+  depart.setDate(depart.getDate() + dayOffset);
+  depart.setHours(h, m, 0, 0);
+
+  const now = new Date();
+  const deltaSec = (depart.getTime() - now.getTime()) / 1000;
+  const past = deltaSec < 0;
+  const absSec = Math.abs(deltaSec);
+
+  const days = Math.round(absSec / 86400);
+  if (days >= 1) return { value: days, unit: days === 1 ? 'DAY' : 'DAYS', past };
+  const hours = Math.round(absSec / 3600);
+  if (hours >= 1) return { value: hours, unit: hours === 1 ? 'HOUR' : 'HOURS', past };
+  const minutes = Math.round(absSec / 60);
+  if (minutes >= 1) return { value: minutes, unit: minutes === 1 ? 'MIN' : 'MINS', past };
+  const seconds = Math.round(absSec);
+  return { value: seconds, unit: seconds === 1 ? 'SEC' : 'SECS', past };
+}
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 function toDateString(date: Date): string {
@@ -37,7 +65,7 @@ function toDateString(date: Date): string {
 }
 
 const calendarTheme = {
-  calendarBackground: AppColors.background.primary,
+  calendarBackground: AppColors.background.tertiary,
   dayTextColor: AppColors.primary,
   monthTextColor: AppColors.primary,
   arrowColor: AppColors.primary,
@@ -118,7 +146,15 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     subtitle: string;
     routeId?: string;
     stop?: Stop;
+    toStop?: Stop;
   }>>([]);
+
+  // --- "Alternatives to my train today" ---
+  const { savedTrains } = useTrainContext();
+  const todayTrain = useMemo(() => {
+    const now = new Date();
+    return savedTrains.find(t => t.daysAway === 0 && t.fromCode && t.toCode);
+  }, [savedTrains]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -141,6 +177,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           label: `${r.fromCode} → ${r.toCode}`,
           subtitle: `${r.routeName} • ${r.count} ${r.count === 1 ? 'trip' : 'trips'}`,
           stop: gtfsParser.getStop(r.fromCode) || undefined,
+          toStop: gtfsParser.getStop(r.toCode) || undefined,
         })));
       } else {
         // Fallback defaults
@@ -620,6 +657,36 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             </View>
           )}
 
+          {/* Alternatives to my train today */}
+          {!showingSearch && !expandedRouteTrains && todayTrain && (
+            <View style={styles.resultsContainer}>
+              <Text style={styles.sectionLabel}>TODAY&apos;S TRIP</Text>
+              <TouchableOpacity
+                style={styles.stationItem}
+                onPress={() => {
+                  hapticSelection();
+                  const from = gtfsParser.getStop(todayTrain.fromCode);
+                  const to = gtfsParser.getStop(todayTrain.toCode);
+                  if (from && to) {
+                    setFromStation(from);
+                    setToStation(to);
+                    setSearchQuery('');
+                    setSelectedDate(new Date());
+                  }
+                }}
+              >
+                <View style={styles.stationIcon}>
+                  <Ionicons name="swap-horizontal" size={20} color={AppColors.primary} />
+                </View>
+                <View style={styles.stationInfo}>
+                  <Text style={styles.stationName}>Alternatives to {todayTrain.trainNumber}</Text>
+                  <Text style={styles.stationCode}>{todayTrain.fromCode} → {todayTrain.toCode} • {todayTrain.routeName}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={AppColors.secondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Suggestions when search is empty */}
           {!showingSearch && !expandedRouteTrains && suggestions.length > 0 && (
             <View style={styles.resultsContainer}>
@@ -632,6 +699,12 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                     if (suggestion.type === 'route' && suggestion.routeId) {
                       const route = gtfsParser.getRoute(suggestion.routeId);
                       if (route) handleSelectRoute(route);
+                    } else if (suggestion.stop && suggestion.toStop) {
+                      // Route suggestion with both stations — set both
+                      hapticSelection();
+                      setFromStation(suggestion.stop);
+                      setToStation(suggestion.toStop);
+                      setSearchQuery('');
                     } else if (suggestion.stop) {
                       handleSelectStation(suggestion.stop);
                     }
@@ -882,34 +955,74 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
             {tripResults.length === 0 ? (
               <Text style={styles.noResults}>No direct trains between these stations</Text>
             ) : (
-              tripResults.map(trip => {
+              [...tripResults].sort((a, b) => {
+                const now = Date.now();
+                const getDepMs = (dep: string) => {
+                  const [h, m] = dep.split(':').map(Number);
+                  const d = new Date(selectedDate);
+                  d.setDate(d.getDate() + Math.floor(h / 24));
+                  d.setHours(h % 24, m, 0, 0);
+                  return d.getTime();
+                };
+                const aMs = getDepMs(a.fromStop.departure_time);
+                const bMs = getDepMs(b.fromStop.departure_time);
+                const aFuture = aMs >= now;
+                const bFuture = bMs >= now;
+                // Future trains first, sorted by soonest departure
+                if (aFuture && bFuture) return aMs - bMs;
+                if (aFuture && !bFuture) return -1;
+                if (!aFuture && bFuture) return 1;
+                // Past trains sorted by most recent first (closest to now)
+                return bMs - aMs;
+              }).map((trip, index) => {
                 const { displayName, routeName } = getTrainDisplayName(trip.tripId);
+                const isLast = index === tripResults.length - 1;
+                const countdown = getCountdownFromDeparture(trip.fromStop.departure_time, selectedDate);
+                const countdownLabel = `${countdown.unit}${countdown.past ? ' AGO' : ''}`;
                 return (
                   <TouchableOpacity
                     key={trip.tripId}
-                    style={styles.tripItem}
+                    style={styles.tripCard}
                     onPress={() => {
                       hapticSuccess();
                       onSelectTrip(trip.tripId, from.stop_id, toStation.stop_id, selectedDate);
                     }}
                   >
-                    <View style={styles.tripIcon}>
-                      <TrainIcon name={routeName} size={20} />
-                    </View>
-                    <View style={styles.tripInfo}>
-                      <Text style={styles.tripName}>{displayName}</Text>
-                      <View style={styles.tripTimes}>
-                        <Text style={styles.tripTime}>{formatTime(trip.fromStop.departure_time)}</Text>
-                        <Ionicons name="arrow-forward" size={12} color={AppColors.secondary} />
-                        <Text style={styles.tripTime}>{formatTime(trip.toStop.arrival_time)}</Text>
+                    <View style={styles.tripCardRow}>
+                      <View style={styles.tripCardLeft}>
+                        <Text style={[styles.tripCardCountdown, countdown.past && { color: AppColors.secondary }]}>{countdown.value}</Text>
+                        <Text style={styles.tripCardCountdownLabel}>{countdownLabel}</Text>
                       </View>
-                      {trip.intermediateStops.length > 0 && (
-                        <Text style={styles.tripStops}>
-                          {trip.intermediateStops.length} stop{trip.intermediateStops.length !== 1 ? 's' : ''}
-                        </Text>
-                      )}
+                      <View style={styles.tripCardCenter}>
+                        <View style={styles.tripCardHeader}>
+                          <Image source={require('../assets/images/amtrak.png')} style={styles.tripCardLogo} fadeDuration={0} />
+                          <Text style={styles.tripCardTrainNumber}>{routeName} {displayName.replace(routeName || '', '').trim()}</Text>
+                          {trip.intermediateStops.length > 0 && (
+                            <Text style={styles.tripCardStops}>
+                              {trip.intermediateStops.length} stop{trip.intermediateStops.length !== 1 ? 's' : ''}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={styles.tripCardRoute}>{from.stop_name} to {toStation.stop_name}</Text>
+                        <View style={styles.tripCardTimeRow}>
+                          <View style={styles.tripCardTimeInfo}>
+                            <View style={[styles.tripCardArrowIcon, styles.tripCardDepartureIcon]}>
+                              <MaterialCommunityIcons name="arrow-top-right" size={8} color={AppColors.secondary} />
+                            </View>
+                            <Text style={styles.tripCardTimeCode}>{from.stop_id}</Text>
+                            <Text style={styles.tripCardTimeValue}>{formatTime(trip.fromStop.departure_time)}</Text>
+                          </View>
+                          <View style={styles.tripCardTimeInfo}>
+                            <View style={[styles.tripCardArrowIcon, styles.tripCardArrivalIcon]}>
+                              <MaterialCommunityIcons name="arrow-bottom-left" size={8} color={AppColors.secondary} />
+                            </View>
+                            <Text style={styles.tripCardTimeCode}>{toStation.stop_id}</Text>
+                            <Text style={styles.tripCardTimeValue}>{formatTime(trip.toStop.arrival_time)}</Text>
+                          </View>
+                        </View>
+                      </View>
                     </View>
-                    <Ionicons name="add" size={24} color={AppColors.primary} />
+                    {!isLast && <View style={styles.tripCardSeparator} />}
                   </TouchableOpacity>
                 );
               })
@@ -1043,14 +1156,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: AppColors.border.primary,
   },
   stationIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: AppColors.background.secondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
@@ -1108,55 +1217,103 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   datePickerWrapper: {
-    backgroundColor: AppColors.background.primary,
+    backgroundColor: AppColors.background.tertiary,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: AppColors.border.primary,
     overflow: 'hidden' as const,
   },
-  tripItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: AppColors.background.primary,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: AppColors.border.primary,
+  tripCard: {
   },
-  tripIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: AppColors.background.secondary,
+  tripCardRow: {
+    flexDirection: 'row',
+    padding: Spacing.lg,
+  },
+  tripCardLeft: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
+    marginRight: Spacing.lg,
+    minWidth: 60,
   },
-  tripInfo: {
+  tripCardCountdown: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: AppColors.primary,
+    lineHeight: 36,
+  },
+  tripCardCountdownLabel: {
+    fontSize: FontSizes.daysLabel,
+    color: AppColors.secondary,
+    marginTop: Spacing.xs,
+    letterSpacing: 0.5,
+  },
+  tripCardCenter: {
     flex: 1,
   },
-  tripName: {
-    fontSize: FontSizes.searchLabel,
-    color: AppColors.primary,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  tripTimes: {
+  tripCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: Spacing.xs,
   },
-  tripTime: {
+  tripCardLogo: {
+    width: 16,
+    height: 16,
+    marginRight: 3,
+    resizeMode: 'contain' as const,
+  },
+  tripCardTrainNumber: {
+    fontSize: FontSizes.trainDate,
+    color: AppColors.secondary,
+    fontWeight: '400',
+    marginLeft: 3,
+    marginRight: Spacing.md,
+  },
+  tripCardStops: {
     fontSize: FontSizes.daysLabel,
     color: AppColors.secondary,
+    marginLeft: 'auto',
+  },
+  tripCardRoute: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: AppColors.primary,
+    marginBottom: Spacing.sm,
+  },
+  tripCardTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tripCardTimeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tripCardArrowIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+  },
+  tripCardDepartureIcon: {
+    backgroundColor: AppColors.tertiary,
+  },
+  tripCardArrivalIcon: {
+    backgroundColor: AppColors.tertiary,
+  },
+  tripCardTimeCode: {
+    fontSize: FontSizes.timeCode,
+    color: AppColors.secondary,
+    marginRight: Spacing.sm,
+  },
+  tripCardTimeValue: {
+    fontSize: FontSizes.timeValue,
+    color: AppColors.primary,
     fontWeight: '500',
   },
-  tripStops: {
-    fontSize: FontSizes.daysLabel,
-    color: AppColors.secondary,
-    marginTop: 2,
+  tripCardSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: AppColors.border.primary,
+    marginHorizontal: Spacing.lg,
   },
   hintContainer: {
     flexDirection: 'row',

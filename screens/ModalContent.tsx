@@ -97,7 +97,7 @@ export const ModalContent = React.forwardRef<
           const prefs = await TrainStorageService.getCalendarSyncPrefs();
           if (prefs && prefs.calendarIds.length > 0) {
             logger.info(`[Calendar] Auto-syncing future trips from ${prefs.calendarIds.length} calendars`);
-            const syncResult = await syncFutureTrips(prefs.calendarIds);
+            const syncResult = await syncFutureTrips(prefs.calendarIds, prefs.matchGtfs ?? false);
             logger.info(`[Calendar] Sync result: ${syncResult.added} added, ${syncResult.skipped} skipped`);
             if (syncResult.added > 0) {
               const refreshed = await TrainStorageService.getSavedTrains();

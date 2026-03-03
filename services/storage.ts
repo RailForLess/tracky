@@ -17,6 +17,8 @@ const STORAGE_KEYS = {
 export interface CalendarSyncPrefs {
   calendarIds: string[];
   scanDays: number;
+  /** When true, cross-reference calendar events against GTFS schedule data for precise trip matching. */
+  matchGtfs: boolean;
 }
 
 import { calculateDaysAway, formatDateForDisplay } from '../utils/date-helpers';

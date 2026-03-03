@@ -36,10 +36,11 @@ interface SwipeableTrainCardProps {
   onPress: () => void;
   onDelete: () => void;
   isFirst?: boolean;
+  isLast?: boolean;
   contentOpacity?: SharedValue<number>;
 }
 
-function SwipeableTrainCard({ train, onPress, onDelete, isFirst, contentOpacity }: SwipeableTrainCardProps) {
+function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, contentOpacity }: SwipeableTrainCardProps) {
   const translateX = useSharedValue(0);
   const hasTriggeredSecondHaptic = useSharedValue(false);
   const isDeleting = useSharedValue(false);
@@ -207,7 +208,7 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, contentOpacity 
 
       {/* The actual card */}
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.trainCard, { marginBottom: 0 }, cardAnimatedStyle]}>
+        <Animated.View style={[styles.trainCard, cardAnimatedStyle]}>
           <View style={styles.trainLeft}>
             <Text style={[styles.daysAway, isPast && { color: COLORS.secondary }]}>{countdown.value}</Text>
             <Text style={[styles.daysLabel, isPast && { color: COLORS.secondary }]}>{unitLabel}</Text>
@@ -256,6 +257,7 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, contentOpacity 
           </View>
         </Animated.View>
       </GestureDetector>
+      {!isLast && <View style={swipeStyles.separator} />}
     </Animated.View>
   );
 }
@@ -288,6 +290,7 @@ export function TrainList({ trains, onTrainSelect, onDeleteTrain }: TrainListPro
           onPress={() => onTrainSelect(train)}
           onDelete={() => onDeleteTrain?.(train)}
           isFirst={index === 0}
+          isLast={index === trains.length - 1}
           contentOpacity={contentOpacity}
         />
       ))}
@@ -298,7 +301,11 @@ export function TrainList({ trains, onTrainSelect, onDeleteTrain }: TrainListPro
 const swipeStyles = StyleSheet.create({
   container: {
     position: 'relative',
-    marginBottom: Spacing.md,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: AppColors.border.primary,
+    marginHorizontal: Spacing.lg,
   },
   deleteButtonContainer: {
     position: 'absolute',

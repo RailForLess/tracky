@@ -13,6 +13,7 @@ import { formatTime, parseTimeToMinutes } from '../utils/time-formatting';
 import { stationLoader } from './station-loader';
 import { TrainStorageService } from './storage';
 
+
 export interface DeviceCalendar {
   id: string;
   title: string;
@@ -107,6 +108,75 @@ function resolveStation(name: string) {
     }
   }
   return stations.length > 0 ? stations[0] : null;
+}
+
+/**
+ * Format a Date into "h:mm AM/PM" display string.
+ */
+function formatDateToAmPm(date: Date): string {
+  let h = date.getHours();
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+/**
+ * Extract a CompletedTrip directly from a calendar event without GTFS validation.
+ * Used when matchGtfs is false — blindly trusts calendar data.
+ */
+function extractTripFromEvent(event: Calendar.Event): CompletedTrip | null {
+  const match = event.title.match(TRAIN_EVENT_PATTERN);
+  if (!match) return null;
+
+  const destination = match[1].trim();
+  const startDate = new Date(event.startDate);
+  const endDate = event.endDate ? new Date(event.endDate) : null;
+  const eventDate = new Date(startDate);
+  eventDate.setHours(0, 0, 0, 0);
+
+  const originLocation = event.location?.trim() || '';
+
+  // Best-effort station name/code resolution (won't fail if GTFS not loaded)
+  const destStation = gtfsParser.isLoaded ? resolveStation(destination) : null;
+  const originStation = originLocation && gtfsParser.isLoaded ? resolveStation(originLocation) : null;
+
+  let duration: number | undefined;
+  if (endDate) {
+    duration = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+    if (duration <= 0) duration = undefined;
+  }
+
+  let distance: number | undefined;
+  if (originStation && destStation) {
+    try {
+      const fromStn = stationLoader.getStationByCode(originStation.stop_id);
+      const toStn = stationLoader.getStationByCode(destStation.stop_id);
+      if (fromStn && toStn) {
+        distance = haversineDistance(fromStn.lat, fromStn.lon, toStn.lat, toStn.lon);
+      }
+    } catch { /* best effort */ }
+  }
+
+  // Synthetic deterministic trip ID based on event content
+  const tripId = `cal-${eventDate.getTime()}-${destination.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+  return {
+    tripId,
+    trainNumber: '',
+    routeName: '',
+    from: originStation?.stop_name ?? originLocation,
+    to: destStation?.stop_name ?? destination,
+    fromCode: originStation?.stop_id ?? '',
+    toCode: destStation?.stop_id ?? '',
+    departTime: formatDateToAmPm(startDate),
+    arriveTime: endDate ? formatDateToAmPm(endDate) : '',
+    date: formatDateForDisplay(eventDate),
+    travelDate: eventDate.getTime(),
+    completedAt: Date.now(),
+    duration,
+    distance,
+  };
 }
 
 /**
@@ -252,10 +322,11 @@ async function fetchTrainEvents(
  * Sync past trips — scans selected calendars for past train events
  * and adds matched trips to history.
  */
-export async function syncPastTrips(calendarIds: string[], scanDays: number): Promise<SyncResult> {
+export async function syncPastTrips(calendarIds: string[], scanDays: number, matchGtfs: boolean = false): Promise<SyncResult> {
   const result: SyncResult = { parsed: 0, matched: 0, added: 0, skipped: 0, addedTrips: [] };
 
-  if (!gtfsParser.isLoaded) {
+  // When matchGtfs is enabled, require GTFS data for precise trip matching
+  if (matchGtfs && !gtfsParser.isLoaded) {
     logger.error('Calendar sync: GTFS data not loaded — cannot sync');
     result.failReason = 'gtfs_not_loaded';
     return result;
@@ -287,50 +358,60 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number): Pr
   const existingKeys = new Set(existingHistory.map(h => `${h.tripId}|${h.fromCode}|${h.toCode}|${h.travelDate}`));
 
   for (const event of trainEvents) {
-    const matched = matchEventToTrip(event.title, new Date(event.startDate), event.location ?? undefined);
-    if (!matched) continue;
+    let entry: CompletedTrip | null;
 
-    // Calculate duration from times
-    let duration: number | undefined;
-    try {
-      const departMinutes = parseTimeToMinutes(matched.departTime);
-      const arriveMinutes = parseTimeToMinutes(matched.arriveTime);
-      duration = arriveMinutes - departMinutes;
-      if (duration < 0) {
-        duration += 24 * 60;
+    if (!matchGtfs) {
+      // Trust calendar data directly — no GTFS cross-reference
+      entry = extractTripFromEvent(event);
+    } else {
+      // Full GTFS matching path
+      const matched = matchEventToTrip(event.title, new Date(event.startDate), event.location ?? undefined);
+      if (!matched) { continue; }
+
+      // Calculate duration from times
+      let duration: number | undefined;
+      try {
+        const departMinutes = parseTimeToMinutes(matched.departTime);
+        const arriveMinutes = parseTimeToMinutes(matched.arriveTime);
+        duration = arriveMinutes - departMinutes;
+        if (duration < 0) {
+          duration += 24 * 60;
+        }
+      } catch (error) {
+        logger.error('Calendar sync: Error calculating duration:', error);
       }
-    } catch (error) {
-      logger.error('Calendar sync: Error calculating duration:', error);
+
+      // Calculate distance as the crow flies using station coordinates
+      let distance: number | undefined;
+      try {
+        const fromStation = stationLoader.getStationByCode(matched.fromStopId);
+        const toStation = stationLoader.getStationByCode(matched.toStopId);
+        if (fromStation && toStation) {
+          distance = haversineDistance(fromStation.lat, fromStation.lon, toStation.lat, toStation.lon);
+        }
+      } catch (error) {
+        logger.error('Calendar sync: Error calculating distance:', error);
+      }
+
+      entry = {
+        tripId: matched.tripId,
+        trainNumber: matched.trainNumber,
+        routeName: matched.routeName,
+        from: matched.fromStopName,
+        to: matched.toStopName,
+        fromCode: matched.fromStopId,
+        toCode: matched.toStopId,
+        departTime: matched.departTime,
+        arriveTime: matched.arriveTime,
+        date: formatDateForDisplay(matched.eventDate),
+        travelDate: matched.eventDate.getTime(),
+        completedAt: Date.now(),
+        duration,
+        distance,
+      };
     }
 
-    // Calculate distance as the crow flies using station coordinates
-    let distance: number | undefined;
-    try {
-      const fromStation = stationLoader.getStationByCode(matched.fromStopId);
-      const toStation = stationLoader.getStationByCode(matched.toStopId);
-      if (fromStation && toStation) {
-        distance = haversineDistance(fromStation.lat, fromStation.lon, toStation.lat, toStation.lon);
-      }
-    } catch (error) {
-      logger.error('Calendar sync: Error calculating distance:', error);
-    }
-
-    const entry: CompletedTrip = {
-      tripId: matched.tripId,
-      trainNumber: matched.trainNumber,
-      routeName: matched.routeName,
-      from: matched.fromStopName,
-      to: matched.toStopName,
-      fromCode: matched.fromStopId,
-      toCode: matched.toStopId,
-      departTime: matched.departTime,
-      arriveTime: matched.arriveTime,
-      date: formatDateForDisplay(matched.eventDate),
-      travelDate: matched.eventDate.getTime(),
-      completedAt: Date.now(),
-      duration,
-      distance,
-    };
+    if (!entry) continue;
 
     const key = `${entry.tripId}|${entry.fromCode}|${entry.toCode}|${entry.travelDate}`;
     result.matched++;
@@ -356,8 +437,15 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number): Pr
  * and adds matched trips to saved trains (My Trains).
  * Called automatically on app load.
  */
-export async function syncFutureTrips(calendarIds: string[]): Promise<SyncResult> {
+export async function syncFutureTrips(calendarIds: string[], matchGtfs: boolean = false): Promise<SyncResult> {
   const result: SyncResult = { parsed: 0, matched: 0, added: 0, skipped: 0, addedTrips: [] };
+
+  // Future trips are stored as SavedTrainRef which requires a valid GTFS trip ID
+  // for reconstruction. Skip when GTFS matching is disabled.
+  if (!matchGtfs) {
+    logger.info('Calendar sync (future): skipped — GTFS matching disabled');
+    return result;
+  }
 
   if (!gtfsParser.isLoaded) {
     logger.error('Calendar sync (future): GTFS data not loaded — cannot sync');

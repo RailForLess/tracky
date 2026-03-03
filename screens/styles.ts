@@ -118,11 +118,7 @@ export const styles = StyleSheet.create({
   trainCard: {
     flexDirection: 'row',
     backgroundColor: COLORS.background.primary,
-    borderRadius: BorderRadius.md,
     padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: COLORS.border.primary,
   },
   trainLeft: { alignItems: 'center', justifyContent: 'center', marginRight: Spacing.lg, minWidth: 60 },
   daysAway: {
@@ -158,7 +154,7 @@ export const styles = StyleSheet.create({
     color: COLORS.primary,
     marginBottom: Spacing.sm,
   },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  timeRow: { flexDirection: 'row', gap: Spacing.md },
   timeInfo: { flexDirection: 'row', alignItems: 'center' },
   arrowIcon: {
     width: 14,
