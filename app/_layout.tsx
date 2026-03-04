@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
@@ -9,6 +10,13 @@ import 'react-native-reanimated';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import '../services/background-tasks';
 import { info } from '../utils/logger';
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
+  enabled: !__DEV__,
+  tracesSampleRate: 0.2,
+  sendDefaultPii: false,
+});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -24,7 +32,7 @@ export const unstable_settings = {
   anchor: '/',
 };
 
-export default function RootLayout() {
+function RootLayout() {
   useEffect(() => {
     const version = Constants.expoConfig?.version ?? 'unknown';
     info(`[App] Tracky starting — v${version}, ${Platform.OS} ${Platform.Version}`);
@@ -41,3 +49,5 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
+
+export default Sentry.wrap(RootLayout);

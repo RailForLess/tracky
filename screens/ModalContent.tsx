@@ -1,9 +1,10 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, Text, TouchableOpacity, View } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { FlatList } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { TrainList } from '../components/TrainList';
+import { SwipeableTrainCard } from '../components/TrainList';
+import { PlaceholderBlurb } from '../components/PlaceholderBlurb';
 import { TwoStationSearch } from '../components/TwoStationSearch';
 import { SlideUpModalContext } from '../components/ui/slide-up-modal';
 import { useGTFSRefresh } from '../context/GTFSRefreshContext';
@@ -57,10 +58,12 @@ export const ModalContent = React.forwardRef<
   // Also auto-archive past trips to history
   useEffect(() => {
     if (isLoadingCache) return;
+    let cancelled = false;
 
     const loadSavedTrains = async () => {
       logger.info('[App] Loading saved trains from storage');
       const trains = await TrainStorageService.getSavedTrains();
+      if (cancelled) return;
       logger.info(`[App] Loaded ${trains.length} saved trains`);
 
       // Auto-archive past trips (travel date before today, or arrived today)
@@ -85,10 +88,12 @@ export const ModalContent = React.forwardRef<
         await TrainStorageService.moveToHistory(train);
         TrainActivityManager.onTrainArchived(train).catch(() => {});
       }
+      if (cancelled) return;
 
       if (pastTrains.length > 0) {
         // Reload after archiving
         const updatedTrains = await TrainStorageService.getSavedTrains();
+        if (cancelled) return;
         setSavedTrains(updatedTrains);
         TrainActivityManager.onAppStartup(updatedTrains).catch(() => {});
       } else {
@@ -99,14 +104,18 @@ export const ModalContent = React.forwardRef<
       // Auto-sync future trips from calendar (if permission already granted)
       try {
         const permitted = await hasCalendarPermission();
+        if (cancelled) return;
         if (permitted) {
           const prefs = await TrainStorageService.getCalendarSyncPrefs();
+          if (cancelled) return;
           if (prefs && prefs.calendarIds.length > 0) {
             logger.info(`[Calendar] Auto-syncing future trips from ${prefs.calendarIds.length} calendars`);
             const syncResult = await syncFutureTrips(prefs.calendarIds, prefs.matchGtfs ?? false);
+            if (cancelled) return;
             logger.info(`[Calendar] Sync result: ${syncResult.added} added, ${syncResult.skipped} skipped`);
             if (syncResult.added > 0) {
               const refreshed = await TrainStorageService.getSavedTrains();
+              if (cancelled) return;
               setSavedTrains(refreshed);
               const tripLines = syncResult.addedTrips.map(t => `${t.from} → ${t.to} (${t.date})`).join('\n');
               Alert.alert('Trips Found from Calendar', tripLines);
@@ -118,6 +127,7 @@ export const ModalContent = React.forwardRef<
       }
     };
     loadSavedTrains();
+    return () => { cancelled = true; };
   }, [setSavedTrains, isLoadingCache]);
 
   // Refresh saved trains when main modal becomes active (returning from profile, etc.)
@@ -211,12 +221,38 @@ export const ModalContent = React.forwardRef<
     snapToPoint?.('min');
   };
 
-  const handleDeleteTrain = async (train: Train) => {
+  const handleDeleteTrain = useCallback(async (train: Train) => {
     await TrainStorageService.deleteTrainByTripId(train.tripId || '', train.fromCode, train.toCode, train.travelDate);
     const updatedTrains = await TrainStorageService.getSavedTrains();
     setSavedTrains(updatedTrains);
     TrainActivityManager.onTrainDeleted(train.tripId || '', train.fromCode, train.toCode).catch(() => {});
-  };
+  }, [setSavedTrains]);
+
+  const handleTrainSelect = useCallback((train: Train) => {
+    setSelectedTrain(train);
+    if (typeof onTrainSelect === 'function') onTrainSelect(train);
+  }, [setSelectedTrain, onTrainSelect]);
+
+  const trainKeyExtractor = useCallback((item: Train) => String(item.id), []);
+
+  const renderTrainItem = useCallback(({ item, index }: { item: Train; index: number }) => (
+    <SwipeableTrainCard
+      train={item}
+      onPress={() => handleTrainSelect(item)}
+      onDelete={() => handleDeleteTrain(item)}
+      isFirst={index === 0}
+      isLast={index === sortedTrains.length - 1}
+      contentOpacity={contentOpacity}
+    />
+  ), [handleTrainSelect, handleDeleteTrain, sortedTrains.length, contentOpacity]);
+
+  const trainListEmpty = useMemo(() => (
+    <PlaceholderBlurb
+      icon="bookmark-outline"
+      title="No saved trips yet"
+      subtitle="Use the search bar to add a trip"
+    />
+  ), []);
 
   return (
     <View style={{ flex: 1 }}>
@@ -270,34 +306,30 @@ export const ModalContent = React.forwardRef<
           </Animated.View>
         )}
 
-        {/* Scrollable Content */}
-        {!isSearchFocused && (
-          <ScrollView
+        {/* Virtualized Train List */}
+        {!isSearchFocused && !isLoading && (
+          <FlatList
+            data={sortedTrains}
+            keyExtractor={trainKeyExtractor}
+            renderItem={renderTrainItem}
+            ListEmptyComponent={trainListEmpty}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: isFullscreen ? 100 : Dimensions.get('window').height * 0.5 }}
             showsVerticalScrollIndicator={false}
             scrollEnabled={isFullscreen}
             nestedScrollEnabled={true}
             onScroll={e => {
-              const offsetY = e.nativeEvent.contentOffset.y;
-              scrollOffset.value = offsetY;
+              scrollOffset.value = e.nativeEvent.contentOffset.y;
             }}
             scrollEventThrottle={16}
             waitFor={panRef}
             bounces={false}
             keyboardShouldPersistTaps="handled"
-          >
-            {!isLoading && (
-              <TrainList
-                trains={sortedTrains}
-                onTrainSelect={train => {
-                  setSelectedTrain(train);
-                  if (typeof onTrainSelect === 'function') onTrainSelect(train);
-                }}
-                onDeleteTrain={handleDeleteTrain}
-              />
-            )}
-          </ScrollView>
+            initialNumToRender={6}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
         )}
       </View>
     </View>

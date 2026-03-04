@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { fetchWithTimeout } from './fetch-with-timeout';
 
 /**
  * Map WMO weather code to a human-readable condition and Ionicons icon name.
@@ -31,7 +32,7 @@ export async function fetchCurrentWeather(
 ): Promise<CurrentWeather | null> {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&temperature_unit=${unit}&timezone=auto`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, { timeoutMs: 10000 });
     if (!res.ok) return null;
     const data = await res.json();
     const temp = Math.round(data.current.temperature_2m);

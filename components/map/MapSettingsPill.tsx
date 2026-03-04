@@ -1,11 +1,11 @@
 import * as Network from 'expo-network';
 import React from 'react';
-import { Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { AppColors } from '../../constants/theme';
-import { light as hapticLight, warning as hapticWarning } from '../../utils/haptics';
+import { light as hapticLight } from '../../utils/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PILL_WIDTH = 48;
@@ -130,18 +130,10 @@ export default function MapSettingsPill({
     });
   };
 
-  const pillHeight = isConnected ? PILL_HEIGHT_CONNECTED : PILL_HEIGHT_OFFLINE;
-  const pillHeightShared = useSharedValue(pillHeight);
-
-  // Keep shared value in sync with state
-  React.useEffect(() => {
-    pillHeightShared.value = withSpring(pillHeight, SPRING_CONFIG);
-  }, [pillHeight]);
-
   const animatedContainerStyle = useAnimatedStyle(() => {
     return {
       width: interpolate(expandProgress.value, [0, 1], [PILL_WIDTH, STRIP_WIDTH]),
-      height: interpolate(expandProgress.value, [0, 1], [pillHeightShared.value, STRIP_HEIGHT]),
+      height: interpolate(expandProgress.value, [0, 1], [PILL_HEIGHT, STRIP_HEIGHT]),
       borderRadius: interpolate(expandProgress.value, [0, 1], [24, STRIP_HEIGHT / 2]),
     };
   });
@@ -171,18 +163,17 @@ export default function MapSettingsPill({
             <TouchableOpacity style={styles.pillButton} onPress={handleSettingsPress} activeOpacity={0.7}>
               <Ionicons name="map-outline" size={24} color={AppColors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pillButton} onPress={() => { hapticLight(); onRecenter(); }} activeOpacity={0.7}>
-              <MaterialIcons name="my-location" size={22} color={AppColors.primary} />
-            </TouchableOpacity>
-            {!isConnected && (
-              <TouchableOpacity style={styles.pillButton} onPress={handleOfflinePress} activeOpacity={0.7}>
+            {isConnected ? (
+              <TouchableOpacity style={styles.pillButton} onPress={() => { hapticLight(); onRecenter(); }} activeOpacity={0.7}>
+                <MaterialIcons name="my-location" size={22} color={AppColors.primary} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.pillButton}>
                 <View style={styles.offlineIconContainer}>
                   <Ionicons name="wifi" size={22} color={AppColors.error} />
-                  <View style={styles.offlineExclamation}>
-                    <Text style={styles.offlineExclamationText}>!</Text>
-                  </View>
+                  <View style={styles.offlineSlash} />
                 </View>
-              </TouchableOpacity>
+              </View>
             )}
           </Animated.View>
 
@@ -328,21 +319,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  offlineExclamation: {
+  offlineSlash: {
     position: 'absolute',
-    bottom: -2,
-    right: -6,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 2,
+    height: 26,
     backgroundColor: AppColors.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  offlineExclamationText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    lineHeight: 12,
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
   },
 });

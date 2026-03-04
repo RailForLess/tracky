@@ -13,6 +13,7 @@ import type { CalendarDateException, CalendarEntry, Route, Shape, Stop, StopTime
 import { gtfsParser } from '../utils/gtfs-parser';
 import { shapeLoader } from './shape-loader';
 import { logger } from '../utils/logger';
+import { fetchWithTimeout } from '../utils/fetch-with-timeout';
 
 const GTFS_URL = 'https://content.amtrak.com/content/gtfs/GTFS.zip';
 const GTFS_FILES = {
@@ -120,7 +121,7 @@ function splitCSVLine(line: string): string[] {
 }
 
 async function fetchZipBytes(): Promise<Uint8Array> {
-  const res = await fetch(GTFS_URL);
+  const res = await fetchWithTimeout(GTFS_URL, { timeoutMs: 30000 });
   if (!res.ok) throw new Error(`GTFS fetch failed: ${res.status}`);
   const buf = await res.arrayBuffer();
   return new Uint8Array(buf);

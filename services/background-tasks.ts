@@ -5,7 +5,7 @@ import * as LiveActivityService from './live-activity';
 import * as NotificationService from './notifications';
 import { TrainStorageService } from './storage';
 import type { Train } from '../types/train';
-import { selectNextTrain, buildTravelStats } from './widget-data';
+import { selectNextTrain, selectUpcomingTrains, buildTravelStats } from './widget-data';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
 import { Platform, NativeModules } from 'react-native';
@@ -17,7 +17,8 @@ function getWidgetHandles() {
   try {
     const { nextTrainWidget } = require('../widgets/NextTrainWidget');
     const { travelStatsWidget } = require('../widgets/TravelStatsWidget');
-    return { nextTrainWidget, travelStatsWidget };
+    const { upcomingTrainsWidget } = require('../widgets/UpcomingTrainsWidget');
+    return { nextTrainWidget, travelStatsWidget, upcomingTrainsWidget };
   } catch {
     return null;
   }
@@ -95,6 +96,7 @@ TaskManager.defineTask(BACKGROUND_TASK_NAME, async () => {
       if (widgets) {
         const allTrains = await TrainStorageService.getSavedTrains();
         widgets.nextTrainWidget.updateSnapshot(selectNextTrain(allTrains));
+        widgets.upcomingTrainsWidget.updateSnapshot(selectUpcomingTrains(allTrains));
         const history = await TrainStorageService.getTripHistory();
         widgets.travelStatsWidget.updateSnapshot(buildTravelStats(history));
       }

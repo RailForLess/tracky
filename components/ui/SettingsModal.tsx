@@ -443,8 +443,13 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     const startTest = async (action: string) => {
       if (action === 'start') {
         try {
-          const { trainLiveActivity } = require('../widgets/TrainLiveActivity');
-          const activity = trainLiveActivity.start({
+          const LiveActivityService = require('../../services/live-activity');
+          if (!LiveActivityService.isSupported()) {
+            Alert.alert('Not Supported', 'Live Activities require iOS 16.2+ and a development build (not Expo Go).');
+            return;
+          }
+          await LiveActivityService.startForTrain({
+            tripId: 'test-live-activity',
             trainNumber: '91',
             routeName: 'Northeast Regional',
             fromCode: 'NYP',
@@ -453,19 +458,18 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             to: 'Boston',
             departTime: '2:30 PM',
             arriveTime: '6:45 PM',
-            delayMinutes: 12,
-            status: 'delayed',
-            lastUpdated: Date.now(),
+            daysAway: 0,
+            realtime: { delay: 12 },
           });
           logger.info('[Debug] Started test Live Activity');
-          Alert.alert('Live Activity Started', `Activity started: ${activity ? 'yes' : 'no'}`);
+          Alert.alert('Live Activity Started', 'Test activity started successfully.');
         } catch (e) {
           Alert.alert('Error', String(e));
         }
       } else if (action === 'end') {
         try {
-          const { endAll } = require('../services/live-activity');
-          await endAll();
+          const LiveActivityService = require('../../services/live-activity');
+          await LiveActivityService.endAll();
           logger.info('[Debug] Ended all Live Activities');
           Alert.alert('Done', 'All Live Activities ended.');
         } catch (e) {

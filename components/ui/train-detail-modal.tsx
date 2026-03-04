@@ -9,6 +9,7 @@ import { AppColors, CloseButtonStyle, Spacing } from '../../constants/theme';
 import { isThruwayName, TrainIcon } from '../TrainIcon';
 import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToDate, timeToMinutes } from '../../utils/time-formatting';
 import { RealtimeService } from '../../services/realtime';
+import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 
 import { useTrainContext } from '../../context/TrainContext';
 import { useUnits } from '../../context/UnitsContext';
@@ -17,7 +18,7 @@ import type { Train } from '../../types/train';
 import { haversineDistance } from '../../utils/distance';
 import { gtfsParser } from '../../utils/gtfs-parser';
 import { logger, openReportBadDataEmail } from '../../utils/logger';
-import { getTimezoneForStop } from '../../utils/timezone';
+import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { calculateDuration, getCountdownForTrain, pluralize } from '../../utils/train-display';
 import { convertDistance, distanceSuffix, formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
@@ -125,7 +126,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
         if (!destStop) return;
 
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${destStop.stop_lat}&longitude=${destStop.stop_lon}&current=temperature_2m,weather_code&temperature_unit=${weatherApiTempUnit(tempUnit)}&timezone=auto`;
-        const response = await fetch(weatherUrl);
+        const response = await fetchWithTimeout(weatherUrl, { timeoutMs: 10000 });
 
         if (!cancelled && response.ok) {
           const data = await response.json();
@@ -175,7 +176,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
           const hour = Math.min(Math.floor(timeToMinutes(stop.time) / 60), 23);
 
           const url = `https://api.open-meteo.com/v1/forecast?latitude=${stopData.stop_lat}&longitude=${stopData.stop_lon}&hourly=temperature_2m,weather_code&temperature_unit=${unit}&timezone=auto&start_date=${dateStr}&end_date=${dateStr}`;
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, { timeoutMs: 10000 });
           if (!res.ok || cancelled) return;
           const data = await res.json();
 
@@ -436,13 +437,14 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   // Find next stop for live trains
   const nextStopIndex = React.useMemo(() => {
     if (!isLiveTrain || allStops.length === 0) return -1;
-    
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     for (let i = 0; i < allStops.length; i++) {
-      const stopMinutes = timeToMinutes(allStops[i].time);
-      const adjustedStopMinutes = stopMinutes + allStops[i].dayOffset * 24 * 60;
+      const stop = allStops[i];
+      const stopData = gtfsParser.getStop(stop.code);
+      const tz = stopData ? getTimezoneForStop(stopData) : null;
+      const currentMinutes = getCurrentMinutesInTimezone(tz);
+      const stopMinutes = timeToMinutes(stop.time);
+      const adjustedStopMinutes = stopMinutes + stop.dayOffset * 24 * 60;
       if (adjustedStopMinutes > currentMinutes) {
         return i;
       }
@@ -455,8 +457,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       return `${allStops.length} stops`;
     }
     const stop = allStops[nextStopIndex];
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const stopData = gtfsParser.getStop(stop.code);
+    const tz = stopData ? getTimezoneForStop(stopData) : null;
+    const currentMinutes = getCurrentMinutesInTimezone(tz);
     const stopMinutes = timeToMinutes(stop.time) + stop.dayOffset * 24 * 60;
     const delayData = stopDelays.get(stop.code);
     const delayMin = delayData?.arrivalDelay ?? delayData?.departureDelay ?? 0;
@@ -789,8 +792,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                                   </>
                                 )}
                                 {isCurrent && (() => {
-                                  const now = new Date();
-                                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                                  const stopGtfs = gtfsParser.getStop(stop.code);
+                                  const tz = stopGtfs ? getTimezoneForStop(stopGtfs) : null;
+                                  const currentMinutes = getCurrentMinutesInTimezone(tz);
                                   const scheduledMinutes = timeToMinutes(stop.time) + stop.dayOffset * 24 * 60;
                                   const delayOffset = stopDelayMin && stopDelayMin > 0 ? stopDelayMin : 0;
                                   const diffMin = Math.max(0, Math.round(scheduledMinutes + delayOffset - currentMinutes));

@@ -10,6 +10,7 @@ import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
 import { haversineDistance } from '../utils/distance';
 import { formatTime, parseTimeToMinutes } from '../utils/time-formatting';
+import { getMinutesInTimezone, getTimezoneForStop } from '../utils/timezone';
 import { stationLoader } from './station-loader';
 import { TrainStorageService } from './storage';
 
@@ -207,7 +208,6 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
   if (!match) return null;
 
   const destination = match[1].trim();
-  const eventMinutes = eventStartDate.getHours() * 60 + eventStartDate.getMinutes();
   const eventDate = new Date(eventStartDate);
   eventDate.setHours(0, 0, 0, 0);
   const gtfsLookupDate = normalizeToCurrentWeek(eventDate);
@@ -228,6 +228,10 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
         `Calendar sync: origin "${originLocation}" → "${originStation.stop_name}" (${originStation.stop_id})`
       );
 
+      // Convert event time to the origin station's timezone for comparison with GTFS times
+      const originTz = getTimezoneForStop(originStation);
+      const eventMinutesAtOrigin = getMinutesInTimezone(eventStartDate, originTz);
+
       // Use findTripsWithStops for precise origin→destination matching
       const trips = gtfsParser.findTripsWithStops(originStation.stop_id, destStation.stop_id, gtfsLookupDate);
       logger.info(
@@ -236,7 +240,7 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
 
       for (const trip of trips) {
         const departMinutes = gtfsTimeToMinutes(trip.fromStop.departure_time);
-        if (Math.abs(departMinutes - eventMinutes) <= TIME_TOLERANCE_MINUTES) {
+        if (Math.abs(departMinutes - eventMinutesAtOrigin) <= TIME_TOLERANCE_MINUTES) {
           const trainNumber = gtfsParser.getTrainNumber(trip.tripId);
           const routeId = gtfsParser.getRouteIdForTrip(trip.tripId);
           const routeName = routeId ? gtfsParser.getRouteName(routeId) : 'Unknown Route';
@@ -263,7 +267,7 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
   // Fallback: no location or origin not found — infer origin by matching departure time at any stop
   const tripIds = gtfsParser.getTripsForStop(destStation.stop_id, gtfsLookupDate);
   logger.info(
-    `Calendar sync: fallback — ${tripIds.length} trips at ${destStation.stop_id}, event time ${eventStartDate.getHours()}:${String(eventStartDate.getMinutes()).padStart(2, '0')}`
+    `Calendar sync: fallback — ${tripIds.length} trips at ${destStation.stop_id}`
   );
 
   for (const tripId of tripIds) {
@@ -271,8 +275,12 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
     if (stopTimes.length < 2) continue;
 
     for (const stop of stopTimes) {
+      // Convert event time to this stop's timezone before comparing with GTFS schedule
+      const stopStation = gtfsParser.getStop(stop.stop_id);
+      const stopTz = stopStation ? getTimezoneForStop(stopStation) : null;
+      const eventMinutesAtStop = getMinutesInTimezone(eventStartDate, stopTz);
       const stopMinutes = gtfsTimeToMinutes(stop.departure_time);
-      if (Math.abs(stopMinutes - eventMinutes) <= TIME_TOLERANCE_MINUTES) {
+      if (Math.abs(stopMinutes - eventMinutesAtStop) <= TIME_TOLERANCE_MINUTES) {
         const destStopTime = stopTimes.find(s => s.stop_id === destStation.stop_id);
         if (!destStopTime) continue;
         if (stop.stop_sequence >= destStopTime.stop_sequence) continue;

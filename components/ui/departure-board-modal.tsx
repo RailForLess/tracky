@@ -11,7 +11,7 @@ import {
     View,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { FlatList, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -22,7 +22,9 @@ import type { Stop, Train } from '../../types/train';
 import { addDays, getStartOfDay, isSameDay } from '../../utils/date-helpers';
 import { useUnits } from '../../context/UnitsContext';
 import { logger } from '../../utils/logger';
+import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 import { addDelayToTime, formatDelayShort, parseTimeToMinutes } from '../../utils/time-formatting';
+import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
 import { SlideUpModalContext } from './slide-up-modal';
@@ -85,7 +87,8 @@ function isTrainUpcoming(
   train: Train,
   selectedDate: Date,
   stationId: string,
-  filterMode: 'all' | 'departing' | 'arriving'
+  filterMode: 'all' | 'departing' | 'arriving',
+  stationTimezone: string | null
 ): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -98,8 +101,8 @@ function isTrainUpcoming(
   }
 
   // For today, determine which time to check based on filter mode and station
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // Use the station's timezone so we compare against the correct local time
+  const currentMinutes = getCurrentMinutesInTimezone(stationTimezone);
 
   let relevantTime: string;
   if (filterMode === 'arriving' || train.toCode === stationId) {
@@ -184,7 +187,7 @@ interface SwipeableDepartureItemProps {
   onSave: () => void;
 }
 
-function SwipeableDepartureItem({ train, stationTime, stationId, onPress, onSave }: SwipeableDepartureItemProps) {
+const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ train, stationTime, stationId, onPress, onSave }: SwipeableDepartureItemProps) {
   const translateX = useSharedValue(0);
   const hasTriggeredHaptic = useSharedValue(false);
   const isSaving = useSharedValue(false);
@@ -345,7 +348,7 @@ function SwipeableDepartureItem({ train, stationTime, stationId, onPress, onSave
       <View style={swipeStyles.borderBottom} />
     </View>
   );
-}
+});
 
 export default function DepartureBoardModal({
   station,
@@ -425,7 +428,7 @@ export default function DepartureBoardModal({
 
         if (isToday) {
           const url = `https://api.open-meteo.com/v1/forecast?latitude=${station.stop_lat}&longitude=${station.stop_lon}&current=temperature_2m,weather_code&temperature_unit=${unit}&timezone=auto`;
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, { timeoutMs: 10000 });
           if (!res.ok || cancelled) return;
           const data = await res.json();
           temp = data.current?.temperature_2m ?? 0;
@@ -433,7 +436,7 @@ export default function DepartureBoardModal({
         } else {
           const dateStr = selected.toISOString().slice(0, 10);
           const url = `https://api.open-meteo.com/v1/forecast?latitude=${station.stop_lat}&longitude=${station.stop_lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&start_date=${dateStr}&end_date=${dateStr}&temperature_unit=${unit}&timezone=auto`;
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, { timeoutMs: 10000 });
           if (!res.ok || cancelled) return;
           const data = await res.json();
           const high = data.daily?.temperature_2m_max?.[0] ?? 0;
@@ -457,11 +460,14 @@ export default function DepartureBoardModal({
     return () => { cancelled = true; };
   }, [station.stop_id, station.stop_lat, station.stop_lon, tempUnit, selectedDate]);
 
+  // Compute station timezone once for filtering
+  const stationTimezone = useMemo(() => getTimezoneForStop(station), [station]);
+
   // Filter departures based on search, date, and filter mode
   const filteredDepartures = useMemo(() => {
     const filtered = departures.filter(train => {
       // Filter by upcoming time for today (using relevant time based on filter mode)
-      if (!isTrainUpcoming(train, selectedDate, station.stop_id, filterMode)) {
+      if (!isTrainUpcoming(train, selectedDate, station.stop_id, filterMode, stationTimezone)) {
         return false;
       }
 
@@ -516,7 +522,7 @@ export default function DepartureBoardModal({
         return parseTimeToMinutes(aTime.time) - parseTimeToMinutes(bTime.time);
       }
     });
-  }, [departures, selectedDate, searchQuery, filterMode, station.stop_id]);
+  }, [departures, selectedDate, searchQuery, filterMode, station.stop_id, stationTimezone]);
 
   const calendarMinDate = useMemo(() => toDateString(new Date()), []);
 
@@ -589,6 +595,58 @@ export default function DepartureBoardModal({
     },
     [station, onTrainSelect, filterMode]
   );
+
+  const departureKeyExtractor = useCallback((item: Train) => `${item.tripId || item.id}`, []);
+
+  const renderDepartureItem = useCallback(({ item: train }: { item: Train }) => {
+    if (!train || !train.departTime) return null;
+    const stationTime =
+      filterMode === 'arriving'
+        ? getStationArrivalTime(train, station.stop_id)
+        : getStationDepartureTime(train, station.stop_id);
+    return (
+      <SwipeableDepartureItem
+        train={train}
+        stationTime={stationTime}
+        stationId={station.stop_id}
+        onPress={() => handleTrainPress(train)}
+        onSave={() => onSaveTrain?.(train)}
+      />
+    );
+  }, [filterMode, station.stop_id, handleTrainPress, onSaveTrain]);
+
+  const departureListHeader = useMemo(() => (
+    <Text style={styles.sectionTitle}>
+      {filterMode === 'arriving' ? 'Arriving' : filterMode === 'departing' ? 'Departing' : 'All Trains'}{' '}
+      ({filteredDepartures.length})
+    </Text>
+  ), [filterMode, filteredDepartures.length]);
+
+  const departureListEmpty = useMemo(() => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={AppColors.primary} />
+          <Text style={styles.loadingText}>Loading departures...</Text>
+        </View>
+      );
+    }
+    return (
+      <PlaceholderBlurb
+        icon="train-outline"
+        title={
+          searchQuery
+            ? 'No trains match your search'
+            : filterMode === 'departing'
+              ? 'No departing trains found'
+              : filterMode === 'arriving'
+                ? 'No arriving trains found'
+                : 'No trains found for this station'
+        }
+        subtitle={searchQuery ? 'Try a different search term' : 'Try changing the filter or date'}
+      />
+    );
+  }, [loading, searchQuery, filterMode]);
 
   return (
     <View style={styles.modalContent}>
@@ -716,9 +774,14 @@ export default function DepartureBoardModal({
           </View>
         )}
 
-        <ScrollView
+        <FlatList
+          data={loading ? [] : filteredDepartures}
+          keyExtractor={departureKeyExtractor}
+          renderItem={renderDepartureItem}
+          ListHeaderComponent={!loading && filteredDepartures.length > 0 ? departureListHeader : null}
+          ListEmptyComponent={departureListEmpty}
           style={styles.scrollContent}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: isHalfHeight ? SCREEN_HEIGHT * 0.5 : 100 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: isHalfHeight ? SCREEN_HEIGHT * 0.5 : 100, paddingHorizontal: Spacing.xl }}
           showsVerticalScrollIndicator={true}
           scrollEnabled={isFullscreen}
           waitFor={panRef}
@@ -730,54 +793,11 @@ export default function DepartureBoardModal({
           scrollEventThrottle={16}
           bounces={false}
           nestedScrollEnabled={true}
-        >
-          {/* Departures List */}
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={AppColors.primary} />
-              <Text style={styles.loadingText}>Loading departures...</Text>
-            </View>
-          ) : filteredDepartures.length === 0 ? (
-            <PlaceholderBlurb
-              icon="train-outline"
-              title={
-                searchQuery
-                  ? 'No trains match your search'
-                  : filterMode === 'departing'
-                    ? 'No departing trains found'
-                    : filterMode === 'arriving'
-                      ? 'No arriving trains found'
-                      : 'No trains found for this station'
-              }
-              subtitle={searchQuery ? 'Try a different search term' : 'Try changing the filter or date'}
-            />
-          ) : (
-            <View style={styles.departuresList}>
-              <Text style={styles.sectionTitle}>
-                {filterMode === 'arriving' ? 'Arriving' : filterMode === 'departing' ? 'Departing' : 'All Trains'}{' '}
-                ({filteredDepartures.length})
-              </Text>
-              {filteredDepartures.map((train, index) => {
-                if (!train || !train.departTime) return null;
-                // Get the correct time for this station based on filter mode
-                const stationTime =
-                  filterMode === 'arriving'
-                    ? getStationArrivalTime(train, station.stop_id)
-                    : getStationDepartureTime(train, station.stop_id);
-                return (
-                  <SwipeableDepartureItem
-                    key={`${train.tripId || train.id}-${index}`}
-                    train={train}
-                    stationTime={stationTime}
-                    stationId={station.stop_id}
-                    onPress={() => handleTrainPress(train)}
-                    onSave={() => onSaveTrain?.(train)}
-                  />
-                );
-              })}
-            </View>
-          )}
-        </ScrollView>
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={true}
+        />
       </Animated.View>
     </View>
   );

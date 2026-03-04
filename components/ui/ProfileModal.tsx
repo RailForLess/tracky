@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { light as hapticLight } from '../../utils/haptics';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { FlatList, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
   runOnJS,
@@ -191,6 +191,10 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
 
 type SortField = 'date' | 'from' | 'to' | 'route';
 type SortDirection = 'asc' | 'desc';
+
+type ListItem =
+  | { type: 'group-header'; key: string; groupKey: string; count: number }
+  | { type: 'trip'; key: string; trip: CompletedTrip; isLast: boolean };
 
 export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalProps) {
   const [history, setHistory] = useState<CompletedTrip[]>([]);
@@ -406,6 +410,224 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
     Alert.alert(title, message);
   }, []);
 
+  // Flatten grouped trips into a single list for FlatList virtualization
+  const flatListData = useMemo<ListItem[]>(() => {
+    if (filteredAndSortedHistory.length === 0) return [];
+    const items: ListItem[] = [];
+    for (const [groupKey, trips] of groupedTrips) {
+      items.push({ type: 'group-header', key: `header-${groupKey}`, groupKey, count: trips.length });
+      trips.forEach((trip, index) => {
+        items.push({
+          type: 'trip',
+          key: `${trip.tripId}-${trip.fromCode}-${trip.toCode}-${trip.travelDate}`,
+          trip,
+          isLast: index === trips.length - 1,
+        });
+      });
+    }
+    return items;
+  }, [groupedTrips, filteredAndSortedHistory.length]);
+
+  const renderItem = useCallback(({ item }: { item: ListItem }) => {
+    if (item.type === 'group-header') {
+      return (
+        <View>
+          <View style={styles.groupHeader}>
+            <Text style={styles.groupHeaderText}>{item.groupKey}</Text>
+            <Text style={styles.groupHeaderCount}>
+              {item.count} {item.count === 1 ? 'TRIP' : 'TRIPS'}
+            </Text>
+          </View>
+          <View style={styles.groupDivider} />
+        </View>
+      );
+    }
+    return (
+      <SwipeableHistoryCard
+        trip={item.trip}
+        onDelete={() => handleDeleteHistory(item.trip)}
+        isLast={item.isLast}
+      />
+    );
+  }, [handleDeleteHistory]);
+
+  const keyExtractor = useCallback((item: ListItem) => item.key, []);
+
+  const listHeader = useMemo(() => (
+    <>
+      {/* Superticket Card */}
+      <View style={styles.passportCard}>
+        <View style={styles.passportHeader}>
+          <View style={styles.passportTitleRow}>
+            <MaterialCommunityIcons name="train" size={16} color={AppColors.primary} />
+            <Text style={styles.passportTitle}>{selectedYear || 'ALL-TIME'} SUPERTICKET</Text>
+          </View>
+          <TouchableOpacity
+            onPress={handleSharePassport}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="share-outline" size={22} color={AppColors.primary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.passportSubtitle}>🎫 SUPERTICKET • RAIL • EXPRESS</Text>
+
+        <View style={styles.passportStatsGrid}>
+          <View style={styles.passportStatBlock}>
+            <Text style={styles.passportStatLabel}>TRIPS</Text>
+            <Text style={styles.passportStatValue} numberOfLines={1}>
+              {stats.totalTrips}
+            </Text>
+          </View>
+          <View style={styles.passportStatBlock}>
+            <Text style={styles.passportStatLabel}>DISTANCE</Text>
+            <Text style={styles.passportStatValue} numberOfLines={1}>
+              {formatDistance(stats.totalDistance, distanceUnit)}
+            </Text>
+            <Text style={styles.passportStatSubtext}>
+              {stats.totalDistance > 0 ? `${(stats.totalDistance / 24901).toFixed(1)}x around the world` : '—'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.passportStatsRow}>
+          <View style={styles.passportStatSmall}>
+            <Text style={styles.passportStatLabel}>TRAVEL TIME</Text>
+            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
+              {formatDuration(stats.totalDuration)}
+            </Text>
+          </View>
+          <View style={styles.passportStatSmall}>
+            <Text style={styles.passportStatLabel}>STATIONS</Text>
+            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
+              {stats.uniqueStations}
+            </Text>
+          </View>
+          <View style={styles.passportStatSmall}>
+            <Text style={styles.passportStatLabel}>ROUTES</Text>
+            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
+              {stats.uniqueRoutes}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.allStatsButton}
+          activeOpacity={0.7}
+          onPress={() => handleComingSoon('Coming Soon', 'Detailed train stats are on the way!')}
+        >
+          <Text style={styles.allStatsButtonText}>All Train Stats</Text>
+          <Ionicons name="chevron-forward" size={16} color={AppColors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Delay Stats Card */}
+      <View style={styles.delayCard}>
+        <View style={styles.delayHeader}>
+          <Text style={styles.delayBigNumber}>{Math.floor(stats.totalDelayMinutes / 60)}</Text>
+          <TouchableOpacity
+            onPress={handleShareDelays}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="share-outline" size={22} color={AppColors.primary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.delayTitle}>hours lost from delays</Text>
+        <Text style={styles.delaySubtext}>
+          {stats.delayedTripsCount > 0
+            ? `Delayed trips averaged ${Math.round(stats.averageDelayMinutes)}m late`
+            : 'No delays recorded yet'}
+        </Text>
+        <TouchableOpacity
+          style={styles.delayButton}
+          activeOpacity={0.7}
+          onPress={() => handleComingSoon('Coming Soon', 'Detailed delay stats are on the way!')}
+        >
+          <Text style={styles.delayButtonText}>All Delay Stats</Text>
+          <Ionicons name="chevron-forward" size={16} color={AppColors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Most Ridden Route Card */}
+      {stats.mostRiddenRoute && stats.mostRiddenRoute.count > 1 && (
+        <View style={styles.mostRiddenCard}>
+          <View style={styles.mostRiddenHeader}>
+            <Text style={styles.mostRiddenTitle}>Most ridden route</Text>
+            <TouchableOpacity
+              onPress={handleShareMostRidden}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="share-outline" size={22} color={AppColors.secondary} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.mostRiddenRouteName}>{stats.mostRiddenRoute.routeName}</Text>
+          <Text style={styles.mostRiddenCount}>{stats.mostRiddenRoute.count} trips</Text>
+          <View style={styles.mostRiddenIcon}>
+            <MaterialCommunityIcons name="train-car" size={32} color={AppColors.secondary} />
+          </View>
+        </View>
+      )}
+
+      {/* Trip History Section */}
+      <Text style={styles.sectionLabel}>PAST TRIPS</Text>
+
+      {/* Filter/Sort Bar */}
+      {history.length > 0 && (
+        <View style={styles.filterBar}>
+          <TouchableOpacity
+            style={[styles.filterButton, sortField === 'date' && styles.filterButtonActive]}
+            onPress={() => handleSortPress('date')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.filterButtonText, sortField === 'date' && styles.filterButtonTextActive]}>
+              Date {sortField === 'date' && (sortDirection === 'desc' ? '↓' : '↑')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, sortField === 'from' && styles.filterButtonActive]}
+            onPress={() => handleSortPress('from')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.filterButtonText, sortField === 'from' && styles.filterButtonTextActive]}>
+              From {sortField === 'from' && (sortDirection === 'desc' ? '↓' : '↑')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, sortField === 'to' && styles.filterButtonActive]}
+            onPress={() => handleSortPress('to')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.filterButtonText, sortField === 'to' && styles.filterButtonTextActive]}>
+              To {sortField === 'to' && (sortDirection === 'desc' ? '↓' : '↑')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, sortField === 'route' && styles.filterButtonActive]}
+            onPress={() => handleSortPress('route')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.filterButtonText, sortField === 'route' && styles.filterButtonTextActive]}>
+              Route {sortField === 'route' && (sortDirection === 'desc' ? '↓' : '↑')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {filteredAndSortedHistory.length === 0 && (
+        <PlaceholderBlurb
+          icon="time-outline"
+          title="No past trips yet"
+          subtitle="Completed trips will appear here"
+        />
+      )}
+    </>
+  ), [selectedYear, stats, distanceUnit, history.length, sortField, sortDirection, filteredAndSortedHistory.length, handleSharePassport, handleShareDelays, handleShareMostRidden, handleSortPress, handleComingSoon]);
+
   return (
     <View style={{ flex: 1, marginHorizontal: -Spacing.xl }}>
       {/* Header with Profile Info */}
@@ -455,8 +677,12 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
         </View>
       )}
 
-      {/* Scrollable Content */}
-      <ScrollView
+      {/* Virtualized Scrollable Content */}
+      <FlatList
+        data={flatListData}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={listHeader}
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={true}
         scrollEnabled={isFullscreen}
@@ -468,199 +694,11 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
         scrollEventThrottle={16}
         waitFor={panRef}
         contentContainerStyle={[styles.scrollContent, { paddingHorizontal: Spacing.xl, paddingBottom: isFullscreen ? 100 : 400 }]}
-      >
-        {/* Superticket Card */}
-        <View style={styles.passportCard}>
-          <View style={styles.passportHeader}>
-            <View style={styles.passportTitleRow}>
-              <MaterialCommunityIcons name="train" size={16} color={AppColors.primary} />
-              <Text style={styles.passportTitle}>{selectedYear || 'ALL-TIME'} SUPERTICKET</Text>
-            </View>
-            <TouchableOpacity
-              onPress={handleSharePassport}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="share-outline" size={22} color={AppColors.primary} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.passportSubtitle}>🎫 SUPERTICKET • RAIL • EXPRESS</Text>
-
-          <View style={styles.passportStatsGrid}>
-            <View style={styles.passportStatBlock}>
-              <Text style={styles.passportStatLabel}>TRIPS</Text>
-              <Text style={styles.passportStatValue} numberOfLines={1}>
-                {stats.totalTrips}
-              </Text>
-            </View>
-            <View style={styles.passportStatBlock}>
-              <Text style={styles.passportStatLabel}>DISTANCE</Text>
-              <Text style={styles.passportStatValue} numberOfLines={1}>
-                {formatDistance(stats.totalDistance, distanceUnit)}
-              </Text>
-              <Text style={styles.passportStatSubtext}>
-                {stats.totalDistance > 0 ? `${(stats.totalDistance / 24901).toFixed(1)}x around the world` : '—'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.passportStatsRow}>
-            <View style={styles.passportStatSmall}>
-              <Text style={styles.passportStatLabel}>TRAVEL TIME</Text>
-              <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-                {formatDuration(stats.totalDuration)}
-              </Text>
-            </View>
-            <View style={styles.passportStatSmall}>
-              <Text style={styles.passportStatLabel}>STATIONS</Text>
-              <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-                {stats.uniqueStations}
-              </Text>
-            </View>
-            <View style={styles.passportStatSmall}>
-              <Text style={styles.passportStatLabel}>ROUTES</Text>
-              <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-                {stats.uniqueRoutes}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.allStatsButton}
-            activeOpacity={0.7}
-            onPress={() => handleComingSoon('Coming Soon', 'Detailed train stats are on the way!')}
-          >
-            <Text style={styles.allStatsButtonText}>All Train Stats</Text>
-            <Ionicons name="chevron-forward" size={16} color={AppColors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Delay Stats Card */}
-          <View style={styles.delayCard}>
-            <View style={styles.delayHeader}>
-              <Text style={styles.delayBigNumber}>{Math.floor(stats.totalDelayMinutes / 60)}</Text>
-              <TouchableOpacity
-                onPress={handleShareDelays}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="share-outline" size={22} color={AppColors.primary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.delayTitle}>hours lost from delays</Text>
-            <Text style={styles.delaySubtext}>
-              {stats.delayedTripsCount > 0
-                ? `Delayed trips averaged ${Math.round(stats.averageDelayMinutes)}m late`
-                : 'No delays recorded yet'}
-            </Text>
-            <TouchableOpacity
-              style={styles.delayButton}
-              activeOpacity={0.7}
-              onPress={() => handleComingSoon('Coming Soon', 'Detailed delay stats are on the way!')}
-            >
-              <Text style={styles.delayButtonText}>All Delay Stats</Text>
-              <Ionicons name="chevron-forward" size={16} color={AppColors.primary} />
-            </TouchableOpacity>
-          </View>
-
-        {/* Most Ridden Route Card */}
-        {stats.mostRiddenRoute && stats.mostRiddenRoute.count > 1 && (
-          <View style={styles.mostRiddenCard}>
-            <View style={styles.mostRiddenHeader}>
-              <Text style={styles.mostRiddenTitle}>Most ridden route</Text>
-              <TouchableOpacity
-                onPress={handleShareMostRidden}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="share-outline" size={22} color={AppColors.secondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.mostRiddenRouteName}>{stats.mostRiddenRoute.routeName}</Text>
-            <Text style={styles.mostRiddenCount}>{stats.mostRiddenRoute.count} trips</Text>
-            <View style={styles.mostRiddenIcon}>
-              <MaterialCommunityIcons name="train-car" size={32} color={AppColors.secondary} />
-            </View>
-          </View>
-        )}
-
-        {/* Trip History Section */}
-        <Text style={styles.sectionLabel}>PAST TRIPS</Text>
-
-          {/* Filter/Sort Bar */}
-          {history.length > 0 && (
-            <View style={styles.filterBar}>
-              <TouchableOpacity
-                style={[styles.filterButton, sortField === 'date' && styles.filterButtonActive]}
-                onPress={() => handleSortPress('date')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterButtonText, sortField === 'date' && styles.filterButtonTextActive]}>
-                  Date {sortField === 'date' && (sortDirection === 'desc' ? '↓' : '↑')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterButton, sortField === 'from' && styles.filterButtonActive]}
-                onPress={() => handleSortPress('from')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterButtonText, sortField === 'from' && styles.filterButtonTextActive]}>
-                  From {sortField === 'from' && (sortDirection === 'desc' ? '↓' : '↑')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterButton, sortField === 'to' && styles.filterButtonActive]}
-                onPress={() => handleSortPress('to')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterButtonText, sortField === 'to' && styles.filterButtonTextActive]}>
-                  To {sortField === 'to' && (sortDirection === 'desc' ? '↓' : '↑')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterButton, sortField === 'route' && styles.filterButtonActive]}
-                onPress={() => handleSortPress('route')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterButtonText, sortField === 'route' && styles.filterButtonTextActive]}>
-                  Route {sortField === 'route' && (sortDirection === 'desc' ? '↓' : '↑')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Grouped trips with separators */}
-          {filteredAndSortedHistory.length === 0 ? (
-            <PlaceholderBlurb
-              icon="time-outline"
-              title="No past trips yet"
-              subtitle="Completed trips will appear here"
-            />
-          ) : (
-            groupedTrips.map(([groupKey, trips]) => (
-              <View key={groupKey}>
-                <View style={styles.groupHeader}>
-                  <Text style={styles.groupHeaderText}>{groupKey}</Text>
-                  <Text style={styles.groupHeaderCount}>
-                    {trips.length} {trips.length === 1 ? 'TRIP' : 'TRIPS'}
-                  </Text>
-                </View>
-                <View style={styles.groupDivider} />
-                {trips.map((trip, index) => (
-                  <SwipeableHistoryCard
-                    key={`${trip.tripId}-${trip.fromCode}-${index}`}
-                    trip={trip}
-                    onDelete={() => handleDeleteHistory(trip)}
-                    isLast={index === trips.length - 1}
-                  />
-                ))}
-              </View>
-            ))
-          )}
-      </ScrollView>
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={true}
+      />
     </View>
   );
 }

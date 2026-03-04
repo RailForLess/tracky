@@ -39,7 +39,7 @@ interface SwipeableTrainCardProps {
   contentOpacity?: SharedValue<number>;
 }
 
-function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, contentOpacity }: SwipeableTrainCardProps) {
+const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, contentOpacity }: SwipeableTrainCardProps) {
   const translateX = useSharedValue(0);
   const hasTriggeredSecondHaptic = useSharedValue(false);
   const isDeleting = useSharedValue(false);
@@ -246,7 +246,9 @@ function SwipeableTrainCard({ train, onPress, onDelete, isFirst, isLast, content
       {!isLast && <View style={swipeStyles.separator} />}
     </Animated.View>
   );
-}
+});
+
+export { SwipeableTrainCard };
 
 interface TrainListProps {
   trains: Train[];

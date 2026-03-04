@@ -3,6 +3,37 @@ import type { Stop } from '../types/train';
 import { logger } from './logger';
 
 /**
+ * Convert a Date to minutes-since-midnight in a given IANA timezone.
+ * Falls back to device-local time if timezone is null/invalid.
+ */
+export function getMinutesInTimezone(date: Date, timezone: string | null): number {
+  if (!timezone) {
+    return date.getHours() * 60 + date.getMinutes();
+  }
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(date);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    return hour * 60 + minute;
+  } catch {
+    return date.getHours() * 60 + date.getMinutes();
+  }
+}
+
+/**
+ * Get current time as minutes-since-midnight in a given IANA timezone.
+ * Falls back to device-local time if timezone is null/invalid.
+ */
+export function getCurrentMinutesInTimezone(timezone: string | null): number {
+  return getMinutesInTimezone(new Date(), timezone);
+}
+
+/**
  * Derive IANA timezone string from geographic coordinates.
  * Returns null if lookup fails.
  */

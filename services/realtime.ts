@@ -8,6 +8,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { extractTrainNumber } from '../utils/train-helpers';
 import { logger } from '../utils/logger';
+import { fetchWithTimeout } from '../utils/fetch-with-timeout';
 
 // Track last error alert time to avoid spamming user
 let lastErrorAlertTime = 0;
@@ -98,7 +99,7 @@ function resetErrorCounter(): void {
  * Fetch GTFS-RT protobuf data
  */
 async function fetchProtobuf(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url, { timeoutMs: 15000 });
   if (!response.ok) {
     showRealtimeErrorAlert(response.status);
     throw new Error(`GTFS-RT fetch failed: ${response.status}`);

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     logError('ErrorBoundary caught: ' + error?.message, { error, componentStack: errorInfo.componentStack });
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
     this.setState({ componentStack: errorInfo.componentStack ?? null });
   }
 

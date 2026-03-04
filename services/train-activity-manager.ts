@@ -3,7 +3,7 @@ import { DEFAULT_NOTIFICATION_PREFS, TrainStorageService } from './storage';
 import { BackgroundTaskService } from './background-tasks';
 import * as LiveActivityService from './live-activity';
 import * as NotificationService from './notifications';
-import { selectNextTrain, buildTravelStats } from './widget-data';
+import { selectNextTrain, selectUpcomingTrains, buildTravelStats } from './widget-data';
 import type { Train } from '../types/train';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
@@ -39,20 +39,21 @@ function getWidgetHandles() {
   try {
     const { nextTrainWidget } = require('../widgets/NextTrainWidget');
     const { travelStatsWidget } = require('../widgets/TravelStatsWidget');
-    return { nextTrainWidget, travelStatsWidget };
+    const { upcomingTrainsWidget } = require('../widgets/UpcomingTrainsWidget');
+    return { nextTrainWidget, travelStatsWidget, upcomingTrainsWidget };
   } catch {
     return null;
   }
 }
 
-function refreshNextTrainWidget(trains: Train[]): void {
+function refreshTrainWidgets(trains: Train[]): void {
   try {
     const widgets = getWidgetHandles();
     if (!widgets) return;
-    const data = selectNextTrain(trains);
-    widgets.nextTrainWidget.updateSnapshot(data);
+    widgets.nextTrainWidget.updateSnapshot(selectNextTrain(trains));
+    widgets.upcomingTrainsWidget.updateSnapshot(selectUpcomingTrains(trains));
   } catch (e) {
-    logger.error('[Widget] Failed to refresh NextTrain widget:', e);
+    logger.error('[Widget] Failed to refresh train widgets:', e);
   }
 }
 
@@ -88,7 +89,7 @@ export const TrainActivityManager = {
 
     // Refresh widget regardless of notification prefs
     const allTrains = await TrainStorageService.getSavedTrains();
-    refreshNextTrainWidget(allTrains);
+    refreshTrainWidgets(allTrains);
 
     if (!hasAnyFeatureEnabled(prefs)) return;
 
@@ -109,7 +110,7 @@ export const TrainActivityManager = {
     await TrainStorageService.clearArrivalAlert(deletedKey);
 
     const remaining = await TrainStorageService.getSavedTrains();
-    refreshNextTrainWidget(remaining);
+    refreshTrainWidgets(remaining);
   },
 
   async onTrainArchived(train: Train): Promise<void> {
@@ -120,12 +121,12 @@ export const TrainActivityManager = {
     await TrainStorageService.clearArrivalAlert(archivedKey);
 
     const remaining = await TrainStorageService.getSavedTrains();
-    refreshNextTrainWidget(remaining);
+    refreshTrainWidgets(remaining);
     refreshStatsWidget();
   },
 
   async onRealtimeUpdate(oldTrains: Train[], newTrains: Train[]): Promise<void> {
-    refreshNextTrainWidget(newTrains);
+    refreshTrainWidgets(newTrains);
 
     const prefs = cachedPrefs;
     if (!hasAnyFeatureEnabled(prefs)) return;
@@ -177,7 +178,7 @@ export const TrainActivityManager = {
 
   async onAppStartup(trains: Train[]): Promise<void> {
     // Refresh widgets on every startup
-    refreshNextTrainWidget(trains);
+    refreshTrainWidgets(trains);
     refreshStatsWidget();
 
     // Restore persisted arrival alert dedup set
@@ -207,7 +208,7 @@ export const TrainActivityManager = {
   async onPrefsChanged(prefs: NotificationPrefs, trains: Train[]): Promise<void> {
     cachedPrefs = prefs;
     await TrainStorageService.saveNotificationPrefs(prefs);
-    refreshNextTrainWidget(trains);
+    refreshTrainWidgets(trains);
 
     if (!hasAnyFeatureEnabled(prefs)) {
       await NotificationService.cancelAllReminders();

@@ -5,6 +5,7 @@
 
 import type { CalendarDateException, CalendarEntry, EnrichedStopTime, Route, SearchResult, Shape, Stop, StopTime, Trip } from '../types/train';
 import { debug, info, warn } from './logger';
+import { getCurrentMinutesInTimezone, getTimezoneForStop } from './timezone';
 
 export class GTFSParser {
   private routes: Map<string, Route> = new Map();
@@ -647,7 +648,9 @@ export class GTFSParser {
    */
   getUpcomingTrainsFromStop(stopId: string, limit = 2): Array<{ trip: Trip; departureTime: string; trainNumber: string; routeName: string }> {
     const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const stop = this.stops.get(stopId);
+    const tz = stop ? getTimezoneForStop(stop) : null;
+    const nowMinutes = getCurrentMinutesInTimezone(tz);
     const results: Array<{ trip: Trip; departureTime: string; trainNumber: string; routeName: string; depMinutes: number }> = [];
     const seenTrainNumbers = new Set<string>();
 
