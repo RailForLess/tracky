@@ -75,7 +75,7 @@ export function useBatchedItems<T extends Identifiable>(
         batchTimerRef.current = null;
       }
     };
-  }, [targetItems]);
+  }, [targetItems, batchSize, batchDelay]);
 
   return rendered;
 }

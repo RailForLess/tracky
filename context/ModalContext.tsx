@@ -102,6 +102,13 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // For same-modal transitions (e.g. train→train), need sequential dismiss→slideIn
   const pendingSameModalRef = useRef<{ snap: 'min' | 'half' | 'max' } | null>(null);
 
+  // Refs for state accessed inside stable callbacks — avoids recreating
+  // navigateToTrain / navigateToStation on every modalData or activeModal change
+  const activeModalRef = useRef(activeModal);
+  activeModalRef.current = activeModal;
+  const modalDataRef = useRef(modalData);
+  modalDataRef.current = modalData;
+
   // Get initial snap for a modal type based on pending transition
   const getInitialSnap = useCallback((type: ModalType): 'min' | 'half' | 'max' => {
     return nextModalSnapRef.current;
@@ -135,9 +142,11 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (train: Train, options?: { fromMarker?: boolean; returnTo?: ModalType }) => {
       const fromMarker = options?.fromMarker ?? false;
       const returnTo = options?.returnTo;
+      const currentActive = activeModalRef.current;
+      const currentData = modalDataRef.current;
 
       // If already showing this exact train, do nothing
-      if (activeModal === 'trainDetail' && modalData.train?.tripId && modalData.train.tripId === train.tripId) {
+      if (currentActive === 'trainDetail' && currentData.train?.tripId && currentData.train.tripId === train.tripId) {
         return;
       }
 
@@ -146,8 +155,8 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // Store the return destination if coming from departure board
       const returnConfig: ModalConfig | null =
-        returnTo === 'departureBoard' && modalData.station
-          ? { type: 'departureBoard', initialSnap: 'half', data: { station: modalData.station } }
+        returnTo === 'departureBoard' && currentData.station
+          ? { type: 'departureBoard', initialSnap: 'half', data: { station: currentData.station } }
           : null;
 
       if (returnConfig) {
@@ -160,24 +169,27 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setShowTrainDetailContent(true);
       setActiveModal('trainDetail');
 
-      if (activeModal === 'trainDetail') {
+      if (currentActive === 'trainDetail') {
         // Same-modal transition: dismiss first, slideIn after dismiss completes
         pendingSameModalRef.current = { snap: targetSnap };
         detailModalRef.current?.dismiss?.(true);
       } else {
         // Different modal: dismiss old + slide in new simultaneously
-        getModalRef(activeModal).current?.dismiss?.(true);
+        getModalRef(currentActive).current?.dismiss?.(true);
         detailModalRef.current?.slideIn?.(targetSnap);
       }
     },
-    [activeModal, modalData.train, modalData.station, getModalRef]
+    [getModalRef]
   );
 
   // Navigate to station departure board
   const navigateToStation = useCallback(
     (station: Stop) => {
+      const currentActive = activeModalRef.current;
+      const currentData = modalDataRef.current;
+
       // If already showing this exact station, do nothing
-      if (activeModal === 'departureBoard' && modalData.station?.stop_id && modalData.station.stop_id === station.stop_id) {
+      if (currentActive === 'departureBoard' && currentData.station?.stop_id && currentData.station.stop_id === station.stop_id) {
         return;
       }
 
@@ -189,55 +201,58 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setShowDepartureBoardContent(true);
       setActiveModal('departureBoard');
 
-      if (activeModal === 'departureBoard') {
+      if (currentActive === 'departureBoard') {
         // Same-modal transition: dismiss first, slideIn after
         pendingSameModalRef.current = { snap: 'half' };
         departureBoardRef.current?.dismiss?.(true);
       } else {
         // Different modal: dismiss old + slide in new simultaneously
-        getModalRef(activeModal).current?.dismiss?.(true);
+        getModalRef(currentActive).current?.dismiss?.(true);
         departureBoardRef.current?.slideIn?.('half');
       }
     },
-    [activeModal, modalData.station, getModalRef]
+    [getModalRef]
   );
 
   // Navigate to profile modal
   const navigateToProfile = useCallback(() => {
-    if (activeModal === 'profile') return;
+    const currentActive = activeModalRef.current;
+    if (currentActive === 'profile') return;
     logger.info('[Nav] Open profile');
 
     nextModalSnapRef.current = 'half';
 
     // Push current modal onto stack so back returns to it
-    setModalStack(prev => [...prev, { type: activeModal, initialSnap: 'half' }]);
+    setModalStack(prev => [...prev, { type: currentActive, initialSnap: 'half' }]);
 
     setShowProfileContent(true);
     setActiveModal('profile');
 
-    getModalRef(activeModal).current?.dismiss?.(true);
+    getModalRef(currentActive).current?.dismiss?.(true);
     profileModalRef.current?.slideIn?.('half');
-  }, [activeModal, getModalRef]);
+  }, [getModalRef]);
 
   // Navigate to settings modal (full screen)
   const navigateToSettings = useCallback(() => {
-    if (activeModal === 'settings') return;
+    const currentActive = activeModalRef.current;
+    if (currentActive === 'settings') return;
     logger.info('[Nav] Open settings');
 
     nextModalSnapRef.current = 'max';
 
     // Push current modal onto stack so back returns to it
-    setModalStack(prev => [...prev, { type: activeModal, initialSnap: 'half' }]);
+    setModalStack(prev => [...prev, { type: currentActive, initialSnap: 'half' }]);
 
     setShowSettingsContent(true);
     setActiveModal('settings');
 
-    getModalRef(activeModal).current?.dismiss?.(true);
+    getModalRef(currentActive).current?.dismiss?.(true);
     settingsModalRef.current?.slideIn?.('max');
-  }, [activeModal, getModalRef]);
+  }, [getModalRef]);
 
   // Navigate back to main modal
   const navigateToMain = useCallback(() => {
+    const currentActive = activeModalRef.current;
     nextModalSnapRef.current = 'half';
 
     // Clear stack
@@ -248,40 +263,43 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveModal('main');
 
     // Simultaneously: dismiss old + slide in new
-    getModalRef(activeModal).current?.dismiss?.(true);
+    getModalRef(currentActive).current?.dismiss?.(true);
     mainModalRef.current?.slideIn?.('half');
-  }, [activeModal, getModalRef]);
+  }, [getModalRef]);
 
   // Go back in the stack
   const goBack = useCallback(() => {
-    if (modalStack.length > 0) {
-      const returnTo = modalStack[modalStack.length - 1];
-      const targetSnap = returnTo.initialSnap || 'half';
-      nextModalSnapRef.current = targetSnap;
+    setModalStack(prev => {
+      if (prev.length > 0) {
+        const returnTo = prev[prev.length - 1];
+        const targetSnap = returnTo.initialSnap || 'half';
+        nextModalSnapRef.current = targetSnap;
 
-      // Pop the stack
-      setModalStack(prev => prev.slice(0, -1));
+        // Update data if needed
+        if (returnTo.data?.train) {
+          setModalData(d => ({ ...d, train: returnTo.data!.train! }));
+        }
+        if (returnTo.data?.station) {
+          setModalData(d => ({ ...d, station: returnTo.data!.station! }));
+        }
 
-      // Update data if needed
-      if (returnTo.data?.train) {
-        setModalData(prev => ({ ...prev, train: returnTo.data!.train! }));
+        // Show target content and slide in
+        showContent(returnTo.type);
+        setActiveModal(returnTo.type);
+
+        // Simultaneously: dismiss old + slide in target
+        const currentActive = activeModalRef.current;
+        getModalRef(currentActive).current?.dismiss?.(true);
+        getModalRef(returnTo.type).current?.slideIn?.(targetSnap);
+
+        return prev.slice(0, -1);
+      } else {
+        // No stack, go to main
+        navigateToMain();
+        return prev;
       }
-      if (returnTo.data?.station) {
-        setModalData(prev => ({ ...prev, station: returnTo.data!.station! }));
-      }
-
-      // Show target content and slide in
-      showContent(returnTo.type);
-      setActiveModal(returnTo.type);
-
-      // Simultaneously: dismiss old + slide in target
-      getModalRef(activeModal).current?.dismiss?.(true);
-      getModalRef(returnTo.type).current?.slideIn?.(targetSnap);
-    } else {
-      // No stack, go to main
-      navigateToMain();
-    }
-  }, [modalStack, activeModal, navigateToMain, getModalRef, showContent]);
+    });
+  }, [navigateToMain, getModalRef, showContent]);
 
   // Dismiss current modal without navigation (just closes it)
   const dismissCurrent = useCallback(() => {

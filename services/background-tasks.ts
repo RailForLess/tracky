@@ -6,10 +6,22 @@ import * as NotificationService from './notifications';
 import { TrainStorageService } from './storage';
 import type { Train } from '../types/train';
 import { selectNextTrain, buildTravelStats } from './widget-data';
-import { nextTrainWidget } from '../widgets/NextTrainWidget';
-import { travelStatsWidget } from '../widgets/TravelStatsWidget';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
+import { Platform, NativeModules } from 'react-native';
+
+// Lazy-load widget handles — expo-widgets requires native modules.
+// Check NativeModules first to avoid triggering a red error screen in dev.
+function getWidgetHandles() {
+  if (Platform.OS !== 'ios' || !NativeModules.ExpoWidgets) return null;
+  try {
+    const { nextTrainWidget } = require('../widgets/NextTrainWidget');
+    const { travelStatsWidget } = require('../widgets/TravelStatsWidget');
+    return { nextTrainWidget, travelStatsWidget };
+  } catch {
+    return null;
+  }
+}
 
 const BACKGROUND_TASK_NAME = 'TRACKY_TRAIN_UPDATE';
 
@@ -79,10 +91,13 @@ TaskManager.defineTask(BACKGROUND_TASK_NAME, async () => {
 
     // Refresh widget snapshots after processing
     try {
-      const allTrains = await TrainStorageService.getSavedTrains();
-      nextTrainWidget.updateSnapshot(selectNextTrain(allTrains));
-      const history = await TrainStorageService.getTripHistory();
-      travelStatsWidget.updateSnapshot(buildTravelStats(history));
+      const widgets = getWidgetHandles();
+      if (widgets) {
+        const allTrains = await TrainStorageService.getSavedTrains();
+        widgets.nextTrainWidget.updateSnapshot(selectNextTrain(allTrains));
+        const history = await TrainStorageService.getTripHistory();
+        widgets.travelStatsWidget.updateSnapshot(buildTravelStats(history));
+      }
     } catch (widgetErr) {
       logger.error('[BackgroundTask] Widget refresh failed:', widgetErr);
     }

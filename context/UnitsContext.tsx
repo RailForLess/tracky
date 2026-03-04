@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type TempUnit = 'F' | 'C';
 export type DistanceUnit = 'mi' | 'km' | 'hotdogs';
@@ -25,6 +25,12 @@ export const UnitsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [tempUnit, setTempUnitState] = useState<TempUnit>('F');
   const [distanceUnit, setDistanceUnitState] = useState<DistanceUnit>('mi');
 
+  // Refs to avoid stale closures in setters
+  const tempRef = useRef(tempUnit);
+  tempRef.current = tempUnit;
+  const distRef = useRef(distanceUnit);
+  distRef.current = distanceUnit;
+
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(raw => {
       if (!raw) return;
@@ -36,22 +42,23 @@ export const UnitsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
-  const persist = (temp: TempUnit, dist: DistanceUnit) => {
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ tempUnit: temp, distanceUnit: dist }));
-  };
-
-  const setTempUnit = (unit: TempUnit) => {
+  const setTempUnit = useCallback((unit: TempUnit) => {
     setTempUnitState(unit);
-    persist(unit, distanceUnit);
-  };
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ tempUnit: unit, distanceUnit: distRef.current }));
+  }, []);
 
-  const setDistanceUnit = (unit: DistanceUnit) => {
+  const setDistanceUnit = useCallback((unit: DistanceUnit) => {
     setDistanceUnitState(unit);
-    persist(tempUnit, unit);
-  };
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ tempUnit: tempRef.current, distanceUnit: unit }));
+  }, []);
+
+  const value = useMemo(
+    () => ({ tempUnit, distanceUnit, setTempUnit, setDistanceUnit }),
+    [tempUnit, distanceUnit, setTempUnit, setDistanceUnit]
+  );
 
   return (
-    <UnitsContext.Provider value={{ tempUnit, distanceUnit, setTempUnit, setDistanceUnit }}>
+    <UnitsContext.Provider value={value}>
       {children}
     </UnitsContext.Provider>
   );

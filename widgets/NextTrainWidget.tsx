@@ -1,18 +1,18 @@
-import { Text, VStack, HStack, Spacer } from '@expo/ui/swift-ui';
-import { foregroundStyle, font, padding } from '@expo/ui/swift-ui/modifiers';
 import { createWidget, type WidgetBase } from 'expo-widgets';
 import type { NextTrainWidgetData } from '../services/widget-data';
 
-// SwiftUI text style approximations
-const headline = font({ size: 17, weight: 'semibold' });
-const subheadline = font({ size: 15 });
-const title2 = font({ size: 22, weight: 'bold' });
-const title3 = font({ size: 20, weight: 'semibold' });
-const caption = font({ size: 12 });
-const caption2 = font({ size: 11 });
-
 function NextTrainWidgetView(props: WidgetBase<NextTrainWidgetData>) {
   'widget';
+
+  const { Text, VStack, HStack, Spacer } = require('@expo/ui/swift-ui');
+  const { foregroundStyle, font, padding } = require('@expo/ui/swift-ui/modifiers');
+
+  const headline = font({ size: 17, weight: 'semibold' });
+  const subheadline = font({ size: 15 });
+  const title2 = font({ size: 22, weight: 'bold' });
+  const title3 = font({ size: 20, weight: 'semibold' });
+  const caption = font({ size: 12 });
+  const caption2 = font({ size: 11 });
 
   if (!props.hasTrains) {
     return (

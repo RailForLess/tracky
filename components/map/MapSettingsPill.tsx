@@ -9,8 +9,7 @@ import { light as hapticLight, warning as hapticWarning } from '../../utils/hapt
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PILL_WIDTH = 48;
-const PILL_HEIGHT_CONNECTED = 104; // Two buttons (48 each) + 8px gap
-const PILL_HEIGHT_OFFLINE = 156; // Three buttons (48 each) + 12px gaps
+const PILL_HEIGHT = 104; // Two buttons (48 each) + 8px gap
 const STRIP_WIDTH = SCREEN_WIDTH - 32;
 const STRIP_HEIGHT = 56;
 
@@ -117,15 +116,6 @@ export default function MapSettingsPill({
       clearInterval(interval);
     };
   }, []);
-
-  const handleOfflinePress = () => {
-    hapticWarning();
-    Alert.alert(
-      'No Internet Connection',
-      'GTFS schedule data may be stale until your connection is restored. Live train positions will not update.',
-      [{ text: 'OK' }]
-    );
-  };
 
   const handleSettingsPress = () => {
     hapticLight();

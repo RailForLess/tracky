@@ -4,11 +4,10 @@ import { BackgroundTaskService } from './background-tasks';
 import * as LiveActivityService from './live-activity';
 import * as NotificationService from './notifications';
 import { selectNextTrain, buildTravelStats } from './widget-data';
-import { nextTrainWidget } from '../widgets/NextTrainWidget';
-import { travelStatsWidget } from '../widgets/TravelStatsWidget';
 import type { Train } from '../types/train';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
+import { Platform, NativeModules } from 'react-native';
 
 // Cached prefs — refreshed on startup and when changed
 let cachedPrefs: NotificationPrefs = DEFAULT_NOTIFICATION_PREFS;
@@ -33,20 +32,37 @@ function hasAnyFeatureEnabled(prefs: NotificationPrefs): boolean {
   );
 }
 
+// Lazy-load widget handles — expo-widgets requires native modules.
+// Check NativeModules first to avoid triggering a red error screen in dev.
+function getWidgetHandles() {
+  if (Platform.OS !== 'ios' || !NativeModules.ExpoWidgets) return null;
+  try {
+    const { nextTrainWidget } = require('../widgets/NextTrainWidget');
+    const { travelStatsWidget } = require('../widgets/TravelStatsWidget');
+    return { nextTrainWidget, travelStatsWidget };
+  } catch {
+    return null;
+  }
+}
+
 function refreshNextTrainWidget(trains: Train[]): void {
   try {
+    const widgets = getWidgetHandles();
+    if (!widgets) return;
     const data = selectNextTrain(trains);
-    nextTrainWidget.updateSnapshot(data);
+    widgets.nextTrainWidget.updateSnapshot(data);
   } catch (e) {
     logger.error('[Widget] Failed to refresh NextTrain widget:', e);
   }
 }
 
 function refreshStatsWidget(): void {
+  const widgets = getWidgetHandles();
+  if (!widgets) return;
   TrainStorageService.getTripHistory()
     .then(history => {
       const data = buildTravelStats(history);
-      travelStatsWidget.updateSnapshot(data);
+      widgets.travelStatsWidget.updateSnapshot(data);
     })
     .catch(e => {
       logger.error('[Widget] Failed to refresh TravelStats widget:', e);
@@ -122,12 +138,18 @@ export const TrainActivityManager = {
         t => t.tripId === newTrain.tripId && t.fromCode === newTrain.fromCode && t.toCode === newTrain.toCode
       );
 
-      // Delay alerts
-      if (prefs.delayAlerts && oldTrain && oldTrain.realtime?.delay != null && newTrain.realtime?.delay != null) {
+      // Delay alerts + reschedule departure reminder when delay changes
+      if (oldTrain && oldTrain.realtime?.delay != null && newTrain.realtime?.delay != null) {
         const oldDelay = oldTrain.realtime.delay;
         const newDelay = newTrain.realtime.delay;
         if (Math.abs(newDelay - oldDelay) >= 5) {
-          await NotificationService.sendDelayAlert(newTrain, oldDelay, newDelay);
+          if (prefs.delayAlerts) {
+            await NotificationService.sendDelayAlert(newTrain, oldDelay, newDelay);
+          }
+          // Reschedule departure reminder with updated delay-adjusted time
+          if (prefs.departureReminders) {
+            await NotificationService.scheduleDepartureReminder(newTrain);
+          }
         }
       }
 

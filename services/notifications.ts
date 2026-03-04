@@ -69,6 +69,7 @@ export async function scheduleMorningAlert(train: Train): Promise<void> {
       title: `Train ${train.trainNumber} \u2022 ${train.fromCode} \u2192 ${train.toCode}`,
       body: `Good morning! Your train today is ${delayStatus}.${weatherStr}`,
       sound: 'default',
+      data: { tripId: train.tripId, fromCode: train.fromCode, toCode: train.toCode, travelDate: train.travelDate },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -88,19 +89,27 @@ export async function scheduleDepartureReminder(train: Train): Promise<void> {
     departDate.setDate(departDate.getDate() + train.departDayOffset);
   }
 
-  // Schedule 2 hours before departure
-  const triggerDate = new Date(departDate.getTime() - 2 * 60 * 60 * 1000);
+  // Adjust departure time for delays/early arrivals
+  const delayMs = (train.realtime?.delay ?? 0) * 60 * 1000;
+  const actualDepartDate = new Date(departDate.getTime() + delayMs);
+
+  // Schedule 2 hours before the actual (delay-adjusted) departure
+  const triggerDate = new Date(actualDepartDate.getTime() - 2 * 60 * 60 * 1000);
   if (triggerDate.getTime() <= Date.now()) return;
 
   const delayStatus = train.realtime?.delay != null ? formatDelayStatus(train.realtime.delay) : 'On Time';
   const fullStationName = stationLoader.getStationByCode(train.fromCode)?.name || train.from;
 
+  // Show the actual departure time (adjusted for delay) in the notification
+  const displayTime = actualDepartDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
   await Notifications.scheduleNotificationAsync({
     identifier: departureId(train),
     content: {
-      title: `Train ${train.trainNumber} departs in 2 hours`,
-      body: `Departs from ${fullStationName} at ${train.departTime}. Currently ${delayStatus}.`,
+      title: `Train ${train.trainNumber} departs in ~2 hours`,
+      body: `Departs from ${fullStationName} at ${displayTime}. Currently ${delayStatus}.`,
       sound: 'default',
+      data: { tripId: train.tripId, fromCode: train.fromCode, toCode: train.toCode, travelDate: train.travelDate },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -108,7 +117,7 @@ export async function scheduleDepartureReminder(train: Train): Promise<void> {
     },
   });
 
-  logger.info(`[Notifications] Scheduled departure reminder for ${train.trainNumber} at ${triggerDate.toISOString()}`);
+  logger.info(`[Notifications] Scheduled departure reminder for ${train.trainNumber} at ${triggerDate.toISOString()} (delay: ${train.realtime?.delay ?? 0}m)`);
 }
 
 export async function scheduleAllForTrain(train: Train): Promise<void> {
@@ -129,6 +138,7 @@ export async function sendDelayAlert(train: Train, oldDelay: number, newDelay: n
       title: `Train ${train.trainNumber} Delay Update`,
       body: `${train.fromCode} \u2192 ${train.toCode} \u2014 now ${newStatus} (was ${oldStatus})`,
       sound: 'default',
+      data: { tripId: train.tripId, fromCode: train.fromCode, toCode: train.toCode, travelDate: train.travelDate },
     },
     trigger: null,
   });
@@ -165,6 +175,7 @@ export async function sendArrivalAlert(train: Train): Promise<void> {
       title: `Arrived at ${fullName}!`,
       body: `Train ${train.trainNumber} from ${train.from}. ${weatherStr}${visitStr}`,
       sound: 'default',
+      data: { tripId: train.tripId, fromCode: train.fromCode, toCode: train.toCode, travelDate: train.travelDate },
     },
     trigger: null,
   });

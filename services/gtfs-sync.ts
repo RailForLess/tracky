@@ -314,15 +314,17 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
 
     await report('Persisting cache', 0.9, 'Writing JSON to device storage');
 
-    // Write to AsyncStorage instead of file system
-    await AsyncStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(routes));
-    await AsyncStorage.setItem(STORAGE_KEYS.STOPS, JSON.stringify(stops));
-    await AsyncStorage.setItem(STORAGE_KEYS.STOP_TIMES, JSON.stringify(stopTimes));
-    await AsyncStorage.setItem(STORAGE_KEYS.SHAPES, JSON.stringify(shapes));
-    await AsyncStorage.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(trips));
-    await AsyncStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(calendar));
-    await AsyncStorage.setItem(STORAGE_KEYS.CALENDAR_DATES, JSON.stringify(calendarDates));
-    await AsyncStorage.setItem(STORAGE_KEYS.LAST_FETCH, String(Date.now()));
+    // Write to AsyncStorage in a single batch for speed
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.ROUTES, JSON.stringify(routes)],
+      [STORAGE_KEYS.STOPS, JSON.stringify(stops)],
+      [STORAGE_KEYS.STOP_TIMES, JSON.stringify(stopTimes)],
+      [STORAGE_KEYS.SHAPES, JSON.stringify(shapes)],
+      [STORAGE_KEYS.TRIPS, JSON.stringify(trips)],
+      [STORAGE_KEYS.CALENDAR, JSON.stringify(calendar)],
+      [STORAGE_KEYS.CALENDAR_DATES, JSON.stringify(calendarDates)],
+      [STORAGE_KEYS.LAST_FETCH, String(Date.now())],
+    ]);
 
     gtfsParser.overrideData(routes, stops, stopTimes, shapes, trips, calendar, calendarDates);
 

@@ -14,6 +14,15 @@ import { logger } from '../utils/logger';
 export { formatTime, formatTimeWithDayOffset, extractTrainNumber };
 export type { FormattedTime };
 
+/** Deterministic numeric hash from a string (avoids Date.now() collisions) */
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 /**
  * Amtrak train number to route name mapping
  * Common named trains and their number ranges
@@ -281,11 +290,9 @@ const AMTRAK_ROUTE_NAMES: Record<string, string> = {
   '353': 'Wolverine',
   '354': 'Wolverine',
   '355': 'Wolverine',
-  '364': 'Wolverine',
-  '365': 'Wolverine',
-  // Blue Water
-  '364': 'Blue Water',
-  '365': 'Blue Water',
+  // 364/365 are shared between Wolverine and Blue Water depending on the day
+  '364': 'Wolverine / Blue Water',
+  '365': 'Wolverine / Blue Water',
   // Pere Marquette
   '370': 'Pere Marquette',
   '371': 'Pere Marquette',
@@ -306,15 +313,12 @@ const AMTRAK_ROUTE_NAMES: Record<string, string> = {
   '308': 'Lincoln Service',
   '309': 'Lincoln Service',
   '310': 'Lincoln Service',
-  '311': 'Lincoln Service',
+  // 311/313/314 are shared between Lincoln Service and Missouri River Runner
+  '311': 'Lincoln Service / Missouri River Runner',
   '312': 'Lincoln Service',
-  '313': 'Lincoln Service',
-  '314': 'Lincoln Service',
+  '313': 'Lincoln Service / Missouri River Runner',
+  '314': 'Lincoln Service / Missouri River Runner',
   '315': 'Lincoln Service',
-  // Missouri River Runner
-  '311': 'Missouri River Runner',
-  '313': 'Missouri River Runner',
-  '314': 'Missouri River Runner',
   '316': 'Missouri River Runner',
   // Heartland Flyer
   '821': 'Heartland Flyer',
@@ -421,7 +425,7 @@ export class TrainAPIService {
       const arriveFormatted = formatTimeWithDayOffset(lastStop.arrival_time);
 
       const train: Train = {
-        id: parseInt(tripId) || Date.now(),
+        id: simpleHash(tripId),
         operator: 'Amtrak',
         trainNumber: trainNumber,
         from: firstStop.stop_name,

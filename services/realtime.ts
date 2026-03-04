@@ -50,6 +50,18 @@ const CACHE_TTL = 15000;
 let positionsCache: { data: Map<string, RealtimePosition>; timestamp: number } | null = null;
 let updatesCache: { data: Map<string, RealtimeUpdate[]>; timestamp: number } | null = null;
 
+// Shared fetch to avoid fetching + decoding the same protobuf twice
+let pendingFetch: Promise<Uint8Array> | null = null;
+
+async function fetchSharedProtobuf(): Promise<Uint8Array> {
+  if (!pendingFetch) {
+    pendingFetch = fetchProtobuf(TRANSITDOCS_GTFS_RT_URL).finally(() => {
+      pendingFetch = null;
+    });
+  }
+  return pendingFetch;
+}
+
 /**
  * Show error alert to user (rate-limited)
  */
@@ -220,10 +232,15 @@ export class RealtimeService {
         return positionsCache.data;
       }
 
-      // Fetch fresh data from Transitdocs
-      const buffer = await fetchProtobuf(TRANSITDOCS_GTFS_RT_URL);
+      // Fetch fresh data (shared request avoids double-fetch when updates also need data)
+      const buffer = await fetchSharedProtobuf();
       const positions = parseVehiclePositions(buffer);
       logger.info(`[Realtime] Fetched ${positions.size} vehicle positions`);
+
+      // Also populate updates cache from the same buffer to avoid a second fetch
+      if (!updatesCache || now - updatesCache.timestamp >= CACHE_TTL) {
+        updatesCache = { data: parseTripUpdates(buffer), timestamp: now };
+      }
 
       // Update cache
       positionsCache = { data: positions, timestamp: now };
@@ -269,9 +286,14 @@ export class RealtimeService {
         return updatesCache.data;
       }
 
-      // Fetch fresh data from Transitdocs
-      const buffer = await fetchProtobuf(TRANSITDOCS_GTFS_RT_URL);
+      // Fetch fresh data (shared request avoids double-fetch when positions also need data)
+      const buffer = await fetchSharedProtobuf();
       const updates = parseTripUpdates(buffer);
+
+      // Also populate positions cache from the same buffer to avoid a second fetch
+      if (!positionsCache || now - positionsCache.timestamp >= CACHE_TTL) {
+        positionsCache = { data: parseVehiclePositions(buffer), timestamp: now };
+      }
 
       // Update cache
       updatesCache = { data: updates, timestamp: now };

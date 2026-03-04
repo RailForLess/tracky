@@ -1,12 +1,25 @@
-import { Platform } from 'react-native';
-import type { LiveActivity } from 'expo-widgets';
-import { trainLiveActivity, type TrainActivityProps } from '../widgets/TrainLiveActivity';
+import { NativeModules, Platform } from 'react-native';
 import type { Train } from '../types/train';
 import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
 
-// Map of "tripId|fromCode|toCode" -> LiveActivity instance
-const activeActivities = new Map<string, LiveActivity<TrainActivityProps>>();
+// Type-only import — erased at compile time, won't trigger native module loading
+import type { TrainActivityProps } from '../widgets/TrainLiveActivity';
+export type { TrainActivityProps };
+
+// Map of "tripId|fromCode|toCode" -> any live activity instance
+const activeActivities = new Map<string, any>();
+
+// Lazy-load the live activity handle — expo-widgets requires native modules.
+// Check NativeModules first to avoid triggering a red error screen in dev.
+function getTrainLiveActivity() {
+  if (Platform.OS !== 'ios' || !NativeModules.ExpoWidgets) return null;
+  try {
+    return require('../widgets/TrainLiveActivity').trainLiveActivity;
+  } catch {
+    return null;
+  }
+}
 
 function activityKey(train: Train): string {
   return `${train.tripId}|${train.fromCode}|${train.toCode}`;
@@ -33,7 +46,7 @@ export function isTrainActiveNow(train: Train): boolean {
     arriveDate.setDate(arriveDate.getDate() + train.arriveDayOffset);
   }
 
-  const delay = train.realtime?.delay || 0;
+  const delay = train.realtime?.delay ?? 0;
 
   // Window: 2h before departure through arrival + delay
   const windowStart = new Date(departDate.getTime() - 2 * 60 * 60 * 1000);
@@ -67,7 +80,9 @@ export async function startForTrain(train: Train): Promise<void> {
   if (activeActivities.has(key)) return;
 
   try {
-    const activity = trainLiveActivity.start(buildProps(train));
+    const liveActivity = getTrainLiveActivity();
+    if (!liveActivity) return;
+    const activity = liveActivity.start(buildProps(train));
     activeActivities.set(key, activity);
     logger.info(`[LiveActivity] Started for ${train.trainNumber} (${key})`);
   } catch (e) {

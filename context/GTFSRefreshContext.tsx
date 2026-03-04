@@ -53,9 +53,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
         setRefreshStep(update.step + (update.detail ? ` • ${update.detail}` : ''));
       });
       if (result.usedCache && !force) {
-        // Cache is fresh — force refresh anyway without asking
-        runRefresh(true);
-        return;
+        // Cache was still valid — no download needed
       }
       setRefreshProgress(1);
       setRefreshStep('Refresh complete');

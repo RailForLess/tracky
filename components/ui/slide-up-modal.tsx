@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -98,6 +98,14 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
   const [isCollapsed, setIsCollapsed] = useState(initialSnap === 'min');
   const [gestureEnabled, setGestureEnabled] = useState(true);
   const panRef = React.useRef<any>(undefined);
+  // Refs for callbacks so imperative handle + gesture don't capture stale closures
+  const onSnapChangeRef = useRef(onSnapChange);
+  onSnapChangeRef.current = onSnapChange;
+  const onHeightChangeRef = useRef(onHeightChange);
+  onHeightChangeRef.current = onHeightChange;
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   const panStartY = useSharedValue(0);
   const panStartX = useSharedValue(0);
   const panDecided = useSharedValue(false);
@@ -114,16 +122,35 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
     return interpolate(currentHeight, [minHeight, halfHeight], [0, 1], 'clamp');
   });
 
+  const snapToPoint = useCallback((point: 'min' | 'half' | 'max') => {
+    const snapPoint = point === 'min' ? SNAP_POINTS.MIN : point === 'half' ? SNAP_POINTS.HALF : SNAP_POINTS.MAX;
+    const targetY = SCREEN_HEIGHT - snapPoint;
+
+    currentSnap.value = point;
+    modalHeight.value = snapPoint;
+
+    onSnapChangeRef.current?.(point);
+    onHeightChangeRef.current?.(snapPoint);
+
+    runOnJS(setIsFullscreen)(point === 'max');
+    runOnJS(setIsCollapsed)(point === 'min');
+
+    translateY.value = withSpring(targetY, {
+      damping: 60,
+      stiffness: 500,
+    });
+  }, [SNAP_POINTS, translateY, currentSnap, modalHeight]);
+
   // Dismiss function to animate out and call onDismiss
   // When fast=true, uses a quick timing animation for snappy modal-to-modal transitions
-  const dismiss = (fast?: boolean) => {
+  const dismiss = useCallback((fast?: boolean) => {
     if (fast) {
       translateY.value = withTiming(
         SCREEN_HEIGHT,
         { duration: 150, easing: Easing.out(Easing.quad) },
         finished => {
-          if (finished && onDismiss) {
-            runOnJS(onDismiss)();
+          if (finished && onDismissRef.current) {
+            runOnJS(onDismissRef.current)();
           }
         }
       );
@@ -135,16 +162,16 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
           stiffness: 500,
         },
         finished => {
-          if (finished && onDismiss) {
-            runOnJS(onDismiss)();
+          if (finished && onDismissRef.current) {
+            runOnJS(onDismissRef.current)();
           }
         }
       );
     }
-  };
+  }, [translateY]);
 
   // Slide in function to animate modal back into view
-  const slideIn = (targetSnap: 'min' | 'half' | 'max' = 'half') => {
+  const slideIn = useCallback((targetSnap: 'min' | 'half' | 'max' = 'half') => {
     const snapPoint =
       targetSnap === 'min' ? SNAP_POINTS.MIN : targetSnap === 'half' ? SNAP_POINTS.HALF : SNAP_POINTS.MAX;
     const targetY = SCREEN_HEIGHT - snapPoint;
@@ -159,7 +186,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
       damping: 60,
       stiffness: 500,
     });
-  };
+  }, [SNAP_POINTS, translateY, currentSnap, modalHeight]);
 
   React.useImperativeHandle(
     ref,
@@ -168,7 +195,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
       dismiss,
       slideIn,
     }),
-    []
+    [snapToPoint, dismiss, slideIn]
   );
 
   useEffect(() => {
@@ -179,30 +206,6 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
       stiffness: 500,
     });
   }, []);
-
-  const snapToPoint = (point: 'min' | 'half' | 'max') => {
-    const snapPoint = point === 'min' ? SNAP_POINTS.MIN : point === 'half' ? SNAP_POINTS.HALF : SNAP_POINTS.MAX;
-    const targetY = SCREEN_HEIGHT - snapPoint;
-
-    currentSnap.value = point;
-    modalHeight.value = snapPoint;
-
-    if (onSnapChange) {
-      runOnJS(onSnapChange)(point);
-    }
-
-    if (onHeightChange) {
-      runOnJS(onHeightChange)(snapPoint);
-    }
-
-    runOnJS(setIsFullscreen)(point === 'max');
-    runOnJS(setIsCollapsed)(point === 'min');
-
-    translateY.value = withSpring(targetY, {
-      damping: 60,
-      stiffness: 500,
-    });
-  };
 
   const panGesture = Gesture.Pan()
     .withRef(panRef)
@@ -301,12 +304,12 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
       runOnJS(setIsCollapsed)(targetSnap === 'min');
       runOnJS(hapticMedium)();
 
-      if (onSnapChange) {
-        runOnJS(onSnapChange)(targetSnap);
+      if (onSnapChangeRef.current) {
+        runOnJS(onSnapChangeRef.current)(targetSnap);
       }
 
-      if (onHeightChange) {
-        runOnJS(onHeightChange)(targetHeight);
+      if (onHeightChangeRef.current) {
+        runOnJS(onHeightChangeRef.current)(targetHeight);
       }
 
       translateY.value = withSpring(targetY, {
@@ -379,7 +382,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.container, animatedStyle]}>
         <SlideUpModalContext.Provider
-          value={{
+          value={useMemo(() => ({
             isFullscreen,
             isCollapsed,
             scrollOffset,
@@ -388,7 +391,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
             contentOpacity,
             snapToPoint,
             setGestureEnabled,
-          }}
+          }), [isFullscreen, isCollapsed, scrollOffset, panRef, modalHeight, contentOpacity, snapToPoint])}
         >
           <Animated.View
             style={[

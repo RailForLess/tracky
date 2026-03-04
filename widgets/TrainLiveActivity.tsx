@@ -1,11 +1,3 @@
-import { Text, VStack, HStack, Spacer, Image } from '@expo/ui/swift-ui';
-import {
-  foregroundStyle,
-  font,
-  padding,
-  background,
-  cornerRadius,
-} from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityLayout } from 'expo-widgets';
 
 export interface TrainActivityProps {
@@ -21,15 +13,6 @@ export interface TrainActivityProps {
   status: string;
   lastUpdated: number;
 }
-
-// SwiftUI text style approximations
-const headline = font({ size: 17, weight: 'semibold' });
-const subheadlineBold = font({ size: 15, weight: 'bold' });
-const title3Bold = font({ size: 20, weight: 'bold' });
-const captionBold = font({ size: 12, weight: 'bold' });
-const caption = font({ size: 12 });
-const caption2 = font({ size: 11 });
-const caption2Bold = font({ size: 11, weight: 'bold' });
 
 function delayColor(delay: number): string {
   return delay > 0 ? '#EF4444' : '#22C55E';
@@ -57,6 +40,20 @@ function statusLabel(delay: number): string {
 
 function TrainLiveActivityLayout(props?: TrainActivityProps): LiveActivityLayout {
   'widget';
+
+  // @expo/ui imports are only available in the widget extension context,
+  // so they must be loaded inside the 'widget' function, not at module scope.
+  const { Text, VStack, HStack, Spacer, Image } = require('@expo/ui/swift-ui');
+  const { foregroundStyle, font, padding, background, cornerRadius } =
+    require('@expo/ui/swift-ui/modifiers');
+
+  const headline = font({ size: 17, weight: 'semibold' });
+  const subheadlineBold = font({ size: 15, weight: 'bold' });
+  const title3Bold = font({ size: 20, weight: 'bold' });
+  const captionBold = font({ size: 12, weight: 'bold' });
+  const caption = font({ size: 12 });
+  const caption2 = font({ size: 11 });
+  const caption2Bold = font({ size: 11, weight: 'bold' });
 
   const delay = props?.delayMinutes ?? 0;
   const color = delayColor(delay);

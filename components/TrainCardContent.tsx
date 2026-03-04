@@ -96,8 +96,10 @@ export default function TrainCardContent({
                   : DELAY_COLORS.onTime,
             }]}>
               {isPast
-                ? `${countdownValue}${countdownLabel.replace(/ AGO$/, '').slice(0, 1).toLowerCase()} ago`
-                : `In ${countdownValue}${countdownLabel.slice(0, 1).toLowerCase()}`}
+                ? 'Departed'
+                : departDelayMinutes && departDelayMinutes > 0
+                  ? `Delayed ${Math.floor(departDelayMinutes / 60) >= 1 ? `${Math.floor(departDelayMinutes / 60)}h` : ''}${departDelayMinutes % 60 > 0 ? `${departDelayMinutes % 60}m` : ''}`
+                  : 'On Time'}
             </Text>
           ) : date != null ? (
             <Text style={styles.trainDate}>{date}</Text>

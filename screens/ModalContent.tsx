@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, Text, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -168,7 +168,7 @@ export const ModalContent = React.forwardRef<
   );
 
   // Sort saved trains by departure time (earliest first)
-  const sortedTrains = [...savedTrains].sort((a, b) => {
+  const sortedTrains = useMemo(() => [...savedTrains].sort((a, b) => {
     // First compare by travel date if available
     if (a.travelDate && b.travelDate) {
       const dateA = new Date(a.travelDate);
@@ -186,7 +186,7 @@ export const ModalContent = React.forwardRef<
     const departA = parseTimeToDate(a.departTime, now);
     const departB = parseTimeToDate(b.departTime, now);
     return departA.getTime() - departB.getTime();
-  });
+  }), [savedTrains]);
 
   // Exit search mode when modal is collapsed
   useEffect(() => {
@@ -262,10 +262,12 @@ export const ModalContent = React.forwardRef<
         )}
       </View>
 
-      <Animated.View style={[{ flex: 1 }, isSearchFocused && fadeAnimatedStyle]} pointerEvents="auto">
+      <View style={{ flex: 1 }} pointerEvents="auto">
         {/* Search lives outside ScrollView so the input stays fixed */}
         {isSearchFocused && !isCollapsed && (
-          <TwoStationSearch onSelectTrip={handleSelectTrip} onClose={handleCloseSearch} />
+          <Animated.View style={[{ flex: 1 }, fadeAnimatedStyle]}>
+            <TwoStationSearch onSelectTrip={handleSelectTrip} onClose={handleCloseSearch} />
+          </Animated.View>
         )}
 
         {/* Scrollable Content */}
@@ -297,7 +299,7 @@ export const ModalContent = React.forwardRef<
             )}
           </ScrollView>
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 });

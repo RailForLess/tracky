@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
@@ -482,6 +483,30 @@ function MapScreenInner() {
 
   useRealtime(savedTrains, setSavedTrains, 20000);
 
+  // Handle notification taps — navigate to the train's detail modal.
+  // Use a ref for savedTrains to avoid tearing down/recreating the listener every 20s.
+  const savedTrainsRef = useRef(savedTrains);
+  savedTrainsRef.current = savedTrains;
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (!data?.tripId) return;
+
+      const match = savedTrainsRef.current.find(
+        t =>
+          t.tripId === data.tripId &&
+          t.fromCode === data.fromCode &&
+          t.toCode === data.toCode
+      );
+      if (match) {
+        setSelectedTrain(match);
+        navigateToTrain(match, { fromMarker: false });
+      }
+    });
+    return () => subscription.remove();
+  }, [setSelectedTrain, navigateToTrain]);
+
   // Handle region changes with throttled region updates and debounced viewport bounds
   const lastRegionUpdateRef = useRef<number>(0);
   const pendingRegionRef = useRef<MapRegion | null>(null);
@@ -515,7 +540,7 @@ function MapScreenInner() {
     }
     viewportDebounceRef.current = setTimeout(() => {
       setViewportBounds(regionToViewportBounds(newRegion));
-    }, 150);
+    }, 60);
 
     // Debounce train clustering latitudeDelta to avoid expensive reclustering during fast zoom
     if (trainDebounceRef.current) {
@@ -523,7 +548,7 @@ function MapScreenInner() {
     }
     trainDebounceRef.current = setTimeout(() => {
       setDebouncedLatDelta(newRegion.latitudeDelta);
-    }, 300); // 300ms debounce for train clustering
+    }, 100);
   }, []);
 
   // Initialize viewport bounds when region is first set
@@ -548,7 +573,7 @@ function MapScreenInner() {
     };
   }, []);
 
-  const handleRecenter = async () => {
+  const handleRecenter = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -569,7 +594,7 @@ function MapScreenInner() {
     } catch (error) {
       logger.error('Error getting location:', error);
     }
-  };
+  }, [currentSnap]);
 
   // Calculate dynamic stroke width based on zoom level
   const baseStrokeWidth = useMemo(() => {
@@ -597,9 +622,9 @@ function MapScreenInner() {
   }, [stations, debouncedLatDelta, stationMode]);
 
   // Progressive batching — drip-feed markers onto the map like routes do
-  const batchedStationClusters = useBatchedItems(stationClusters, 15, 40);
-  const batchedLiveTrains = useBatchedItems(clusteredLiveTrains, 12, 50);
-  const batchedSavedTrains = useBatchedItems(clusteredSavedTrains, 12, 50);
+  const batchedStationClusters = useBatchedItems(stationClusters, 30, 20);
+  const batchedLiveTrains = useBatchedItems(clusteredLiveTrains, 25, 20);
+  const batchedSavedTrains = useBatchedItems(clusteredSavedTrains, 25, 20);
 
   // Don't render until we have a region
   if (!region) {

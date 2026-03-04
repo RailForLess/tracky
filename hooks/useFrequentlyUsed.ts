@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TrainAPIService } from '../services/api';
 import { debug, error as logError } from '../utils/logger';
 
@@ -13,11 +13,11 @@ export interface FrequentlyUsedItem {
 export function useFrequentlyUsed() {
   const [items, setItems] = useState<FrequentlyUsedItem[]>([]);
 
-  const loadFrequentlyUsed = async () => {
+  const refresh = useCallback(async () => {
     try {
       const routes = await TrainAPIService.getRoutes();
       const stops = await TrainAPIService.getStops();
-      const items = [
+      const loaded = [
         ...routes.slice(0, 3).map((route, index) => ({
           id: `freq-route-${index}`,
           name: route.route_long_name,
@@ -33,20 +33,16 @@ export function useFrequentlyUsed() {
           type: 'station' as const,
         })),
       ];
-      debug(`[useFrequentlyUsed] Loaded ${items.length} items`);
-      setItems(items);
+      debug(`[useFrequentlyUsed] Loaded ${loaded.length} items`);
+      setItems(loaded);
     } catch (err) {
       logError('[useFrequentlyUsed] Failed to load frequently used items:', err);
     }
-  };
-
-  useEffect(() => {
-    loadFrequentlyUsed();
   }, []);
 
-  const refresh = async () => {
-    await loadFrequentlyUsed();
-  };
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   return { items, refresh };
 }
