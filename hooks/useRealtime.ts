@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { TrainAPIService } from '../services/api';
+import { TrainActivityManager } from '../services/train-activity-manager';
 import type { Train } from '../types/train';
 import { logger } from '../utils/logger';
 
@@ -17,8 +18,12 @@ export function useRealtime(trains: Train[], setTrains: (t: Train[]) => void, in
     const refresh = async () => {
       if (trainsRef.current.length === 0) return;
       logger.debug(`[Realtime] Refreshing ${trainsRef.current.length} saved trains`);
+      const oldTrains = trainsRef.current;
       const updated = await Promise.all(trainsRef.current.map(t => TrainAPIService.refreshRealtimeData(t)));
-      if (mounted) setTrainsRef.current(updated);
+      if (mounted) {
+        setTrainsRef.current(updated);
+        TrainActivityManager.onRealtimeUpdate(oldTrains, updated).catch(() => {});
+      }
     };
 
     const timer = setInterval(refresh, intervalMs);

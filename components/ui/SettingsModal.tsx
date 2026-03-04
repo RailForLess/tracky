@@ -25,6 +25,7 @@ import {
   requestCalendarPermission,
   syncPastTrips,
 } from '../../services/calendar-sync';
+import * as Notifications from 'expo-notifications';
 import { requestPermissions, getPermissionStatus } from '../../services/notifications';
 import { type NotificationPrefs, DEFAULT_NOTIFICATION_PREFS, TrainStorageService } from '../../services/storage';
 import { TrainActivityManager } from '../../services/train-activity-manager';
@@ -33,7 +34,6 @@ import { light as hapticLight, selection as hapticSelection } from '../../utils/
 import { type LogEntry, LogLevel, logger, openReportBadDataEmail, openReportBugEmail } from '../../utils/logger';
 import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { SlideUpModalContext } from './slide-up-modal';
-
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -79,7 +79,9 @@ function formatLogDate(iso: string): string {
 export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalProps) {
   const { isFullscreen, scrollOffset, panRef } = useContext(SlideUpModalContext);
   const { tempUnit, distanceUnit, setTempUnit, setDistanceUnit } = useUnits();
-  const [currentPage, setCurrentPage] = useState<'main' | 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications'>('main');
+  const [currentPage, setCurrentPage] = useState<
+    'main' | 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications'
+  >('main');
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
   const [calendarsLoaded, setCalendarsLoaded] = useState(false);
@@ -95,11 +97,14 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const { width: SCREEN_WIDTH } = Dimensions.get('window');
   const slideX = useSharedValue(0); // 0 = main, 1 = subpage
 
-  const openSubpage = useCallback((page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications') => {
-    hapticLight();
-    setCurrentPage(page);
-    slideX.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
-  }, []);
+  const openSubpage = useCallback(
+    (page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications') => {
+      hapticLight();
+      setCurrentPage(page);
+      slideX.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
+    },
+    []
+  );
 
   const resetSubpageState = useCallback(() => {
     if (currentPage === 'calendar') setSyncState('idle');
@@ -124,11 +129,11 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const swipeBackGesture = Gesture.Pan()
     .activeOffsetX(20)
     .failOffsetY([-20, 20])
-    .onUpdate((e) => {
+    .onUpdate(e => {
       const progress = Math.max(0, e.translationX) / SCREEN_WIDTH;
       slideX.value = 1 - progress;
     })
-    .onEnd((e) => {
+    .onEnd(e => {
       if (e.translationX > SCREEN_WIDTH * 0.3 || e.velocityX > 500) {
         slideX.value = withTiming(0, { duration: 250, easing: Easing.out(Easing.cubic) });
         runOnJS(resetSubpageState)();
@@ -224,7 +229,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
 
       if (result.failReason === 'gtfs_not_loaded') {
         title = 'Sync Issue';
-        message = 'Amtrak schedule data hasn\'t loaded yet. Try again in a moment.';
+        message = "Amtrak schedule data hasn't loaded yet. Try again in a moment.";
       } else if (result.failReason === 'no_calendar_events') {
         title = 'No Events Found';
         message = `No calendar events found in the ${range}.\n\nMake sure the selected calendar${ids.length > 1 ? 's have' : ' has'} events in this range.`;
@@ -243,7 +248,9 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         title = 'Sync Complete';
         const indexed = result.totalCalendarEvents ?? 0;
         const lines: string[] = [];
-        lines.push(`Scanned ${indexed} event${indexed !== 1 ? 's' : ''}, found ${result.matched} trip${result.matched !== 1 ? 's' : ''}.`);
+        lines.push(
+          `Scanned ${indexed} event${indexed !== 1 ? 's' : ''}, found ${result.matched} trip${result.matched !== 1 ? 's' : ''}.`
+        );
         lines.push(`${result.added} added to history.`);
         if (result.skipped > 0) {
           lines.push(`${result.skipped} already existed.`);
@@ -299,33 +306,41 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   }, []);
 
   const handleDeletePastRoutes = useCallback(() => {
-    Alert.alert('Delete All Past Routes', 'This will permanently delete your entire trip history. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete All',
-        style: 'destructive',
-        onPress: async () => {
-          logger.info('[Settings] User deleted all past routes');
-          await TrainStorageService.clearTripHistory();
-          Alert.alert('Done', 'All past routes deleted.');
+    Alert.alert(
+      'Delete All Past Routes',
+      'This will permanently delete your entire trip history. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            logger.info('[Settings] User deleted all past routes');
+            await TrainStorageService.clearTripHistory();
+            Alert.alert('Done', 'All past routes deleted.');
+          },
         },
-      },
-    ]);
+      ]
+    );
   }, []);
 
   const handleDeleteActiveRoutes = useCallback(() => {
-    Alert.alert('Delete All Active & Future Routes', 'This will permanently delete all your active and upcoming trips. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete All',
-        style: 'destructive',
-        onPress: async () => {
-          logger.info('[Settings] User deleted all active & future routes');
-          await TrainStorageService.clearAllTrains();
-          Alert.alert('Done', 'All active & future routes deleted.');
+    Alert.alert(
+      'Delete All Active & Future Routes',
+      'This will permanently delete all your active and upcoming trips. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            logger.info('[Settings] User deleted all active & future routes');
+            await TrainStorageService.clearAllTrains();
+            Alert.alert('Done', 'All active & future routes deleted.');
+          },
         },
-      },
-    ]);
+      ]
+    );
   }, []);
 
   const handleClearLogs = useCallback(() => {
@@ -348,31 +363,73 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     await Share.share({ message: exported, title: 'Tracky Debug Logs' });
   }, []);
 
-  const handleNotifToggle = useCallback(async (key: keyof NotificationPrefs, value: boolean) => {
-    // On first enable, request permission
-    if (value) {
-      const status = await getPermissionStatus();
-      if (status === 'denied') {
-        Alert.alert(
-          'Notifications Disabled',
-          'Enable notifications in your device settings to use this feature.',
-          [
+  const handleNotifToggle = useCallback(
+    async (key: keyof NotificationPrefs, value: boolean) => {
+      // On first enable, request permission
+      if (value) {
+        const status = await getPermissionStatus();
+        if (status === 'denied') {
+          Alert.alert('Notifications Disabled', 'Enable notifications in your device settings to use this feature.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]
-        );
+          ]);
+          return;
+        }
+        if (status === 'undetermined') {
+          const granted = await requestPermissions();
+          if (!granted) return;
+        }
+      }
+      const updated = { ...notifPrefs, [key]: value };
+      setNotifPrefs(updated);
+      hapticSelection();
+      TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(() => {});
+    },
+    [notifPrefs, savedTrains]
+  );
+
+  const handleTestNotification = useCallback(() => {
+    const sendTest = async (type: string) => {
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert('Permission Required', 'Enable notifications to send a test.');
         return;
       }
-      if (status === 'undetermined') {
-        const granted = await requestPermissions();
-        if (!granted) return;
-      }
-    }
-    const updated = { ...notifPrefs, [key]: value };
-    setNotifPrefs(updated);
-    hapticSelection();
-    TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(() => {});
-  }, [notifPrefs, savedTrains]);
+      const notifications: Record<string, { title: string; body: string }> = {
+        morning: {
+          title: 'Train 91 \u2022 NYP \u2192 BOS',
+          body: 'Good morning! Your train today is on time. 54\u00B0 Partly Cloudy at destination.',
+        },
+        departure: {
+          title: 'Train 91 departs in 2 hours',
+          body: 'Departs from New York Penn Station at 2:30 PM. Currently on time.',
+        },
+        delay: {
+          title: 'Train 91 Delay Update',
+          body: 'NYP \u2192 BOS \u2014 now Delayed 25m (was On Time)',
+        },
+        arrival: {
+          title: 'Arrived at Boston South Station!',
+          body: 'Train 91 from New York. 48\u00B0 Partly Cloudy. This is your 5th time here.',
+        },
+      };
+      const n = notifications[type];
+      if (!n) return;
+      await Notifications.scheduleNotificationAsync({
+        content: { title: n.title, body: n.body, sound: 'default' },
+        trigger: null,
+      });
+      logger.info(`[Debug] Sent test notification: ${type}`);
+    };
+
+    Alert.alert('Test Notification', 'Which notification type?', [
+      { text: 'Morning Status', onPress: () => sendTest('morning') },
+      { text: 'Departure Reminder', onPress: () => sendTest('departure') },
+      { text: 'Delay Alert', onPress: () => sendTest('delay') },
+      { text: 'Arrival Alert', onPress: () => sendTest('arrival') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, []);
 
   const filteredLogs = logFilter === 'ALL' ? debugLogs : debugLogs.filter(l => l.level === logFilter);
 
@@ -491,11 +548,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
 
       <Text style={styles.sectionHeader}>ABOUT</Text>
       <View style={styles.settingsList}>
-        <TouchableOpacity
-          style={styles.settingsItem}
-          activeOpacity={0.7}
-          onPress={() => openSubpage('about')}
-        >
+        <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSubpage('about')}>
           <View style={styles.itemIconContainer}>
             <Ionicons name="information-circle-outline" size={22} color={AppColors.primary} />
           </View>
@@ -523,11 +576,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         <>
           <Text style={styles.sectionHeader}>DEBUG</Text>
           <View style={styles.settingsList}>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              activeOpacity={0.7}
-              onPress={() => openSubpage('debugLog')}
-            >
+            <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSubpage('debugLog')}>
               <View style={styles.itemIconContainer}>
                 <Ionicons name="document-text-outline" size={22} color={AppColors.primary} />
               </View>
@@ -582,6 +631,21 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               </View>
             </TouchableOpacity>
             <TouchableOpacity
+              style={styles.settingsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticLight();
+                handleTestNotification();
+              }}
+            >
+              <View style={styles.itemIconContainer}>
+                <Ionicons name="notifications-outline" size={22} color="#FBBF24" />
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Notifications</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.settingsItem, styles.settingsItemLast]}
               activeOpacity={0.7}
               onPress={() => {
@@ -628,14 +692,18 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             {calendars.map((cal, i) => (
               <TouchableOpacity
                 key={cal.id}
-                style={[styles.settingsItem, { paddingHorizontal: Spacing.lg }, i === calendars.length - 1 && styles.settingsItemLast]}
+                style={[
+                  styles.settingsItem,
+                  { paddingHorizontal: Spacing.lg },
+                  i === calendars.length - 1 && styles.settingsItemLast,
+                ]}
                 activeOpacity={0.7}
                 onPress={() => {
                   hapticSelection();
                   toggleCalendar(cal.id);
                 }}
               >
-                <View style={[styles.calendarDot, { marginRight: Spacing.md }]} >
+                <View style={[styles.calendarDot, { marginRight: Spacing.md }]}>
                   <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: cal.color }} />
                 </View>
                 <View style={styles.itemContent}>
@@ -651,7 +719,11 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             {SCAN_OPTIONS.map((opt, i) => (
               <TouchableOpacity
                 key={opt.value}
-                style={[styles.settingsItem, { paddingHorizontal: Spacing.lg }, i === SCAN_OPTIONS.length - 1 && styles.settingsItemLast]}
+                style={[
+                  styles.settingsItem,
+                  { paddingHorizontal: Spacing.lg },
+                  i === SCAN_OPTIONS.length - 1 && styles.settingsItemLast,
+                ]}
                 onPress={() => {
                   hapticSelection();
                   setScanDays(opt.value);
@@ -716,7 +788,11 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         {TEMP_OPTIONS.map((opt, i) => (
           <TouchableOpacity
             key={opt.value}
-            style={[styles.settingsItem, { paddingHorizontal: Spacing.lg }, i === TEMP_OPTIONS.length - 1 && styles.settingsItemLast]}
+            style={[
+              styles.settingsItem,
+              { paddingHorizontal: Spacing.lg },
+              i === TEMP_OPTIONS.length - 1 && styles.settingsItemLast,
+            ]}
             onPress={() => {
               hapticSelection();
               setTempUnit(opt.value);
@@ -735,7 +811,11 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         {DISTANCE_OPTIONS.map((opt, i) => (
           <TouchableOpacity
             key={opt.value}
-            style={[styles.settingsItem, { paddingHorizontal: Spacing.lg }, i === DISTANCE_OPTIONS.length - 1 && styles.settingsItemLast]}
+            style={[
+              styles.settingsItem,
+              { paddingHorizontal: Spacing.lg },
+              i === DISTANCE_OPTIONS.length - 1 && styles.settingsItemLast,
+            ]}
             onPress={() => {
               hapticSelection();
               setDistanceUnit(opt.value);
@@ -797,7 +877,8 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         </View>
         <Text style={[styles.sectionHeader, { marginTop: Spacing.xl }]}>CONTRIBUTORS WANTED</Text>
         <Text style={styles.aboutText}>
-          Tracky currently only supports Amtrak. Want to help bring support for other rail systems? We'd love contributors to help expand coverage to more networks.
+          Tracky currently only supports Amtrak. Want to help bring support for other rail systems? We'd love
+          contributors to help expand coverage to more networks.
         </Text>
         <View style={[styles.settingsList, { marginTop: Spacing.md }]}>
           <TouchableOpacity
@@ -1079,63 +1160,59 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       {/* Subpage — slides in from right */}
       {currentPage !== 'main' && (
         <GestureDetector gesture={swipeBackGesture}>
-        <Animated.View style={[styles.subpageContainer, subpageAnimatedStyle]}>
-          <View style={styles.fixedHeader}>
-            <View style={styles.subpageHeader}>
-              <TouchableOpacity
-                onPress={closeSubpage}
-                style={styles.backButton}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="chevron-back" size={28} color={AppColors.primary} />
-              </TouchableOpacity>
-              <Text style={styles.title}>{subpageTitles[currentPage]}</Text>
-              {currentPage === 'debugLog' && (
-                <View style={styles.headerActions}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      hapticLight();
-                      handleShareLogs();
-                    }}
-                    style={styles.logHeaderButton}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="share-outline" size={20} color={AppColors.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      hapticLight();
-                      handleClearLogs();
-                    }}
-                    style={styles.logHeaderButton}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={AppColors.error} />
-                  </TouchableOpacity>
-                </View>
-              )}
+          <Animated.View style={[styles.subpageContainer, subpageAnimatedStyle]}>
+            <View style={styles.fixedHeader}>
+              <View style={styles.subpageHeader}>
+                <TouchableOpacity onPress={closeSubpage} style={styles.backButton} activeOpacity={0.7}>
+                  <Ionicons name="chevron-back" size={28} color={AppColors.primary} />
+                </TouchableOpacity>
+                <Text style={styles.title}>{subpageTitles[currentPage]}</Text>
+                {currentPage === 'debugLog' && (
+                  <View style={styles.headerActions}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        hapticLight();
+                        handleShareLogs();
+                      }}
+                      style={styles.logHeaderButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="share-outline" size={20} color={AppColors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        hapticLight();
+                        handleClearLogs();
+                      }}
+                      style={styles.logHeaderButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={AppColors.error} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: Spacing.xl }}
-            scrollEnabled={isFullscreen}
-            waitFor={panRef}
-            bounces={false}
-            nestedScrollEnabled={true}
-            onScroll={e => {
-              if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y;
-            }}
-            scrollEventThrottle={16}
-          >
-            {currentPage === 'calendar' && renderCalendarPage()}
-            {currentPage === 'units' && renderUnitsPage()}
-            {currentPage === 'about' && renderAboutPage()}
-            {currentPage === 'dataProviders' && renderDataProvidersPage()}
-            {currentPage === 'debugLog' && renderDebugLogPage()}
-            {currentPage === 'notifications' && renderNotificationsPage()}
-          </ScrollView>
-        </Animated.View>
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: Spacing.xl }}
+              scrollEnabled={isFullscreen}
+              waitFor={panRef}
+              bounces={false}
+              nestedScrollEnabled={true}
+              onScroll={e => {
+                if (scrollOffset) scrollOffset.value = e.nativeEvent.contentOffset.y;
+              }}
+              scrollEventThrottle={16}
+            >
+              {currentPage === 'calendar' && renderCalendarPage()}
+              {currentPage === 'units' && renderUnitsPage()}
+              {currentPage === 'about' && renderAboutPage()}
+              {currentPage === 'dataProviders' && renderDataProvidersPage()}
+              {currentPage === 'debugLog' && renderDebugLogPage()}
+              {currentPage === 'notifications' && renderNotificationsPage()}
+            </ScrollView>
+          </Animated.View>
         </GestureDetector>
       )}
     </View>
@@ -1160,7 +1237,14 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: AppColors.border.primary, marginVertical: Spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing.xs },
   subpageHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: Spacing.xs },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, position: 'absolute' as const, right: Spacing.xl, top: Spacing.xs },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    position: 'absolute' as const,
+    right: Spacing.xl,
+    top: Spacing.xs,
+  },
   title: { fontSize: 34, fontWeight: 'bold', color: AppColors.primary },
   closeButton: {
     ...CloseButtonStyle,

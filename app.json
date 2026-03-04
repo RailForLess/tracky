@@ -8,13 +8,13 @@
     "scheme": "tracky",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tracky.app"
+      "bundleIdentifier": "com.tracky.app",
+      "infoPlist": {
+        "NSSupportsLiveActivities": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +28,8 @@
       "package": "com.tracky.app",
       "permissions": [
         "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR"
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
@@ -51,7 +52,9 @@
           "calendarPermission": "Tracky needs calendar access to find past train trips and add them to your travel history.",
           "calendarFullAccessPermission": "Tracky needs full calendar access to scan for past train trips."
         }
-      ]
+      ],
+      ["expo-notifications", { "sounds": [] }],
+      ["expo-background-fetch"]
     ],
     "experiments": {
       "typedRoutes": true,

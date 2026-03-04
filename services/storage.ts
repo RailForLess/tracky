@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   TRIP_HISTORY: 'tripHistory',
   USER_PREFERENCES: 'userPreferences',
   CALENDAR_SYNC_PREFS: 'calendarSyncPrefs',
+  NOTIFICATION_PREFS: 'notificationPrefs',
 } as const;
 
 export interface CalendarSyncPrefs {
@@ -20,6 +21,22 @@ export interface CalendarSyncPrefs {
   /** When true, cross-reference calendar events against GTFS schedule data for precise trip matching. */
   matchGtfs: boolean;
 }
+
+export interface NotificationPrefs {
+  morningAlerts: boolean;
+  departureReminders: boolean;
+  delayAlerts: boolean;
+  arrivalAlerts: boolean;
+  liveActivities: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  morningAlerts: true,
+  departureReminders: true,
+  delayAlerts: true,
+  arrivalAlerts: true,
+  liveActivities: true,
+};
 
 import { calculateDaysAway, formatDateForDisplay } from '../utils/date-helpers';
 import { haversineDistance } from '../utils/distance';
@@ -169,9 +186,16 @@ export class TrainStorageService {
   /**
    * Delete a train by tripId (and optional segment)
    */
-  static async deleteTrainByTripId(tripId: string, fromCode?: string, toCode?: string, travelDate?: number): Promise<boolean> {
+  static async deleteTrainByTripId(
+    tripId: string,
+    fromCode?: string,
+    toCode?: string,
+    travelDate?: number
+  ): Promise<boolean> {
     try {
-      logger.info(`[Storage] Deleting train ${tripId} (${fromCode || '?'} → ${toCode || '?'}, date=${travelDate || '?'})`);
+      logger.info(
+        `[Storage] Deleting train ${tripId} (${fromCode || '?'} → ${toCode || '?'}, date=${travelDate || '?'})`
+      );
       const refs = await this.getSavedTrainRefs();
       const updatedRefs = refs.filter(r => {
         if (r.tripId !== tripId) return true;
@@ -281,7 +305,11 @@ export class TrainStorageService {
     try {
       const history = await this.getTripHistory();
       const exists = history.some(
-        h => h.tripId === entry.tripId && h.fromCode === entry.fromCode && h.toCode === entry.toCode && h.travelDate === entry.travelDate
+        h =>
+          h.tripId === entry.tripId &&
+          h.fromCode === entry.fromCode &&
+          h.toCode === entry.toCode &&
+          h.travelDate === entry.travelDate
       );
       if (exists) {
         return false;
@@ -307,12 +335,7 @@ export class TrainStorageService {
           const fromStation = stationLoader.getStationByCode(train.fromCode);
           const toStation = stationLoader.getStationByCode(train.toCode);
           if (fromStation && toStation) {
-            distance = haversineDistance(
-              fromStation.lat,
-              fromStation.lon,
-              toStation.lat,
-              toStation.lon
-            );
+            distance = haversineDistance(fromStation.lat, fromStation.lon, toStation.lat, toStation.lon);
           }
         } catch (error) {
           logger.error('Error calculating distance:', error);
@@ -371,7 +394,12 @@ export class TrainStorageService {
   /**
    * Delete a trip from history
    */
-  static async deleteFromHistory(tripId: string, fromCode: string, toCode: string, travelDate?: number): Promise<boolean> {
+  static async deleteFromHistory(
+    tripId: string,
+    fromCode: string,
+    toCode: string,
+    travelDate?: number
+  ): Promise<boolean> {
     try {
       const history = await this.getTripHistory();
       const updated = history.filter(h => {
@@ -412,6 +440,26 @@ export class TrainStorageService {
       return true;
     } catch (error) {
       logger.error('Error saving calendar sync prefs:', error);
+      return false;
+    }
+  }
+
+  static async getNotificationPrefs(): Promise<NotificationPrefs> {
+    try {
+      const data = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATION_PREFS);
+      return data ? { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(data) } : DEFAULT_NOTIFICATION_PREFS;
+    } catch (error) {
+      logger.error('Error loading notification prefs:', error);
+      return DEFAULT_NOTIFICATION_PREFS;
+    }
+  }
+
+  static async saveNotificationPrefs(prefs: NotificationPrefs): Promise<boolean> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATION_PREFS, JSON.stringify(prefs));
+      return true;
+    } catch (error) {
+      logger.error('Error saving notification prefs:', error);
       return false;
     }
   }

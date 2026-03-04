@@ -12,6 +12,7 @@ import { useTrainContext } from '../context/TrainContext';
 import { useFrequentlyUsed } from '../hooks/useFrequentlyUsed';
 import { hasCalendarPermission, syncFutureTrips } from '../services/calendar-sync';
 import { TrainStorageService } from '../services/storage';
+import { TrainActivityManager } from '../services/train-activity-manager';
 import type { SavedTrainRef, Train } from '../types/train';
 import { COLORS, styles } from './styles';
 import { light as hapticLight } from '../utils/haptics';
@@ -82,14 +83,17 @@ export const ModalContent = React.forwardRef<
       }
       for (const train of pastTrains) {
         await TrainStorageService.moveToHistory(train);
+        TrainActivityManager.onTrainArchived(train).catch(() => {});
       }
 
       if (pastTrains.length > 0) {
         // Reload after archiving
         const updatedTrains = await TrainStorageService.getSavedTrains();
         setSavedTrains(updatedTrains);
+        TrainActivityManager.onAppStartup(updatedTrains).catch(() => {});
       } else {
         setSavedTrains(trains);
+        TrainActivityManager.onAppStartup(trains).catch(() => {});
       }
 
       // Auto-sync future trips from calendar (if permission already granted)
@@ -146,6 +150,10 @@ export const ModalContent = React.forwardRef<
     if (saved) {
       const updatedTrains = await TrainStorageService.getSavedTrains();
       setSavedTrains(updatedTrains);
+      const savedTrain = updatedTrains.find(t => t.tripId === tripId && t.fromCode === fromCode && t.toCode === toCode);
+      if (savedTrain) {
+        TrainActivityManager.onTrainSaved(savedTrain).catch(() => {});
+      }
     }
     return saved;
   };
@@ -207,6 +215,7 @@ export const ModalContent = React.forwardRef<
     await TrainStorageService.deleteTrainByTripId(train.tripId || '', train.fromCode, train.toCode, train.travelDate);
     const updatedTrains = await TrainStorageService.getSavedTrains();
     setSavedTrains(updatedTrains);
+    TrainActivityManager.onTrainDeleted(train.tripId || '', train.fromCode, train.toCode).catch(() => {});
   };
 
   return (
@@ -253,10 +262,7 @@ export const ModalContent = React.forwardRef<
         )}
       </View>
 
-      <Animated.View
-        style={[{ flex: 1 }, isSearchFocused && fadeAnimatedStyle]}
-        pointerEvents="auto"
-      >
+      <Animated.View style={[{ flex: 1 }, isSearchFocused && fadeAnimatedStyle]} pointerEvents="auto">
         {/* Search lives outside ScrollView so the input stays fixed */}
         {isSearchFocused && !isCollapsed && (
           <TwoStationSearch onSelectTrip={handleSelectTrip} onClose={handleCloseSearch} />
