@@ -1,8 +1,8 @@
 import type { DistanceUnit, TempUnit } from '../context/UnitsContext';
 
 const MILES_TO_KM = 1.60934;
-// Average Big Mac is ~7.5 cm (0.246 feet) tall
-const MILES_PER_BURGER = 1 / 26_490; // 5280 ft / ~0.246 ft ≈ 21,463 → round to fun number: 26,490 burgers per mile
+// Average hot dog is ~6 inches (0.5 feet) long
+const MILES_PER_HOTDOG = 1 / 10_560; // 5280 ft / 0.5 ft = 10,560 hotdogs per mile
 
 /**
  * Convert miles to the target distance unit.
@@ -11,8 +11,8 @@ export function convertDistance(miles: number, unit: DistanceUnit): number {
   switch (unit) {
     case 'km':
       return miles * MILES_TO_KM;
-    case 'burgers':
-      return miles * 26_490;
+    case 'hotdogs':
+      return miles * 10_560;
     default:
       return miles;
   }
@@ -25,7 +25,7 @@ export function formatDistance(miles: number, unit: DistanceUnit): string {
   const val = convertDistance(miles, unit);
   const suffix = distanceSuffix(unit);
 
-  if (unit === 'burgers') {
+  if (unit === 'hotdogs') {
     if (val >= 1_000_000) {
       return `${(val / 1_000_000).toFixed(1)}M ${suffix}`;
     }
@@ -48,8 +48,8 @@ export function distanceSuffix(unit: DistanceUnit): string {
   switch (unit) {
     case 'km':
       return 'km';
-    case 'burgers':
-      return '🍔';
+    case 'hotdogs':
+      return '🌭';
     default:
       return 'mi';
   }

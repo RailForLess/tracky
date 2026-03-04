@@ -8,7 +8,6 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File, Paths } from 'expo-file-system';
 import { strFromU8, unzipSync } from 'fflate';
 import type { CalendarDateException, CalendarEntry, Route, Shape, Stop, StopTime, Trip } from '../types/train';
 import { gtfsParser } from '../utils/gtfs-parser';
@@ -16,7 +15,6 @@ import { shapeLoader } from './shape-loader';
 import { logger } from '../utils/logger';
 
 const GTFS_URL = 'https://content.amtrak.com/content/gtfs/GTFS.zip';
-const GTFS_CACHE_DIR = 'gtfs-cache';
 const GTFS_FILES = {
   routes: 'routes.json',
   stops: 'stops.json',
@@ -76,12 +74,6 @@ async function readJSONFromFile<T>(filename: string): Promise<T | null> {
   } catch {
     return null;
   }
-}
-
-async function writeJSONToFile(filename: string, data: unknown) {
-  const file = new File(Paths.document, GTFS_CACHE_DIR, filename);
-  await file.create({ overwrite: true });
-  await file.write(JSON.stringify(data));
 }
 
 // Basic CSV parser that respects quoted fields

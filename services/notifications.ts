@@ -49,23 +49,25 @@ export async function scheduleMorningAlert(train: Train): Promise<void> {
   const originStation = stationLoader.getStationByCode(train.fromCode);
   const destStation = stationLoader.getStationByCode(train.toCode);
 
-  let weatherLines = '';
   const [originWeather, destWeather] = await Promise.all([
     originStation ? fetchCurrentWeather(originStation.lat, originStation.lon) : null,
     destStation ? fetchCurrentWeather(destStation.lat, destStation.lon) : null,
   ]);
-  if (originWeather) {
-    weatherLines += `\n${originWeather.temp}\u00B0 ${originWeather.condition} at ${train.fromCode}`;
-  }
-  if (destWeather) {
-    weatherLines += `\n${destWeather.temp}\u00B0 ${destWeather.condition} at ${train.toCode}`;
+
+  let weatherStr = '';
+  if (originWeather && destWeather) {
+    weatherStr = ` ${originWeather.temp}\u00B0 ${originWeather.condition} at ${train.fromCode}, ${destWeather.temp}\u00B0 ${destWeather.condition} at ${train.toCode}.`;
+  } else if (originWeather) {
+    weatherStr = ` ${originWeather.temp}\u00B0 ${originWeather.condition} at ${train.fromCode}.`;
+  } else if (destWeather) {
+    weatherStr = ` ${destWeather.temp}\u00B0 ${destWeather.condition} at ${train.toCode}.`;
   }
 
   await Notifications.scheduleNotificationAsync({
     identifier: morningId(train),
     content: {
       title: `Train ${train.trainNumber} \u2022 ${train.fromCode} \u2192 ${train.toCode}`,
-      body: `Good morning!\nTrain ${train.trainNumber} is ${delayStatus}.${weatherLines}`,
+      body: `Good morning! Your train today is ${delayStatus}.${weatherStr}`,
       sound: 'default',
     },
     trigger: {
@@ -97,7 +99,7 @@ export async function scheduleDepartureReminder(train: Train): Promise<void> {
     identifier: departureId(train),
     content: {
       title: `Train ${train.trainNumber} departs in 2 hours`,
-      body: `Departs from ${fullStationName}\nat ${train.departTime}.\nCurrently ${delayStatus}.`,
+      body: `Departs from ${fullStationName} at ${train.departTime}. Currently ${delayStatus}.`,
       sound: 'default',
     },
     trigger: {
@@ -125,7 +127,7 @@ export async function sendDelayAlert(train: Train, oldDelay: number, newDelay: n
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `Train ${train.trainNumber} Delay Update`,
-      body: `${train.fromCode} \u2192 ${train.toCode}\nNow ${newStatus}\nWas ${oldStatus}`,
+      body: `${train.fromCode} \u2192 ${train.toCode} \u2014 now ${newStatus} (was ${oldStatus})`,
       sound: 'default',
     },
     trigger: null,
@@ -138,21 +140,21 @@ export async function sendArrivalAlert(train: Train): Promise<void> {
   const destStation = stationLoader.getStationByCode(train.toCode);
   const fullName = destStation?.name || train.to;
 
-  const lines: string[] = [`Train ${train.trainNumber} from ${train.from}.`];
-
+  let weatherStr = '';
   if (destStation) {
     const weather = await fetchCurrentWeather(destStation.lat, destStation.lon);
     if (weather) {
-      lines.push(`${weather.temp}\u00B0 ${weather.condition} at ${train.toCode}`);
+      weatherStr = `${weather.temp}\u00B0 ${weather.condition}. `;
     }
   }
 
+  let visitStr = '';
   try {
     const history = await TrainStorageService.getTripHistory();
     const visitCount = history.filter(h => h.toCode === train.toCode).length + 1; // +1 for current trip
     if (visitCount > 1) {
       const suffix = visitCount === 2 ? '2nd' : visitCount === 3 ? '3rd' : `${visitCount}th`;
-      lines.push(`This is your ${suffix} time here.`);
+      visitStr = `This is your ${suffix} time here.`;
     }
   } catch {
     // ignore
@@ -161,7 +163,7 @@ export async function sendArrivalAlert(train: Train): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `Arrived at ${fullName}!`,
-      body: lines.join('\n'),
+      body: `Train ${train.trainNumber} from ${train.from}. ${weatherStr}${visitStr}`,
       sound: 'default',
     },
     trigger: null,

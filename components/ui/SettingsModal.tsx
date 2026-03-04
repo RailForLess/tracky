@@ -406,19 +406,19 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       const notifications: Record<string, { title: string; body: string }> = {
         morning: {
           title: 'Train 91 \u2022 NYP \u2192 BOS',
-          body: 'Good morning!\nTrain 91 is On Time.\n54\u00B0 Partly Cloudy at NYP\n48\u00B0 Clear at BOS',
+          body: 'Good morning! Your train today is On Time. 54\u00B0 Partly Cloudy at NYP, 48\u00B0 Clear at BOS.',
         },
         departure: {
           title: 'Train 91 departs in 2 hours',
-          body: 'Departs from New York Penn Station\nat 2:30 PM.\nCurrently On Time.',
+          body: 'Departs from New York Penn Station at 2:30 PM. Currently On Time.',
         },
         delay: {
           title: 'Train 91 Delay Update',
-          body: 'NYP \u2192 BOS\nNow Delayed 25m\nWas On Time',
+          body: 'NYP \u2192 BOS \u2014 now Delayed 25m (was On Time)',
         },
         arrival: {
           title: 'Arrived at Boston South Station!',
-          body: 'Train 91 from New York.\n48\u00B0 Partly Cloudy at BOS\nThis is your 5th time here.',
+          body: 'Train 91 from New York. 48\u00B0 Partly Cloudy. This is your 5th time here.',
         },
       };
       const n = notifications[type];
@@ -435,6 +435,67 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       { text: 'Departure Reminder', onPress: () => sendTest('departure') },
       { text: 'Delay Alert', onPress: () => sendTest('delay') },
       { text: 'Arrival Alert', onPress: () => sendTest('arrival') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, []);
+
+  const handleTestLiveActivity = useCallback(() => {
+    const startTest = async (action: string) => {
+      const LiveActivity = (() => {
+        try {
+          return require('expo-live-activity') as typeof import('expo-live-activity');
+        } catch {
+          return null;
+        }
+      })();
+
+      if (!LiveActivity) {
+        Alert.alert('Not Available', 'expo-live-activity is not installed in this build.');
+        return;
+      }
+
+      if (action === 'start') {
+        try {
+          const id = await LiveActivity.startActivity({
+            data: {
+              trainNumber: '91',
+              routeName: 'Northeast Regional',
+              fromCode: 'NYP',
+              toCode: 'BOS',
+              from: 'New York',
+              to: 'Boston',
+              departTime: '2:30 PM',
+              arriveTime: '6:45 PM',
+            },
+            state: {
+              delayMinutes: 12,
+              status: 'delayed',
+              lastUpdated: Date.now(),
+            },
+          });
+          logger.info(`[Debug] Started test Live Activity: ${id}`);
+          Alert.alert('Live Activity Started', `Activity ID: ${id}`);
+        } catch (e) {
+          Alert.alert('Error', String(e));
+        }
+      } else if (action === 'update') {
+        Alert.alert('Info', 'Update requires an active Live Activity started from a real train.');
+      } else if (action === 'end') {
+        try {
+          // End all known activities
+          const { endAll } = require('../services/live-activity') as typeof import('../../services/live-activity');
+          await endAll();
+          logger.info('[Debug] Ended all Live Activities');
+          Alert.alert('Done', 'All Live Activities ended.');
+        } catch (e) {
+          Alert.alert('Error', String(e));
+        }
+      }
+    };
+
+    Alert.alert('Test Live Activity', 'Choose an action:', [
+      { text: 'Start Sample', onPress: () => startTest('start') },
+      { text: 'End All', onPress: () => startTest('end') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, []);
@@ -598,6 +659,51 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               activeOpacity={0.7}
               onPress={() => {
                 hapticLight();
+                handleTestNotification();
+              }}
+            >
+              <View style={styles.itemIconContainer}>
+                <Ionicons name="notifications-outline" size={22} color="#FBBF24" />
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Notifications</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticLight();
+                handleTestLiveActivity();
+              }}
+            >
+              <View style={styles.itemIconContainer}>
+                <Ionicons name="phone-portrait-outline" size={22} color="#FBBF24" />
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Live Activity</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticLight();
+                setForceCrash(true);
+              }}
+            >
+              <View style={styles.itemIconContainer}>
+                <Ionicons name="bug-outline" size={22} color="#FBBF24" />
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Crash Screen</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticLight();
                 handleDeleteGTFS();
               }}
             >
@@ -636,36 +742,6 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               </View>
               <View style={styles.itemContent}>
                 <Text style={[styles.itemTitle, { color: AppColors.error }]}>Delete All Active & Future Routes</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              activeOpacity={0.7}
-              onPress={() => {
-                hapticLight();
-                handleTestNotification();
-              }}
-            >
-              <View style={styles.itemIconContainer}>
-                <Ionicons name="notifications-outline" size={22} color="#FBBF24" />
-              </View>
-              <View style={styles.itemContent}>
-                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Notifications</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.settingsItem, styles.settingsItemLast]}
-              activeOpacity={0.7}
-              onPress={() => {
-                hapticLight();
-                setForceCrash(true);
-              }}
-            >
-              <View style={styles.itemIconContainer}>
-                <Ionicons name="bug-outline" size={22} color={AppColors.error} />
-              </View>
-              <View style={styles.itemContent}>
-                <Text style={[styles.itemTitle, { color: AppColors.error }]}>Test Crash Screen</Text>
               </View>
             </TouchableOpacity>
           </View>
