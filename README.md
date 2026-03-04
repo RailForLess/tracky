@@ -1,163 +1,123 @@
 # Tracky
 
-A real-time Amtrak train tracking app built with React Native and Expo. Track train positions, view schedules, save favorite trains, and explore station departure boards with live GTFS-RT data.
+Tracky is a real-time Amtrak train tracker for iOS and Android, built with React Native and Expo. It brings together live GTFS-RT vehicle positions, Amtrak's static schedule data, and destination weather forecasts into a single map-first interface. Every active Amtrak train in the country — Acela, Southwest Chief, Coast Starlight, and the rest — appears as a marker on a full-screen map that updates every 15 seconds. You can save trains you care about, browse station departure boards, search by train number or route name, plan trips between any two stations, and track delays stop-by-stop in real time.
+
+The app is designed around a single map screen with a stack of gesture-driven bottom-sheet modals for navigation. Swiping, tapping, and panning replace traditional screen transitions — trains slide up into detail views, stations open departure boards, and settings pages animate in from the right. All animations run at 60 fps on the native thread via Reanimated. Under the hood, the app aggressively optimizes for mobile: viewport culling ensures only visible routes, stations, and trains are rendered; station markers cluster and uncluster dynamically as you zoom; route polylines load progressively; and a tiered caching strategy minimizes network requests and battery drain.
 
 ## Features
 
-### Interactive Map
+### Live Map
 
-- Full-screen map interface with train and station markers
-- Real-time train positions updated every 15 seconds
-- Color-coded route polylines for each train
+- Full-screen interactive map with real-time train markers, station pins, and route polylines
+- Train positions update every 15 seconds from the Transitdocs GTFS-RT feed
+- Color-coded route lines for each Amtrak service
 - Smart station clustering that adapts to zoom level
-- Standard and satellite map views
-- GPS-based user location with recenter button
+- Standard and satellite map views with GPS-based user location
+- Floating settings pill to toggle route lines, station markers, train visibility, and map type
 
-### Live Train Tracking
+### Train Tracking
 
-- Real-time positions from Transitdocs GTFS-RT feed
-- Train bearing, speed, and delay information
-- Named train routes (Acela, Southwest Chief, Coast Starlight, etc.)
-- Automatic refresh every 15 seconds with 15-second cache
-
-### Saved Trains
-
-- Save favorite trains for quick access
-- Support for partial trip segments (e.g., Boston to NYC only)
-- Persistent storage across app sessions
-- Real-time updates for saved trains every 20 seconds
-- Swipe-to-delete with haptic feedback
+- Save trains for persistent tracking across sessions
+- Support for partial trip segments (e.g., just Boston to New York on a longer route)
+- Real-time delay status at every stop along the route
+- Train speed, bearing, and last-updated timestamp
+- Countdown timers showing time until departure for today's trains
+- Automatic archival of completed trips to travel history
 
 ### Train Details
 
-- Complete trip information with departure/arrival times
-- Multi-day journey support with day offset indicators
-- Intermediate stops with arrival times
-- Real-time delay status
-- Tap stations to view their departure boards
+- Full itinerary with departure and arrival times for every stop
+- Multi-day journey support with day-offset indicators
+- Live delay information per stop (early, on time, or delayed by N minutes)
+- Weather forecast at the destination (temperature, conditions, hourly breakdown)
+- Tap any station in the itinerary to jump to its departure board
 
 ### Station Departure Boards
 
-- View all arrivals and departures for any station
-- Filter by arrivals, departures, or all
-- Date picker for future schedules
-- Search within station departures
-- Tap trains to view full details
+- View all arriving and departing trains for any Amtrak station
+- Filter by arrivals, departures, or both
+- Date picker for browsing future schedules
+- Search within results
+- Swipe any train to save it directly from the board
 
 ### Search
 
-- Search trains by number or route name
-- Search stations by name or code
-- Two-station trip search with date selection
-- Real-time autocomplete results
+- Unified search by train number, route name, or station name/code
+- Two-station trip search: pick origin, destination, and date to find matching trains
+- Real-time autocomplete as you type
 
-### Map Settings
+### Profile and History
 
-Quick-access settings panel with:
+- Travel history with completed trip cards showing route, duration, and distance
+- Lifetime statistics: total trips, total distance, total time on trains
+- Share trips as formatted "ticket art" images
+- Swipe-to-delete history entries with haptic feedback
 
-- **Route Mode**: Show/hide train route lines
-- **Station Mode**: Off, Compact (clustered), or All stations
-- **Train Mode**: Off, Saved trains only, or All trains
-- **Map Type**: Standard or Satellite view
+### Settings
+
+- Temperature units (Fahrenheit / Celsius)
+- Distance units (miles / kilometers / burgers)
+- Calendar sync: scan device calendars for Amtrak trips and auto-import them
+- Data providers page listing all external data sources
+- Debug log viewer with filtering by severity level
+- About page with contributors and version info
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+ (recommended for full compatibility)
+- Node.js 20+
 - Expo CLI
 - iOS Simulator (Mac) or Android Emulator
 
 ### Installation
 
-1. Install dependencies:
+```bash
+npm install --legacy-peer-deps
+```
 
-   ```bash
-   npm install --legacy-peer-deps
-   ```
+### Run the App
 
-2. Start the development server:
+```bash
+npx expo start
+```
 
-   ```bash
-   npx expo start
-   ```
+Then press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with Expo Go on a physical device.
 
-3. Open the app:
-   - Press `i` for iOS simulator
-   - Press `a` for Android emulator
-   - Scan QR code with Expo Go on your device
-
-Note: Web is not supported. This app targets iOS and Android only.
+Web is not supported — this app targets iOS and Android only.
 
 ## Development
 
-### Available Scripts
+### Scripts
 
 ```bash
-# Development
-npm start              # Start Expo development server
-npm run android        # Start on Android emulator
-npm run ios            # Start on iOS simulator
+npm start              # Start Expo dev server
+npm run ios            # Launch on iOS Simulator
+npm run android        # Launch on Android Emulator
 
-# Code Quality
-npm run type-check     # Run TypeScript type checking
-npm run lint           # Run ESLint
-npm run format         # Format code with Prettier
-npm run format:check   # Check code formatting
+npm run type-check     # TypeScript type checking
+npm run lint           # ESLint
+npm run format         # Prettier formatting
+npm run format:check   # Check formatting without writing
 
-# Testing
 npm test               # Run all tests
-npm run test:watch     # Run tests in watch mode
-npm run test:coverage  # Run tests with coverage report
+npm run test:watch     # Watch mode
+npm run test:coverage  # Coverage report
 
-# Validation
-npm run validate       # Run all quality checks (type-check + format + lint + test)
+npm run validate       # Run all checks (type-check + format + lint + test)
 ```
 
-### Code Quality Standards
+### Code Quality
 
-This project maintains high code quality with:
+- **TypeScript** in strict mode
+- **ESLint** with Expo preset
+- **Prettier** (120-char lines, single quotes)
+- **Jest** with React Native Testing Library (40% coverage threshold)
+- **GitHub Actions** CI on every push and pull request
 
-- **TypeScript**: Strict mode enabled for type safety
-- **ESLint**: Expo preset with custom rules
-- **Prettier**: Automated code formatting (120 line width, single quotes)
-- **Jest**: Unit and integration tests with 40% coverage threshold
-- **CI/CD**: Automated testing on all pull requests via GitHub Actions
+### Pre-commit
 
-### Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode during development
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
-```
-
-**Test Coverage Status**: 47 passing tests across 4 suites
-
-- Time formatting utilities
-- Date helpers
-- Train number extraction
-- Logger utility
-
-### Pre-commit Quality Checks
-
-Before committing, run:
-
-```bash
-npm run validate
-```
-
-This ensures:
-
-- ✅ TypeScript compiles without errors
-- ✅ Code is properly formatted
-- ✅ ESLint rules pass
-- ✅ All tests pass
+Run `npm run validate` before committing to ensure TypeScript compiles, formatting is correct, lint rules pass, and all tests pass.
 
 ## Architecture
 
@@ -165,109 +125,80 @@ This ensures:
 
 ```
 tracky/
-├── app/                    # Expo Router screens
+├── app/                    # Expo Router entry points
+├── screens/                # MapScreen (primary screen)
 ├── components/
-│   ├── map/                # Map markers and overlays
-│   └── ui/                 # Modals, lists, and controls
+│   ├── map/                # Map markers, routes, overlays
+│   └── ui/                 # Modals, lists, search, controls
 ├── context/                # React Context providers
-├── hooks/                  # Custom React hooks
-├── services/               # Business logic and APIs
-├── utils/                  # Helpers and parsers
-├── types/                  # TypeScript definitions
-├── assets/                 # Static assets and GTFS cache
+├── hooks/                  # Custom hooks (live trains, search, etc.)
+├── services/               # Data fetching, caching, persistence
+├── utils/                  # Parsers, formatters, clustering
+├── types/                  # TypeScript definitions and Zod schemas
+├── assets/                 # Static assets and cached GTFS data
 └── constants/              # Theme and configuration
 ```
 
-### Services
-
-| Service             | Purpose                          |
-| ------------------- | -------------------------------- |
-| `realtime.ts`       | GTFS-RT feed parsing and caching |
-| `api.ts`            | High-level train data API        |
-| `gtfs-sync.ts`      | Weekly GTFS schedule sync        |
-| `storage.ts`        | AsyncStorage persistence         |
-| `shape-loader.ts`   | Viewport-based route loading     |
-| `station-loader.ts` | Viewport-based station loading   |
-
-### Utilities
-
-| Utility                 | Purpose                                        |
-| ----------------------- | ---------------------------------------------- |
-| `time-formatting.ts`    | Time parsing and formatting (12/24-hour)       |
-| `date-helpers.ts`       | Date calculations and formatting               |
-| `train-helpers.ts`      | Train number extraction and normalization      |
-| `logger.ts`             | Centralized logging with environment awareness |
-| `gtfs-parser.ts`        | GTFS static data parsing                       |
-| `route-colors.ts`       | Route color schemes                            |
-| `station-clustering.ts` | Smart station marker clustering                |
-| `train-clustering.ts`   | Train marker clustering                        |
-
 ### State Management
 
-- **TrainContext**: Manages saved trains and selected train state
-- **ModalContext**: Handles modal navigation stack and transitions
+| Context              | Responsibility                                          |
+| -------------------- | ------------------------------------------------------- |
+| `TrainContext`        | Saved trains list, selected train, add/remove/refresh   |
+| `ModalContext`        | Modal navigation stack, snap points, back navigation    |
+| `UnitsContext`        | Temperature and distance unit preferences               |
+| `GTFSRefreshContext`  | GTFS cache status and manual refresh trigger            |
 
 ### Data Flow
 
 ```
-Transitdocs GTFS-RT Feed
-         │
-    [Protobuf Parser]
-         │
-     [15s Cache]
-         │
-   [Train Matching]
-         │
-     [Map Markers]
+Transitdocs GTFS-RT API ──► Protobuf decode ──► 15s in-memory cache ──► Train positions
+                                                                            │
+Amtrak GTFS.zip ──► Parse on startup ──► Compressed JSON (7-day cache) ──► Schedule data
+                                                                            │
+                                                              Merge ◄───────┘
+                                                                │
+                                                          Map markers
+                                                          Train details
+                                                          Departure boards
 ```
 
-### GTFS Data Sync
+### Services
 
-On app startup:
+| Service             | Purpose                                                          |
+| ------------------- | ---------------------------------------------------------------- |
+| `realtime.ts`       | Fetches and parses GTFS-RT protobuf; caches positions and delays |
+| `api.ts`            | High-level API combining schedule + real-time data               |
+| `gtfs-sync.ts`      | Downloads and parses Amtrak GTFS.zip weekly                      |
+| `storage.ts`        | AsyncStorage persistence for saved trains and history            |
+| `shape-loader.ts`   | Lazy-loads route polylines based on map viewport                 |
+| `station-loader.ts` | Lazy-loads station markers based on map viewport                 |
+| `calendar-sync.ts`  | Scans device calendars for Amtrak trips and imports them         |
 
-1. Checks if cached GTFS data exists and is fresh (< 7 days old)
-2. If stale, fetches `GTFS.zip` from Amtrak
-3. Parses `routes.txt`, `stops.txt`, `stop_times.txt`, and `shapes.txt`
-4. Stores compressed JSON locally for offline access
+### Real-Time Data
 
-## Performance Optimizations
+The app consumes the Transitdocs GTFS-RT feed at `https://asm-backend.transitdocs.com/gtfs/amtrak`, which provides Protocol Buffer-encoded vehicle positions and trip updates for all active Amtrak trains.
 
-- **Viewport Culling**: Only loads visible routes and stations
-- **Throttled Updates**: Region changes throttled to 100ms
-- **Debounced Loading**: Viewport bounds updates debounced to 250ms
-- **Real-Time Cache**: 15-second TTL prevents redundant API calls
-- **Smart Clustering**: Reduces marker count at lower zoom levels
-- **Reanimated Animations**: 60fps modal and marker transitions
+**Trip ID format:** `YYYY-MM-DD_AMTK_NNN` (e.g., `2026-01-16_AMTK_543`)
 
-## Tech Stack
+The app supports flexible ID matching — you can query by full trip ID or just the train number. Positions and trip updates are cached for 15 seconds to balance freshness with performance and battery life.
 
-### Core Framework
+**Cache behavior:**
+- **Hit:** Return cached data immediately if less than 15 seconds old
+- **Miss:** Fetch fresh protobuf, parse, and update the cache
+- **Error:** Return stale cache if available; empty map otherwise
 
-- **React Native** 0.81 with **React** 19
-- **Expo** 54 with Expo Router
-- **TypeScript** 5.9 (strict mode)
+### GTFS Static Data
 
-### UI & Animation
+On startup, the app checks for locally cached GTFS data. If the cache is missing or older than 7 days, it fetches `GTFS.zip` from Amtrak and parses `routes.txt`, `stops.txt`, `stop_times.txt`, and `shapes.txt` into compressed JSON for offline access.
 
-- **react-native-maps** for map rendering
-- **react-native-reanimated** 4.1 for 60fps animations
-- **react-native-gesture-handler** for gestures
-- **lucide-react-native** for icons
+### Performance
 
-### Data & APIs
-
-- **gtfs-realtime-bindings** for protobuf parsing
-- **AsyncStorage** for local persistence
-- **Transitdocs GTFS-RT API** for real-time train positions
-- **Amtrak GTFS** for schedule data
-
-### Development Tools
-
-- **Jest** 30 with React Native Testing Library
-- **ESLint** 9 with Expo config
-- **Prettier** 3.8 for code formatting
-- **Zod** 4.3 for runtime validation
-- **GitHub Actions** for CI/CD
+- **Viewport culling** — only visible routes, stations, and trains are rendered
+- **Throttled region changes** — 100ms throttle on map pan/zoom events
+- **Debounced clustering** — 300ms debounce for marker reclustering
+- **Batched rendering** — station and train markers drip-fed to the map
+- **Real-time cache** — 15s TTL prevents redundant API calls
+- **Reanimated animations** — all transitions run at 60 fps on the native thread
 
 ## API Usage
 
@@ -277,133 +208,70 @@ On app startup:
 import { RealtimeService } from './services/realtime';
 
 const trains = await RealtimeService.getAllActiveTrains();
+// Returns ~150-160 active trains with position, speed, bearing
 ```
 
-### Get Train Position
+### Get a Specific Train's Position
 
 ```typescript
 const position = await RealtimeService.getPositionForTrip('543');
-// Supports train numbers ("543") or trip IDs ("2026-01-16_AMTK_543")
+// Accepts train number ("543") or full trip ID ("2026-01-16_AMTK_543")
+```
+
+### Check Delay at a Stop
+
+```typescript
+const delay = await RealtimeService.getDelayForStop('543', 'NYP');
+console.log(RealtimeService.formatDelay(delay));
+// "On Time", "Delayed 5m", or "Early 2m"
+```
+
+### Get Full Train Details (Schedule + Real-Time)
+
+```typescript
+import { TrainAPIService } from './services/api';
+
+const train = await TrainAPIService.getTrainDetails('543');
+// Includes full itinerary, real-time position, and delay status
 ```
 
 ### Search Stations
 
 ```typescript
-import { TrainAPIService } from './services/api';
-
 const stations = await TrainAPIService.searchStations('Boston');
 ```
 
-### Find Trips Between Stations
+### Find Trips Between Two Stations
 
 ```typescript
 const trips = await TrainAPIService.findTripsWithStops('BOS', 'NYP');
 ```
 
-## Code Quality & Testing
-
-### Testing Infrastructure
-
-This project uses Jest with React Native Testing Library for comprehensive testing:
-
-- **Unit Tests**: Utility functions, helpers, and services
-- **Integration Tests**: Hooks and context providers
-- **Component Tests**: UI components and screens
-
-**Coverage Thresholds**:
-
-- Statements: 40%
-- Branches: 30%
-- Functions: 40%
-- Lines: 40%
-
-### CI/CD Pipeline
-
-Every push and pull request runs:
-
-1. TypeScript type checking (`tsc --noEmit`)
-2. ESLint code quality checks
-3. Prettier formatting validation
-4. Full test suite with coverage reporting
-5. Coverage uploaded to Codecov with PR comments
-
-### Logging
-
-Centralized logging utility with environment-aware behavior:
+### Refresh Real-Time Data for a Saved Train
 
 ```typescript
-import { logger } from './utils/logger';
-
-// Debug and info logs only appear in development
-logger.debug('Detailed debug info', data);
-logger.info('Informational message');
-
-// Warnings and errors appear in all environments
-logger.warn('Warning message');
-logger.error('Error occurred', error);
+const updated = await TrainAPIService.refreshRealtimeData(existingSavedTrain);
+// updated.realtime now has the latest position and delay
 ```
 
-**Features**:
+## Tech Stack
 
-- Environment-aware (dev-only debug/info)
-- In-memory log storage (last 100 entries)
-- Export logs for debugging
-- Ready for crash reporting integration (Sentry, Bugsnag)
-
-### Data Validation
-
-Runtime validation with Zod schemas for external data:
-
-```typescript
-import { TrainPositionSchema, StopSchema } from './types/gtfs-schemas';
-
-// Validate GTFS-RT position data
-const position = TrainPositionSchema.safeParse(rawPosition);
-if (!position.success) {
-  logger.error('Invalid train position', position.error);
-  return null;
-}
-```
-
-**Available Schemas**:
-
-- `TrainPositionSchema` - GPS coordinates and bearing
-- `RealtimePositionSchema` - GTFS-RT vehicle positions
-- `RealtimeUpdateSchema` - Trip updates and delays
-- `StopSchema`, `RouteSchema`, `TripSchema` - GTFS static data
+- **React Native** 0.81 / **React** 19 / **Expo** 54 with Expo Router
+- **TypeScript** 5.9 in strict mode
+- **react-native-maps** for map rendering
+- **react-native-reanimated** 4.1 for animations
+- **react-native-gesture-handler** for swipe and pan gestures
+- **gtfs-realtime-bindings** for protobuf parsing
+- **AsyncStorage** for local persistence
+- **Zod** for runtime data validation
+- **Jest** 30 / **ESLint** 9 / **Prettier** 3.8
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
-1. **Code Quality**: Run `npm run validate` before committing
-2. **Tests**: Add tests for new features or bug fixes
-3. **Formatting**: Code is auto-formatted with Prettier
-4. **Type Safety**: Maintain strict TypeScript compliance
-5. **Pull Requests**: CI must pass before merging
-
-### Development Workflow
-
-```bash
-# 1. Create a feature branch
-git checkout -b feature/my-feature
-
-# 2. Make changes and write tests
-npm run test:watch
-
-# 3. Validate code quality
-npm run validate
-
-# 4. Format code
-npm run format
-
-# 5. Commit and push
-git add .
-git commit -m "feat: add my feature"
-git push origin feature/my-feature
-```
-
-The CI pipeline will automatically run all quality checks on your pull request.
+1. Create a feature branch from `main`
+2. Write tests for new features or bug fixes
+3. Run `npm run validate` to pass all checks
+4. Open a pull request — CI will run automatically
 
 ## License
 
