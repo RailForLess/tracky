@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { SlideUpModalHandle } from '../components/ui/slide-up-modal';
 import type { Stop, Train } from '../types/train';
 import { logger } from '../utils/logger';
@@ -80,7 +80,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [showMainContent, setShowMainContent] = useState(true);
   const [showTrainDetailContent, setShowTrainDetailContent] = useState(false);
   const [showDepartureBoardContent, setShowDepartureBoardContent] = useState(false);
-  const [showProfileContent, setShowProfileContent] = useState(true);
+  const [showProfileContent, setShowProfileContent] = useState(false);
   const [showSettingsContent, setShowSettingsContent] = useState(false);
 
   // Active modal tracking
@@ -306,32 +306,55 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     else if (type === 'settings') setShowSettingsContent(false);
   }, [getModalRef]);
 
-  const value: ModalContextType = {
-    activeModal,
-    modalData,
-    currentSnap,
-    showMainContent,
-    showTrainDetailContent,
-    showDepartureBoardContent,
-    showProfileContent,
-    showSettingsContent,
-    mainModalRef,
-    detailModalRef,
-    departureBoardRef,
-    profileModalRef,
-    settingsModalRef,
-    modalStack,
-    navigateToTrain,
-    navigateToStation,
-    navigateToProfile,
-    navigateToSettings,
-    navigateToMain,
-    goBack,
-    dismissCurrent,
-    handleModalDismissed,
-    handleSnapChange,
-    getInitialSnap,
-  };
+  const value = useMemo<ModalContextType>(
+    () => ({
+      activeModal,
+      modalData,
+      currentSnap,
+      showMainContent,
+      showTrainDetailContent,
+      showDepartureBoardContent,
+      showProfileContent,
+      showSettingsContent,
+      mainModalRef,
+      detailModalRef,
+      departureBoardRef,
+      profileModalRef,
+      settingsModalRef,
+      modalStack,
+      navigateToTrain,
+      navigateToStation,
+      navigateToProfile,
+      navigateToSettings,
+      navigateToMain,
+      goBack,
+      dismissCurrent,
+      handleModalDismissed,
+      handleSnapChange,
+      getInitialSnap,
+    }),
+    [
+      activeModal,
+      modalData,
+      currentSnap,
+      showMainContent,
+      showTrainDetailContent,
+      showDepartureBoardContent,
+      showProfileContent,
+      showSettingsContent,
+      modalStack,
+      navigateToTrain,
+      navigateToStation,
+      navigateToProfile,
+      navigateToSettings,
+      navigateToMain,
+      goBack,
+      dismissCurrent,
+      handleModalDismissed,
+      handleSnapChange,
+      getInitialSnap,
+    ]
+  );
 
   return <ModalContext.Provider value={value}>{children}</ModalContext.Provider>;
 };

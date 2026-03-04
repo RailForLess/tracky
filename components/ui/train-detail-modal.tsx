@@ -71,12 +71,13 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
   const isLiveTrain = trainData?.realtime?.position !== undefined;
 
-  // Load stops from GTFS
+  // Load stops from GTFS — only re-run when the trip actually changes
+  const tripId = trainData?.tripId;
   React.useEffect(() => {
-    if (!trainData?.tripId) return;
-    
+    if (!tripId) return;
+
     try {
-      const stops = gtfsParser.getStopTimesForTrip(trainData.tripId);
+      const stops = gtfsParser.getStopTimesForTrip(tripId);
       if (stops && stops.length > 0) {
         const formattedStops = stops.map(stop => {
           const formatted = stop.departure_time ? formatTime24to12(stop.departure_time) : { time: '', dayOffset: 0 };
@@ -92,37 +93,41 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     } catch (e) {
       logger.error('Failed to load stops:', e);
     }
-  }, [trainData]);
+  }, [tripId]);
 
-  // Fetch per-stop delays for the timeline
+  // Fetch per-stop delays for the timeline — re-run when realtime delay changes
+  const daysAway = trainData?.daysAway;
+  const currentDelay = trainData?.realtime?.delay;
   React.useEffect(() => {
-    if (!trainData?.tripId || trainData.daysAway > 0) {
+    if (!tripId || (daysAway != null && daysAway > 0)) {
       setStopDelays(new Map());
       return;
     }
     let cancelled = false;
     const fetchDelays = async () => {
-      const delays = await RealtimeService.getDelaysForAllStops(trainData.tripId!);
+      const delays = await RealtimeService.getDelaysForAllStops(tripId);
       if (!cancelled) setStopDelays(delays);
     };
     fetchDelays();
     return () => { cancelled = true; };
-  }, [trainData]);
+  }, [tripId, daysAway, currentDelay]);
 
-  // Fetch weather data for destination
+  // Fetch weather data for destination — only when destination or unit changes
+  const toCode = trainData?.toCode;
   React.useEffect(() => {
+    if (!toCode) return;
+
+    let cancelled = false;
     const fetchWeather = async () => {
-      if (!trainData) return;
-      
       try {
         setIsLoadingWeather(true);
-        const destStop = gtfsParser.getStop(trainData.toCode);
+        const destStop = gtfsParser.getStop(toCode);
         if (!destStop) return;
 
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${destStop.stop_lat}&longitude=${destStop.stop_lon}&current=temperature_2m,weather_code&temperature_unit=${weatherApiTempUnit(tempUnit)}&timezone=auto`;
         const response = await fetch(weatherUrl);
 
-        if (response.ok) {
+        if (!cancelled && response.ok) {
           const data = await response.json();
           const weatherCode = data.current?.weather_code || 0;
           const weatherInfo = getWeatherCondition(weatherCode);
@@ -135,18 +140,19 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       } catch (e) {
         logger.error('Failed to fetch weather:', e);
       } finally {
-        setIsLoadingWeather(false);
+        if (!cancelled) setIsLoadingWeather(false);
       }
     };
 
     fetchWeather();
-  }, [trainData, tempUnit]);
+    return () => { cancelled = true; };
+  }, [toCode, tempUnit]);
 
   // Fetch hourly weather for each stop when "Where's My Train?" is expanded
   React.useEffect(() => {
-    if (!isWhereIsMyTrainExpanded || allStops.length === 0 || !trainData) return;
+    if (!isWhereIsMyTrainExpanded || allStops.length === 0 || !tripId) return;
 
-    const key = `${trainData.tripId}-${allStops.length}-${tempUnit}`;
+    const key = `${tripId}-${allStops.length}-${tempUnit}`;
     if (stopWeatherKeyRef.current === key) return;
     stopWeatherKeyRef.current = key;
 
@@ -190,35 +196,40 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
     fetchAllStopWeather();
     return () => { cancelled = true; };
-  }, [isWhereIsMyTrainExpanded, allStops, trainData, tempUnit]);
+  }, [isWhereIsMyTrainExpanded, allStops, tripId, tempUnit]);
 
-  // Fetch route history stats
+  // Fetch route history stats — only when route name changes
+  const routeName = trainData?.routeName;
   React.useEffect(() => {
+    if (!routeName) return;
+
+    let cancelled = false;
     const fetchRouteHistory = async () => {
-      if (!trainData) return;
-      
       try {
         const history = await TrainStorageService.getTripHistory();
         const matchingTrips = history.filter(
-          trip => trip.routeName === trainData.routeName
+          trip => trip.routeName === routeName
         );
-        
+
         const totalDistance = matchingTrips.reduce((sum, trip) => sum + (trip.distance || 0), 0);
         const totalDuration = matchingTrips.reduce((sum, trip) => sum + (trip.duration || 0), 0);
-        
-        setRouteHistory({
-          trips: matchingTrips.length,
-          distance: Math.round(totalDistance),
-          duration: Math.round(totalDuration),
-        });
+
+        if (!cancelled) {
+          setRouteHistory({
+            trips: matchingTrips.length,
+            distance: Math.round(totalDistance),
+            duration: Math.round(totalDuration),
+          });
+        }
       } catch (e) {
         logger.error('Failed to fetch route history:', e);
-        setRouteHistory(null);
+        if (!cancelled) setRouteHistory(null);
       }
     };
 
     fetchRouteHistory();
-  }, [trainData]);
+    return () => { cancelled = true; };
+  }, [routeName]);
 
   // Fetch weather for each stop when "Where's My Train?" is expanded
   React.useEffect(() => {

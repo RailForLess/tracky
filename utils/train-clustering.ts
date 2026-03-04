@@ -1,6 +1,6 @@
 /**
  * Train clustering utility
- * Groups nearby trains when zoomed out
+ * Groups nearby trains when zoomed out using a grid-based spatial hash (O(n))
  */
 
 import type { Train } from '../types/train';
@@ -34,7 +34,20 @@ export interface TrainCluster {
 }
 
 /**
- * Cluster trains based on zoom level
+ * Grid-based spatial hash key for a coordinate.
+ */
+function gridKey(lat: number, lon: number, cellSize: number): string {
+  const row = Math.floor(lat / cellSize);
+  const col = Math.floor(lon / cellSize);
+  return `${row},${col}`;
+}
+
+/**
+ * Cluster trains based on zoom level using a spatial grid.
+ *
+ * O(n) — each train is bucketed into a grid cell, then clusters are built
+ * from those buckets. No nested loops.
+ *
  * @param trains - Array of trains to cluster
  * @param latitudeDelta - Current map zoom level (larger = more zoomed out)
  * @returns Array of clusters or individual trains
@@ -55,54 +68,67 @@ export function clusterTrains(trains: LiveTrainData[], latitudeDelta: number): T
     }));
   }
 
-  // Calculate cluster distance based on zoom level
-  const clusterDistance = latitudeDelta * ClusteringConfig.clusterDistanceMultiplier;
+  const cellSize = latitudeDelta * ClusteringConfig.clusterDistanceMultiplier;
+  if (cellSize <= 0) {
+    return trains.map(train => ({
+      id: train.tripId,
+      lat: train.position.lat,
+      lon: train.position.lon,
+      trains: [train],
+      isCluster: false,
+      trainNumber: train.trainNumber,
+      routeName: train.routeName,
+      tripId: train.tripId,
+      isSaved: train.isSaved,
+    }));
+  }
 
-  const clusters: TrainCluster[] = [];
-  const processed = new Set<string>();
-
+  // Bucket trains into grid cells — O(n)
+  const grid = new Map<string, LiveTrainData[]>();
   for (const train of trains) {
-    if (processed.has(train.tripId)) continue;
+    const key = gridKey(train.position.lat, train.position.lon, cellSize);
+    let bucket = grid.get(key);
+    if (!bucket) {
+      bucket = [];
+      grid.set(key, bucket);
+    }
+    bucket.push(train);
+  }
 
-    // Find all nearby trains
-    const nearbyTrains = trains.filter(other => {
-      if (processed.has(other.tripId)) return false;
-      const distance = Math.sqrt(
-        Math.pow(train.position.lat - other.position.lat, 2) + Math.pow(train.position.lon - other.position.lon, 2)
-      );
-      return distance <= clusterDistance;
-    });
+  // Build clusters from buckets — O(n) total
+  const clusters: TrainCluster[] = [];
+  for (const bucket of grid.values()) {
+    let sumLat = 0;
+    let sumLon = 0;
+    let hasSaved = false;
+    for (const t of bucket) {
+      sumLat += t.position.lat;
+      sumLon += t.position.lon;
+      if (t.isSaved) hasSaved = true;
+    }
+    const avgLat = sumLat / bucket.length;
+    const avgLon = sumLon / bucket.length;
 
-    // Mark all as processed
-    nearbyTrains.forEach(t => processed.add(t.tripId));
-
-    // Calculate cluster center (average position)
-    const avgLat = nearbyTrains.reduce((sum, t) => sum + t.position.lat, 0) / nearbyTrains.length;
-    const avgLon = nearbyTrains.reduce((sum, t) => sum + t.position.lon, 0) / nearbyTrains.length;
-
-    // Check if any train in cluster is saved
-    const hasSavedTrain = nearbyTrains.some(t => t.isSaved);
-
-    if (nearbyTrains.length === 1) {
+    if (bucket.length === 1) {
       clusters.push({
-        id: nearbyTrains[0].tripId,
+        id: bucket[0].tripId,
         lat: avgLat,
         lon: avgLon,
-        trains: nearbyTrains,
+        trains: bucket,
         isCluster: false,
-        trainNumber: nearbyTrains[0].trainNumber,
-        routeName: nearbyTrains[0].routeName,
-        tripId: nearbyTrains[0].tripId,
-        isSaved: nearbyTrains[0].isSaved,
+        trainNumber: bucket[0].trainNumber,
+        routeName: bucket[0].routeName,
+        tripId: bucket[0].tripId,
+        isSaved: bucket[0].isSaved,
       });
     } else {
       clusters.push({
         id: `train-cluster-${avgLat}-${avgLon}`,
         lat: avgLat,
         lon: avgLon,
-        trains: nearbyTrains,
+        trains: bucket,
         isCluster: true,
-        isSaved: hasSavedTrain,
+        isSaved: hasSaved,
       });
     }
   }

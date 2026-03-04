@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { ensureFreshGTFS, isCacheStale, loadCachedGTFS } from '../services/gtfs-sync';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { gtfsParser } from '../utils/gtfs-parser';
@@ -121,17 +121,20 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
     runRefresh(false);
   }, [isRefreshing, runRefresh]);
 
+  const value = useMemo(
+    () => ({
+      isRefreshing,
+      isLoadingCache,
+      refreshProgress,
+      refreshStep,
+      initializeGTFS,
+      triggerRefresh,
+    }),
+    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, initializeGTFS, triggerRefresh]
+  );
+
   return (
-    <GTFSRefreshContext.Provider
-      value={{
-        isRefreshing,
-        isLoadingCache,
-        refreshProgress,
-        refreshStep,
-        initializeGTFS,
-        triggerRefresh,
-      }}
-    >
+    <GTFSRefreshContext.Provider value={value}>
       {children}
     </GTFSRefreshContext.Provider>
   );

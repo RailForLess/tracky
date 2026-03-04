@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { Train } from '../types/train';
 import { debug } from '../utils/logger';
 
@@ -37,8 +37,13 @@ export const TrainProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
+  const value = useMemo(
+    () => ({ savedTrains, setSavedTrains, selectedTrain, setSelectedTrain }),
+    [savedTrains, setSavedTrains, selectedTrain, setSelectedTrain]
+  );
+
   return (
-    <TrainContext.Provider value={{ savedTrains, setSavedTrains, selectedTrain, setSelectedTrain }}>
+    <TrainContext.Provider value={value}>
       {children}
     </TrainContext.Provider>
   );

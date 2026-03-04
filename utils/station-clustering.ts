@@ -1,6 +1,6 @@
 /**
  * Station clustering utility
- * Groups nearby stations when zoomed out
+ * Groups nearby stations when zoomed out using a grid-based spatial hash (O(n))
  */
 
 import { ClusteringConfig } from './clustering-config';
@@ -21,7 +21,22 @@ export interface StationCluster {
 }
 
 /**
- * Cluster stations based on zoom level
+ * Grid-based spatial hash key for a coordinate.
+ * Each cell is `cellSize` degrees on a side.
+ */
+function gridKey(lat: number, lon: number, cellSize: number): string {
+  const row = Math.floor(lat / cellSize);
+  const col = Math.floor(lon / cellSize);
+  return `${row},${col}`;
+}
+
+/**
+ * Cluster stations based on zoom level using a spatial grid.
+ *
+ * Algorithm: assign each station to a grid cell whose size equals the cluster
+ * distance. All stations in the same cell form a cluster. This is O(n) in the
+ * number of stations — no nested loops or `.filter()` over the full array.
+ *
  * @param stations - Array of stations to cluster
  * @param latitudeDelta - Current map zoom level (larger = more zoomed out)
  * @returns Array of clusters or individual stations
@@ -38,36 +53,47 @@ export function clusterStations(stations: Station[], latitudeDelta: number): Sta
     }));
   }
 
-  // Calculate cluster distance based on zoom level
-  // More zoomed out = larger cluster radius
-  const clusterDistance = latitudeDelta * ClusteringConfig.clusterDistanceMultiplier;
+  const cellSize = latitudeDelta * ClusteringConfig.clusterDistanceMultiplier;
+  if (cellSize <= 0) {
+    return stations.map(station => ({
+      id: station.id,
+      lat: station.lat,
+      lon: station.lon,
+      stations: [station],
+      isCluster: false,
+    }));
+  }
 
-  const clusters: StationCluster[] = [];
-  const processed = new Set<string>();
-
+  // Bucket stations into grid cells — O(n)
+  const grid = new Map<string, Station[]>();
   for (const station of stations) {
-    if (processed.has(station.id)) continue;
+    const key = gridKey(station.lat, station.lon, cellSize);
+    let bucket = grid.get(key);
+    if (!bucket) {
+      bucket = [];
+      grid.set(key, bucket);
+    }
+    bucket.push(station);
+  }
 
-    // Find all nearby stations
-    const nearbyStations = stations.filter(other => {
-      if (processed.has(other.id)) return false;
-      const distance = Math.sqrt(Math.pow(station.lat - other.lat, 2) + Math.pow(station.lon - other.lon, 2));
-      return distance <= clusterDistance;
-    });
-
-    // Mark all as processed
-    nearbyStations.forEach(s => processed.add(s.id));
-
-    // Calculate cluster center (average position)
-    const avgLat = nearbyStations.reduce((sum, s) => sum + s.lat, 0) / nearbyStations.length;
-    const avgLon = nearbyStations.reduce((sum, s) => sum + s.lon, 0) / nearbyStations.length;
+  // Build clusters from buckets — O(n) total across all buckets
+  const clusters: StationCluster[] = [];
+  for (const bucket of grid.values()) {
+    let sumLat = 0;
+    let sumLon = 0;
+    for (const s of bucket) {
+      sumLat += s.lat;
+      sumLon += s.lon;
+    }
+    const avgLat = sumLat / bucket.length;
+    const avgLon = sumLon / bucket.length;
 
     clusters.push({
-      id: nearbyStations.length === 1 ? nearbyStations[0].id : `cluster-${avgLat}-${avgLon}`,
+      id: bucket.length === 1 ? bucket[0].id : `cluster-${avgLat}-${avgLon}`,
       lat: avgLat,
       lon: avgLon,
-      stations: nearbyStations,
-      isCluster: nearbyStations.length > 1,
+      stations: bucket,
+      isCluster: bucket.length > 1,
     });
   }
 
