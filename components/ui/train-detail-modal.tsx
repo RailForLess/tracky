@@ -6,7 +6,7 @@ import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, CloseButtonStyle, Spacing } from '../../constants/theme';
-import { TrainIcon } from '../TrainIcon';
+import { isThruwayName, TrainIcon } from '../TrainIcon';
 import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToDate, timeToMinutes } from '../../utils/time-formatting';
 import { RealtimeService } from '../../services/realtime';
 
@@ -715,7 +715,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                   <TrainIcon name={trainData?.routeName} size={24} color={AppColors.primary} />
                 </View>
                 <View style={styles.infoCardContent}>
-                  <Text style={styles.infoCardTitle}>Where's My Train?</Text>
+                  <Text style={styles.infoCardTitle}>{isThruwayName(trainData?.routeName) ? "Where's My Bus?" : "Where's My Train?"}</Text>
                   <MarqueeText text={whereIsMyTrainSubtext} style={styles.infoCardSubtext} />
                 </View>
                 <Ionicons
