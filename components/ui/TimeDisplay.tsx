@@ -83,6 +83,10 @@ const createStyles = (colors: ColorPalette) =>
     },
   });
 
+function formatDayOffset(offset: number): string {
+  return offset > 0 ? `+${offset}` : `${offset}`;
+}
+
 export default function TimeDisplay({
   time,
   dayOffset = 0,
@@ -105,16 +109,16 @@ export default function TimeDisplay({
       <View style={[styles.delayContainerVertical, containerStyle]}>
         <View style={styles.container}>
           <AnimatedRollingText value={delayedTime!} style={[style, styles.delayedTime]} />
-          {(delayedDayOffset ?? 0) > 0 && (
-            <AnimatedRollingText value={`+${delayedDayOffset}`} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
+          {(delayedDayOffset ?? 0) !== 0 && (
+            <AnimatedRollingText value={formatDayOffset(delayedDayOffset!)} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
           )}
         </View>
         <View style={styles.originalTimeRow}>
           <AnimatedRollingText value={`${delayStr} · `} style={[style, styles.originalTimeSmall, styles.delayLabel]} />
           <View style={styles.originalTimeContainer}>
             <AnimatedRollingText value={time} style={[style, styles.originalTimeSmall]} />
-            {dayOffset > 0 && (
-              <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript, styles.originalSuperscriptSmall]}>+{dayOffset}</Text>
+            {dayOffset !== 0 && (
+              <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript, styles.originalSuperscriptSmall]}>{formatDayOffset(dayOffset)}</Text>
             )}
           </View>
         </View>
@@ -128,14 +132,14 @@ export default function TimeDisplay({
       <View style={[styles.delayContainer, containerStyle]}>
         <View style={styles.container}>
           <AnimatedRollingText value={`${delayedTime}${delayLabel}`} style={[style, styles.delayedTime]} />
-          {(delayedDayOffset ?? 0) > 0 && (
-            <AnimatedRollingText value={`+${delayedDayOffset}`} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
+          {(delayedDayOffset ?? 0) !== 0 && (
+            <AnimatedRollingText value={formatDayOffset(delayedDayOffset!)} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
           )}
         </View>
         <View style={styles.originalTimeContainer}>
           <AnimatedRollingText value={time} style={[style, styles.originalTime]} />
-          {dayOffset > 0 && (
-            <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript]}>+{dayOffset}</Text>
+          {dayOffset !== 0 && (
+            <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript]}>{formatDayOffset(dayOffset)}</Text>
           )}
         </View>
       </View>
@@ -149,7 +153,7 @@ export default function TimeDisplay({
   return (
     <View style={[styles.container, containerStyle]}>
       <AnimatedRollingText value={time} style={style} />
-      <Text style={[styles.superscript, superscriptStyle]}>+{dayOffset}</Text>
+      <Text style={[styles.superscript, superscriptStyle]}>{formatDayOffset(dayOffset)}</Text>
     </View>
   );
 }

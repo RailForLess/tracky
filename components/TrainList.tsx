@@ -202,7 +202,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
     if (!isFirst || !contentOpacity) {
       return {};
     }
-    const marginBottom = interpolate(contentOpacity.value, [0, 1], [100, Spacing.md], 'clamp');
+    const marginBottom = interpolate(contentOpacity.value, [0, 1], [100, 0], 'clamp');
     return {
       marginBottom,
     };

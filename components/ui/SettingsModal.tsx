@@ -1078,6 +1078,66 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
           </TouchableOpacity>
         </View>
+        <Text style={styles.sectionHeader}>WEATHER</Text>
+        <View style={styles.settingsList}>
+          <TouchableOpacity
+            style={[styles.settingsItem, styles.settingsItemLast]}
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticLight();
+              Linking.openURL('https://open-meteo.com');
+            }}
+          >
+            <View style={styles.itemIconContainer}>
+              <Ionicons name="partly-sunny-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>Open-Meteo</Text>
+              <Text style={styles.itemSubtitle}>Current weather conditions and forecasts</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={colors.secondary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.sectionHeader}>MAP</Text>
+        <View style={styles.settingsList}>
+          <TouchableOpacity
+            style={[styles.settingsItem, styles.settingsItemLast]}
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticLight();
+              Linking.openURL(Platform.OS === 'ios' ? 'https://maps.apple.com' : 'https://maps.google.com');
+            }}
+          >
+            <View style={styles.itemIconContainer}>
+              <Ionicons name="map-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>{Platform.OS === 'ios' ? 'Apple Maps' : 'Google Maps'}</Text>
+              <Text style={styles.itemSubtitle}>Map tiles, satellite imagery, and routing</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={colors.secondary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.sectionHeader}>TIMEZONE</Text>
+        <View style={styles.settingsList}>
+          <TouchableOpacity
+            style={[styles.settingsItem, styles.settingsItemLast]}
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticLight();
+              Linking.openURL('https://github.com/photostructure/tz-lookup');
+            }}
+          >
+            <View style={styles.itemIconContainer}>
+              <Ionicons name="time-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>tz-lookup</Text>
+              <Text style={styles.itemSubtitle}>Offline timezone resolution from coordinates</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={colors.secondary} />
+          </TouchableOpacity>
+        </View>
       </View>
     </>
   );
@@ -1355,16 +1415,13 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
   modalContent: { flex: 1, marginHorizontal: -Spacing.xl, minHeight: '100%', overflow: 'hidden' },
   pageContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background.primary,
   },
   subpageContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background.primary,
   },
   fixedHeader: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.sm,
-    backgroundColor: colors.background.primary,
   },
   divider: { height: 1, backgroundColor: colors.border.primary, marginVertical: Spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing.xs },
@@ -1397,7 +1454,7 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
     marginTop: Spacing.lg,
     marginBottom: Spacing.md,
   },
-  settingsList: { backgroundColor: colors.background.primary, borderRadius: BorderRadius.md, overflow: 'hidden' },
+  settingsList: { borderRadius: BorderRadius.md, overflow: 'hidden' },
   settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1441,7 +1498,6 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.md,
-    backgroundColor: colors.background.primary,
     borderWidth: 1,
     borderColor: colors.border.primary,
   },
@@ -1456,7 +1512,6 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs + 2,
     borderRadius: BorderRadius.sm,
-    backgroundColor: colors.background.primary,
     borderWidth: 1,
     borderColor: colors.border.primary,
   },
@@ -1466,7 +1521,6 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
   logCount: { fontSize: 12, color: colors.secondary, marginBottom: Spacing.sm },
   logContainer: { gap: 1 },
   logEntry: {
-    backgroundColor: colors.background.primary,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 1,

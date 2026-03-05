@@ -1086,7 +1086,6 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create({
     backgroundColor: colors.border.primary,
   },
   historyCard: {
-    backgroundColor: colors.background.primary,
     padding: Spacing.lg,
   },
   historyDetailRow: {

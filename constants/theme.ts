@@ -43,24 +43,24 @@ export const DarkColors: ColorPalette = {
 };
 
 export const LightColors: ColorPalette = {
-  primary: '#1C1C1E',
-  secondary: 'rgba(0, 0, 0, 0.5)',
-  tertiary: 'rgba(0, 0, 0, 0.2)',
+  primary: '#fff',
+  secondary: 'rgba(255, 255, 255, 0.5)',
+  tertiary: 'rgba(255, 255, 255, 0.2)',
   accent: '#FF6B35',
-  accentBlue: '#007AFF',
+  accentBlue: '#FFFFFF',
   success: '#10B981',
   error: '#EF4444',
   delayed: '#EF4444',
   inProgress: '#10B981',
-  shadow: 'rgba(0, 0, 0, 0.1)',
+  shadow: '#000',
   background: {
-    primary: '#FFFFFF',
-    secondary: '#F2F2F7',
-    tertiary: '#E5E5EA',
+    primary: 'rgba(255, 255, 255, 0.12)',
+    secondary: 'rgba(255, 255, 255, 0.08)',
+    tertiary: 'rgba(255, 255, 255, 0.05)',
   },
   border: {
-    primary: '#D1D1D6',
-    secondary: '#C7C7CC',
+    primary: 'rgba(255, 255, 255, 0.15)',
+    secondary: 'rgba(255, 255, 255, 0.10)',
   },
 };
 

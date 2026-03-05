@@ -4,7 +4,9 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { type ColorPalette, FontSizes, Spacing } from '../constants/theme';
 import { useColors } from '../context/ThemeContext';
 import { createStyles } from '../screens/styles';
-import { getDelayColorKey, parseTimeToDate } from '../utils/time-formatting';
+import { getDelayColorKey, parseTimeToMinutes } from '../utils/time-formatting';
+import { gtfsParser } from '../utils/gtfs-parser';
+import { getCurrentSecondsInTimezone, getTimezoneForStop } from '../utils/timezone';
 import AnimatedRollingText from './ui/AnimatedRollingText';
 import MarqueeText from './ui/MarqueeText';
 import TimeDisplay from './ui/TimeDisplay';
@@ -73,12 +75,14 @@ export default function TrainCardContent({
 
   const isArrived = useMemo(() => {
     if (!isPast || !arriveTime) return false;
-    const now = new Date();
-    const arrive = parseTimeToDate(arriveTime, now);
-    if (arriveDayOffset) arrive.setDate(arrive.getDate() + arriveDayOffset);
-    const delay = arriveDelayMinutes ?? 0;
-    return now.getTime() >= arrive.getTime() + delay * 60 * 1000;
-  }, [isPast, arriveTime, arriveDayOffset, arriveDelayMinutes]);
+    const toStop = gtfsParser.getStop(toCode);
+    const arriveTz = toStop ? getTimezoneForStop(toStop) : gtfsParser.agencyTimezone;
+    const nowSec = getCurrentSecondsInTimezone(arriveTz);
+    const arriveSec = parseTimeToMinutes(arriveTime) * 60
+      + (arriveDayOffset ?? 0) * 24 * 3600;
+    const delaySec = (arriveDelayMinutes ?? 0) * 60;
+    return nowSec >= arriveSec + delaySec;
+  }, [isPast, arriveTime, arriveDayOffset, arriveDelayMinutes, toCode]);
 
   const shouldFadeTitle = fadeOnlyOnArrival ? isArrived : isPast;
   const pastColor = isPast ? { color: colors.secondary } : undefined;

@@ -1,3 +1,4 @@
+import { BlurView } from 'expo-blur';
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -13,7 +14,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { BorderRadius, Spacing } from '../../constants/theme';
-import { useColors } from '../../context/ThemeContext';
+import { useTheme } from '../../context/ThemeContext';
 import { medium as hapticMedium } from '../../utils/haptics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -63,7 +64,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
   { children, onSnapChange, onHeightChange, onDismiss, minSnapPercent = 0.35, initialSnap = 'half', startHidden = false }: SlideUpModalProps,
   ref: React.Ref<SlideUpModalHandle>
 ) {
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   // Capture color strings as locals for worklet closures
   const bgPrimary = colors.background.primary;
   const borderPrimary = colors.border.primary;
@@ -374,7 +375,11 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
               isFullscreen && staticStyles.blurContainerFullscreen,
             ]}
           >
-            <Animated.View style={[StyleSheet.absoluteFill, animatedBorderRadius, { overflow: 'hidden', backgroundColor: bgPrimary }]}>
+            <Animated.View style={[StyleSheet.absoluteFill, animatedBorderRadius, { overflow: 'hidden' }]}>
+              {!isDark && (
+                <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+              )}
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: bgPrimary }]} />
               <Animated.View style={staticStyles.content}>
                 <View style={staticStyles.handleContainer} />
                 <View style={staticStyles.childrenContainer}>{children}</View>

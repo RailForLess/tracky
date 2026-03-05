@@ -59,6 +59,7 @@ import { calculateDaysAway, formatDateForDisplay } from '../utils/date-helpers';
 import { haversineDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { formatTime, formatTimeWithDayOffset, parseTimeToMinutes } from '../utils/time-formatting';
+import { convertGtfsTimeForStop } from '../utils/timezone';
 import { stationLoader } from './station-loader';
 
 export class TrainStorageService {
@@ -96,7 +97,7 @@ export class TrainStorageService {
             if (fromStop) {
               train.from = fromStop.stop_name;
               train.fromCode = fromStop.stop_id;
-              const departFormatted = formatTimeWithDayOffset(fromStop.departure_time);
+              const departFormatted = convertGtfsTimeForStop(fromStop.departure_time, fromStop.stop_id);
               train.departTime = departFormatted.time;
               train.departDayOffset = departFormatted.dayOffset;
             }
@@ -107,7 +108,7 @@ export class TrainStorageService {
             if (toStop) {
               train.to = toStop.stop_name;
               train.toCode = toStop.stop_id;
-              const arriveFormatted = formatTimeWithDayOffset(toStop.arrival_time);
+              const arriveFormatted = convertGtfsTimeForStop(toStop.arrival_time, toStop.stop_id);
               train.arriveTime = arriveFormatted.time;
               train.arriveDayOffset = arriveFormatted.dayOffset;
             }
@@ -119,11 +120,14 @@ export class TrainStorageService {
             const toIdx = stopTimes.findIndex(s => s.stop_id === ref.toCode);
             if (fromIdx !== -1 && toIdx !== -1) {
               const segmentStops = stopTimes.slice(fromIdx + 1, toIdx);
-              train.intermediateStops = segmentStops.map(s => ({
-                time: formatTime(s.departure_time),
-                name: s.stop_name,
-                code: s.stop_id,
-              }));
+              train.intermediateStops = segmentStops.map(s => {
+                const fmt = convertGtfsTimeForStop(s.departure_time, s.stop_id);
+                return {
+                  time: fmt.dayOffset !== 0 ? `${fmt.time} ${fmt.dayOffset > 0 ? '+' : ''}${fmt.dayOffset}` : fmt.time,
+                  name: s.stop_name,
+                  code: s.stop_id,
+                };
+              });
             }
           }
         }

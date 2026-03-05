@@ -32,22 +32,35 @@ interface TwoStationSearchProps {
 
 import { formatDateForDisplay } from '../utils/date-helpers';
 import { addDelayToTime, formatTime, formatTimeWithDayOffset } from '../utils/time-formatting';
+import { convertGtfsTimeForStop, getCurrentSecondsInTimezone } from '../utils/timezone';
 
 const formatDateForPill = formatDateForDisplay;
 
 function getCountdownFromDeparture(departureTime: string, travelDate: Date): { value: number; unit: string; past: boolean } {
   const [hStr, mStr] = departureTime.split(':');
-  let h = parseInt(hStr, 10);
+  const h = parseInt(hStr, 10);
   const m = parseInt(mStr, 10);
-  const dayOffset = Math.floor(h / 24);
-  h = h % 24;
+  const departSecOfDay = h * 3600 + m * 60; // handles GTFS h>=24 naturally
 
-  const depart = new Date(travelDate);
-  depart.setDate(depart.getDate() + dayOffset);
-  depart.setHours(h, m, 0, 0);
-
+  const tz = gtfsParser.agencyTimezone;
   const now = new Date();
-  const deltaSec = (depart.getTime() - now.getTime()) / 1000;
+  const nowSec = getCurrentSecondsInTimezone(tz);
+
+  // Get today's date in agency timezone
+  const todayParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz || undefined,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const todayYear = parseInt(todayParts.find(p => p.type === 'year')!.value, 10);
+  const todayMonth = parseInt(todayParts.find(p => p.type === 'month')!.value, 10);
+  const todayDay = parseInt(todayParts.find(p => p.type === 'day')!.value, 10);
+
+  // Day difference between travelDate and today (in agency tz)
+  const travelDay = new Date(travelDate.getFullYear(), travelDate.getMonth(), travelDate.getDate());
+  const todayDate = new Date(todayYear, todayMonth - 1, todayDay);
+  const dayDiff = Math.round((travelDay.getTime() - todayDate.getTime()) / 86400000);
+
+  const deltaSec = dayDiff * 86400 + departSecOfDay - nowSec;
   const past = deltaSec < 0;
   const absSec = Math.abs(deltaSec);
 
@@ -71,8 +84,8 @@ const getCalendarTheme = (colors: ColorPalette, isDark: boolean) => ({
   dayTextColor: colors.primary,
   monthTextColor: colors.primary,
   arrowColor: colors.primary,
-  selectedDayBackgroundColor: isDark ? '#FFFFFF' : '#000000',
-  selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
+  selectedDayBackgroundColor: '#FFFFFF',
+  selectedDayTextColor: '#000000',
   textDisabledColor: colors.tertiary,
   todayTextColor: colors.primary,
   todayBackgroundColor: colors.background.primary,
@@ -1092,8 +1105,8 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 const singularUnit = countdown.unit.slice(0, -1);
                 const unitText = countdown.value === 1 ? singularUnit : countdown.unit;
                 const countdownLabel = unitText;
-                const depart = formatTimeWithDayOffset(trip.fromStop.departure_time);
-                const arrive = formatTimeWithDayOffset(trip.toStop.arrival_time);
+                const depart = convertGtfsTimeForStop(trip.fromStop.departure_time, trip.fromStop.stop_id);
+                const arrive = convertGtfsTimeForStop(trip.toStop.arrival_time, trip.toStop.stop_id);
                 const delays = tripDelays.get(trip.tripId);
                 const depDelay = delays?.departDelay;
                 const arrDelay = delays?.arriveDelay;

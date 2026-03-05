@@ -7,6 +7,7 @@ import type { EnrichedStopTime, Route, SearchResult, Stop, Train } from '../type
 import { gtfsParser } from '../utils/gtfs-parser';
 import { RealtimeService } from './realtime';
 import { formatTime, formatTimeWithDayOffset, type FormattedTime } from '../utils/time-formatting';
+import { convertGtfsTimeForStop } from '../utils/timezone';
 import { extractTrainNumber } from '../utils/train-helpers';
 import { calculateDaysAway, formatDateForDisplay, getDaysAwayLabel } from '../utils/date-helpers';
 import { logger } from '../utils/logger';
@@ -421,9 +422,9 @@ export class TrainAPIService {
       // Get proper train number and route name
       const { routeName, trainNumber } = getTrainDisplayName(tripId);
 
-      // Format times with day offset info
-      const departFormatted = formatTimeWithDayOffset(firstStop.departure_time);
-      const arriveFormatted = formatTimeWithDayOffset(lastStop.arrival_time);
+      // Format times with day offset info, converting to each stop's local timezone
+      const departFormatted = convertGtfsTimeForStop(firstStop.departure_time, firstStop.stop_id);
+      const arriveFormatted = convertGtfsTimeForStop(lastStop.arrival_time, lastStop.stop_id);
 
       const train: Train = {
         id: simpleHash(tripId),
@@ -443,7 +444,7 @@ export class TrainAPIService {
         routeName: routeName || '',
         tripId: tripId,
         intermediateStops: stopTimes.slice(1, -1).map(stop => {
-          const formatted = formatTimeWithDayOffset(stop.departure_time);
+          const formatted = convertGtfsTimeForStop(stop.departure_time, stop.stop_id);
           return {
             time: formatted.time,
             name: stop.stop_name,

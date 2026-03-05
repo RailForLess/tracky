@@ -116,7 +116,6 @@ export const createStyles = (colors: ColorPalette) =>
     },
     frequentlyUsedSubtitle: { fontSize: FontSizes.daysLabel, fontFamily: FONTS.family, color: colors.secondary },
     trainCard: {
-      backgroundColor: colors.background.primary,
     },
     trainLeft: { alignItems: 'center', justifyContent: 'center', marginRight: Spacing.lg, minWidth: 60 },
     daysAway: {

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useColors } from '../../context/ThemeContext';
 
 interface StationCluster {
   id: string;
@@ -20,7 +19,6 @@ interface AnimatedStationMarkerProps {
 }
 
 export function AnimatedStationMarker({ cluster, showFullName, displayName, onPress }: AnimatedStationMarkerProps) {
-  const colors = useColors();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const [currentDisplay, setCurrentDisplay] = useState(displayName);
@@ -96,23 +94,23 @@ export function AnimatedStationMarker({ cluster, showFullName, displayName, onPr
         <Ionicons
           name="location"
           size={24}
-          color={colors.primary}
+          color="#FFFFFF"
           style={{
-            textShadowColor: 'rgba(0, 0, 0, 0.75)',
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
             textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 3,
+            textShadowRadius: 4,
           }}
         />
         <Text
           style={{
-            color: colors.primary,
+            color: '#FFFFFF',
             fontSize: currentIsCluster ? 10 : 9,
             fontWeight: '600',
             marginTop: 0,
             textAlign: 'center',
-            textShadowColor: 'rgba(0, 0, 0, 0.75)',
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
             textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 3,
+            textShadowRadius: 4,
           }}
           numberOfLines={1}
         >

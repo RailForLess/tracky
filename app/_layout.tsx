@@ -4,9 +4,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
+
+// expo-widgets requires a native module that isn't available in Expo Go
+LogBox.ignoreLogs(['Cannot find native module \'ExpoWidgets\'']);
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ThemeProvider } from '../context/ThemeContext';
 import '../services/background-tasks';
@@ -42,7 +45,7 @@ function RootLayout() {
           <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
           </Stack>
-          <StatusBar style="auto" />
+          <StatusBar style="light" />
         </GestureHandlerRootView>
       </ErrorBoundary>
     </ThemeProvider>

@@ -2,7 +2,9 @@
  * Shared display/formatting utilities for train UI components.
  */
 import type { Train } from '../types/train';
-import { parseTimeToDate, timeToMinutes } from './time-formatting';
+import { parseTimeToMinutes, timeToMinutes } from './time-formatting';
+import { gtfsParser } from './gtfs-parser';
+import { getCurrentSecondsInTimezone, getTimezoneForStop } from './timezone';
 
 /**
  * Get a human-readable countdown for a train's departure.
@@ -16,10 +18,11 @@ export function getCountdownForTrain(train: Train): {
   if (train.daysAway && train.daysAway > 0) {
     return { value: Math.round(train.daysAway), unit: 'DAYS', past: false };
   }
-  const now = new Date();
-  const baseDate = new Date(now);
-  const departDate = parseTimeToDate(train.departTime, baseDate);
-  let deltaSec = (departDate.getTime() - now.getTime()) / 1000;
+  const fromStop = gtfsParser.getStop(train.fromCode);
+  const fromTz = fromStop ? getTimezoneForStop(fromStop) : gtfsParser.agencyTimezone;
+  const nowSec = getCurrentSecondsInTimezone(fromTz);
+  const departSec = parseTimeToMinutes(train.departTime) * 60;
+  let deltaSec = departSec - nowSec;
   const past = deltaSec < 0;
   const absSec = Math.abs(deltaSec);
 

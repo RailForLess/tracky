@@ -6,7 +6,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { useColors } from '../../context/ThemeContext';
 import { TrainIcon } from '../TrainIcon';
 
 interface LiveTrainMarkerProps {
@@ -31,14 +30,13 @@ export function LiveTrainMarker({
   clusterCount = 0,
   onPress,
 }: LiveTrainMarkerProps) {
-  const colors = useColors();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
   const [currentLabel, setCurrentLabel] = useState(isCluster ? `${clusterCount}+` : trainNumber);
   const [currentIsCluster, setCurrentIsCluster] = useState(isCluster);
 
-  const iconColor = isSaved ? colors.accentBlue : colors.primary;
+  const iconColor = '#FFFFFF';
 
   useEffect(() => {
     Animated.parallel([
@@ -108,9 +106,9 @@ export function LiveTrainMarker({
           size={24}
           color={iconColor}
           style={{
-            textShadowColor: 'rgba(0, 0, 0, 0.75)',
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
             textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 3,
+            textShadowRadius: 4,
           }}
         />
         <Text
@@ -120,9 +118,9 @@ export function LiveTrainMarker({
             fontWeight: '600',
             marginTop: 0,
             textAlign: 'center',
-            textShadowColor: 'rgba(0, 0, 0, 0.75)',
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
             textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 3,
+            textShadowRadius: 4,
           }}
           numberOfLines={1}
         >

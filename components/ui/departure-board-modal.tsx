@@ -26,7 +26,7 @@ import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 import { addDelayToTime, parseTimeToMinutes } from '../../utils/time-formatting';
 import TrainCardContent from '../TrainCardContent';
 import MarqueeText from './MarqueeText';
-import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
+import { getCurrentMinutesInTimezone, getCurrentSecondsInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { gtfsParser } from '../../utils/gtfs-parser';
 import { formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
@@ -44,8 +44,8 @@ const getCalendarTheme = (colors: ColorPalette, isDark: boolean) => ({
   dayTextColor: colors.primary,
   monthTextColor: colors.primary,
   arrowColor: colors.primary,
-  selectedDayBackgroundColor: isDark ? '#FFFFFF' : '#000000',
-  selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
+  selectedDayBackgroundColor: '#FFFFFF',
+  selectedDayTextColor: '#000000',
   textDisabledColor: colors.tertiary,
   todayTextColor: colors.primary,
   todayBackgroundColor: colors.background.primary,
@@ -91,7 +91,7 @@ function isTrainUpcoming(
   selectedDate: Date,
   stationId: string,
   filterMode: 'all' | 'departing' | 'arriving',
-  _stationTimezone: string | null
+  stationTimezone: string | null
 ): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -103,8 +103,8 @@ function isTrainUpcoming(
     return true;
   }
 
-  // GTFS times are in the agency timezone, so compare "now" in that timezone
-  const currentMinutes = getCurrentMinutesInTimezone(gtfsParser.agencyTimezone);
+  // Times are now in the station's local timezone, so compare "now" in that timezone
+  const currentMinutes = getCurrentMinutesInTimezone(stationTimezone ?? gtfsParser.agencyTimezone);
 
   let relevantTime: string;
   if (filterMode === 'arriving' || train.toCode === stationId) {
@@ -191,30 +191,36 @@ const DepartureItem = React.memo(function DepartureItem({ train, stationTime, st
   const departStyles = useMemo(() => createDepartureStyles(colors), [colors]);
 
   const countdown = useMemo(() => {
-    const [hStr, mStr] = stationTime.time.split(':');
-    let h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    const totalDayOffset = (stationTime.dayOffset ?? 0) + Math.floor(h / 24);
-    h = h % 24;
+    // Times are in the station's local timezone; compare "now" in same tz
+    const stopData = gtfsParser.getStop(stationId);
+    const tz = stopData ? getTimezoneForStop(stopData) : gtfsParser.agencyTimezone;
 
-    const depart = new Date(selectedDate);
-    depart.setDate(depart.getDate() + totalDayOffset);
-    depart.setHours(h, m, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(selectedDate);
+    target.setHours(0, 0, 0, 0);
+    const daysAway = Math.round((target.getTime() - today.getTime()) / 86400000);
 
-    const now = new Date();
-    const deltaSec = (depart.getTime() - now.getTime()) / 1000;
+    if (daysAway > 0) {
+      return { value: daysAway, unit: 'DAYS', past: false };
+    }
+
+    const nowSec = getCurrentSecondsInTimezone(tz);
+    const departSec = parseTimeToMinutes(stationTime.time) * 60
+      + (stationTime.dayOffset ?? 0) * 24 * 3600;
+    const deltaSec = departSec - nowSec;
     const past = deltaSec < 0;
     const absSec = Math.abs(deltaSec);
 
-    const days = Math.round(absSec / 86400);
-    if (days >= 1) return { value: days, unit: 'DAYS', past };
     const hours = Math.round(absSec / 3600);
     if (hours >= 1) return { value: hours, unit: 'HOURS', past };
     const minutes = Math.round(absSec / 60);
+    if (minutes >= 60) return { value: 1, unit: 'HOURS', past };
     if (minutes >= 1) return { value: minutes, unit: 'MINUTES', past };
     const seconds = Math.round(absSec);
+    if (seconds >= 60) return { value: 1, unit: 'MINUTES', past };
     return { value: seconds, unit: 'SECONDS', past };
-  }, [stationTime, selectedDate]);
+  }, [stationTime, selectedDate, stationId]);
 
   const singularUnit = countdown.unit.slice(0, -1);
   const countdownLabel = countdown.value === 1 ? singularUnit : countdown.unit;
@@ -456,7 +462,7 @@ export default function DepartureBoardModal({
 
   const calendarMarkedDates = useMemo(() => {
     const marks: Record<string, { selected?: boolean; selectedColor?: string }> = {};
-    marks[toDateString(selectedDate)] = { selected: true, selectedColor: isDark ? '#FFFFFF' : '#000000' };
+    marks[toDateString(selectedDate)] = { selected: true, selectedColor: '#FFFFFF' };
     return marks;
   }, [selectedDate, isDark]);
 

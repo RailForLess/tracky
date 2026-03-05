@@ -9,7 +9,7 @@ import { type ColorPalette, Spacing, getCloseButtonStyle } from '../../constants
 import { useTheme } from '../../context/ThemeContext';
 import { light as hapticLight } from '../../utils/haptics';
 import { isThruwayName, TrainIcon } from '../TrainIcon';
-import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToDate, timeToMinutes } from '../../utils/time-formatting';
+import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToMinutes, timeToMinutes } from '../../utils/time-formatting';
 import { RealtimeService } from '../../services/realtime';
 import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 
@@ -20,7 +20,7 @@ import type { Train } from '../../types/train';
 import { haversineDistance } from '../../utils/distance';
 import { gtfsParser } from '../../utils/gtfs-parser';
 import { logger, openReportBadDataEmail } from '../../utils/logger';
-import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
+import { convertGtfsTimeToLocal, getCurrentMinutesInTimezone, getCurrentSecondsInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { calculateDuration, getCountdownForTrain, pluralize } from '../../utils/train-display';
 import { convertDistance, distanceSuffix, formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
@@ -55,6 +55,7 @@ interface StopInfo {
   dayOffset: number;
   name: string;
   code: string;
+  timezone: string;
 }
 
 export default function TrainDetailModal({ train, onClose, onStationSelect, onTrainSelect }: TrainDetailModalProps) {
@@ -85,13 +86,19 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     try {
       const stops = gtfsParser.getStopTimesForTrip(tripId);
       if (stops && stops.length > 0) {
+        const agencyTzVal = gtfsParser.agencyTimezone;
         const formattedStops = stops.map(stop => {
-          const formatted = stop.departure_time ? formatTime24to12(stop.departure_time) : { time: '', dayOffset: 0 };
+          const stopData = gtfsParser.getStop(stop.stop_id);
+          const stopTz = stopData ? getTimezoneForStop(stopData) : agencyTzVal;
+          const formatted = stop.departure_time
+            ? convertGtfsTimeToLocal(stop.departure_time, agencyTzVal, stopTz)
+            : { time: '', dayOffset: 0 };
           return {
             time: formatted.time,
             dayOffset: formatted.dayOffset,
             name: stop.stop_name,
             code: stop.stop_id,
+            timezone: stopTz || agencyTzVal,
           };
         });
         setAllStops(formattedStops);
@@ -370,14 +377,14 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   };
 
   // Find next stop for live trains
-  // GTFS stop times are in the agency timezone, so compare "now" in that timezone
+  // Each stop's time is now in that stop's local timezone
   const agencyTz = gtfsParser.agencyTimezone;
   const nextStopIndex = React.useMemo(() => {
     if (!isLiveTrain || allStops.length === 0) return -1;
 
-    const currentMinutes = getCurrentMinutesInTimezone(agencyTz);
     for (let i = 0; i < allStops.length; i++) {
       const stop = allStops[i];
+      const currentMinutes = getCurrentMinutesInTimezone(stop.timezone);
       const stopMinutes = timeToMinutes(stop.time);
       const adjustedStopMinutes = stopMinutes + stop.dayOffset * 24 * 60;
       if (adjustedStopMinutes > currentMinutes) {
@@ -385,7 +392,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       }
     }
     return -1;
-  }, [isLiveTrain, allStops, agencyTz]);
+  }, [isLiveTrain, allStops]);
 
   // Local time at the train's next stop (only for live trains)
   const [trainLocalTime, setTrainLocalTime] = React.useState<string | null>(null);
@@ -419,7 +426,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       return `${allStops.length} stops`;
     }
     const stop = allStops[nextStopIndex];
-    const currentMinutes = getCurrentMinutesInTimezone(agencyTz);
+    const currentMinutes = getCurrentMinutesInTimezone(stop.timezone);
     const stopMinutes = timeToMinutes(stop.time) + stop.dayOffset * 24 * 60;
     const delayData = stopDelays.get(stop.code);
     const delayMin = delayData?.arrivalDelay ?? delayData?.departureDelay ?? 0;
@@ -430,7 +437,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       : `${diffMin} min`;
     const delayLabel = delayOffset > 0 ? ` (${delayOffset}m late)` : '';
     return nextStopIndex === 0 ? `Departs ${stop.name} in ${timeStr}${delayLabel}` : `${stop.name} in ${timeStr}${delayLabel}`;
-  }, [isLiveTrain, nextStopIndex, allStops, stopDelays, agencyTz]);
+  }, [isLiveTrain, nextStopIndex, allStops, stopDelays]);
 
   if (!trainData) {
     return (
@@ -490,11 +497,18 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
             const liveDelay = isLiveTrain ? trainData.realtime?.delay : undefined;
             const liveDelayKey = isLiveTrain ? getDelayColorKey(liveDelay) : null;
             const bannerBg = liveDelayKey === 'delayed' ? 'rgba(239, 68, 68, 0.15)'
-              : liveDelayKey === 'onTime' ? 'rgba(16, 185, 129, 0.15)'
+              : (liveDelayKey === 'onTime' || isLiveTrain) ? 'rgba(16, 185, 129, 0.15)'
               : undefined;
             const bannerColor = liveDelayKey === 'delayed' ? colors.delayed
-              : liveDelayKey === 'onTime' ? colors.success
+              : (liveDelayKey === 'onTime' || isLiveTrain) ? colors.success
               : colors.primary;
+            // Check if the train has completed (arrival time has passed)
+            const destStop = gtfsParser.getStop(trainData.toCode);
+            const destTz = destStop ? getTimezoneForStop(destStop) : gtfsParser.agencyTimezone;
+            const nowSec = getCurrentSecondsInTimezone(destTz);
+            const arriveSec = parseTimeToMinutes(trainData.arriveTime) * 60
+              + (trainData.arriveDayOffset || 0) * 24 * 3600;
+            const isCompleted = countdown.past && arriveSec - nowSec < 0;
             return (
             <View style={[styles.expandableSection, bannerBg != null && { backgroundColor: bannerBg }]}>
               <View style={styles.statusRow}>
@@ -504,8 +518,8 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                   <Ionicons name="time-outline" size={20} color={colors.primary} style={{ marginRight: Spacing.sm }} />
                 )}
                 <Text style={[styles.statusText, { color: bannerColor }]}>
-                  {isLiveTrain ? 'En route, ' : ''}
-                  {countdown.past ? (isLiveTrain ? 'departed ' : 'Departed ') : (isLiveTrain ? 'departs in ' : 'Departs in ')}
+                  {isLiveTrain && !isCompleted ? 'En route, ' : ''}
+                  {isCompleted ? 'Completed ' : countdown.past ? (isLiveTrain ? 'departed ' : 'Departed ') : (isLiveTrain ? 'departs in ' : 'Departs in ')}
                 </Text>
                 <AnimatedRollingText value={String(countdown.value)} style={[styles.statusText, { fontWeight: 'bold', color: bannerColor }]} />
                 <Text style={[styles.statusText, { color: bannerColor }]}>{' '}{unitLabel.toLowerCase()}</Text>
@@ -610,10 +624,12 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                 // Compute arrival countdown
                 const arriveTime = aDelayed?.time || trainData.arriveTime;
                 const arriveDayOffset = aDelayed?.dayOffset ?? (trainData.arriveDayOffset || 0);
-                const now = new Date();
-                const arriveDate = parseTimeToDate(arriveTime, now);
-                arriveDate.setDate(arriveDate.getDate() + arriveDayOffset);
-                const arrDeltaSec = (arriveDate.getTime() - now.getTime()) / 1000;
+                const destStopData = gtfsParser.getStop(trainData.toCode);
+                const destTimezone = destStopData ? getTimezoneForStop(destStopData) : gtfsParser.agencyTimezone;
+                const nowSec = getCurrentSecondsInTimezone(destTimezone);
+                const arriveSec = parseTimeToMinutes(arriveTime) * 60
+                  + arriveDayOffset * 24 * 3600;
+                const arrDeltaSec = arriveSec - nowSec;
                 const arrPast = arrDeltaSec < 0;
                 const arrAbsSec = Math.abs(arrDeltaSec);
                 let arrCountdownText = '';
