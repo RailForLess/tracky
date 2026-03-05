@@ -5,6 +5,7 @@ import { AppColors, FontSizes, Spacing } from '../constants/theme';
 import { COLORS, styles } from '../screens/styles';
 import { getDelayColorKey, parseTimeToDate } from '../utils/time-formatting';
 import AnimatedRollingText from './ui/AnimatedRollingText';
+import MarqueeText from './ui/MarqueeText';
 import TimeDisplay from './ui/TimeDisplay';
 
 const DELAY_COLORS = {
@@ -123,9 +124,10 @@ export default function TrainCardContent({
           ) : null}
         </View>
 
-        <Text style={[styles.route, { fontSize: 18 }, shouldFadeTitle ? { color: AppColors.secondary } : undefined]}>
-          {fromName} to {toName}
-        </Text>
+        <MarqueeText
+          text={`${fromName} to ${toName}`}
+          style={[styles.route, { fontSize: 18 }, shouldFadeTitle ? { color: AppColors.secondary } : undefined]}
+        />
 
         <View style={styles.timeRow}>
           {(() => {

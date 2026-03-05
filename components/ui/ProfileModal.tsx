@@ -23,6 +23,7 @@ import { calculateProfileStats, formatDuration } from '../../utils/profile-stats
 import { formatDistance } from '../../utils/units';
 import { error as logError } from '../../utils/logger';
 import AnimatedRollingText from './AnimatedRollingText';
+import MarqueeText from './MarqueeText';
 import { SlideUpModalContext } from './slide-up-modal';
 
 interface ProfileModalProps {
@@ -174,15 +175,19 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
         <Animated.View style={[styles.historyCard, cardAnimatedStyle]}>
           <View style={styles.historyDetailRow}>
             <Image source={require('../../assets/images/amtrak.png')} style={styles.amtrakLogo} fadeDuration={0} />
-            <Text style={styles.historyDetailText}>
-              {trip.routeName || 'Amtrak'} · {trip.fromCode} → {trip.toCode} · {trip.duration ? formatDuration(trip.duration) : '—'}
-            </Text>
+            <View style={{ flex: 1, marginRight: Spacing.sm }}>
+              <MarqueeText
+                text={`${trip.routeName || 'Amtrak'} · ${trip.fromCode} → ${trip.toCode} · ${trip.duration ? formatDuration(trip.duration) : '—'}`}
+                style={styles.historyDetailText}
+              />
+            </View>
             <Text style={styles.historyDate}>{trip.date}</Text>
           </View>
 
-          <Text style={styles.historyRouteName}>
-            {trip.from} to {trip.to}
-          </Text>
+          <MarqueeText
+            text={`${trip.from} to ${trip.to}`}
+            style={styles.historyRouteName}
+          />
         </Animated.View>
       </GestureDetector>
       {!isLast && <View style={swipeStyles.separator} />}
