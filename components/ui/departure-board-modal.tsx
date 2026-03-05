@@ -24,6 +24,7 @@ import { logger } from '../../utils/logger';
 import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 import { addDelayToTime, parseTimeToMinutes } from '../../utils/time-formatting';
 import TrainCardContent from '../TrainCardContent';
+import MarqueeText from './MarqueeText';
 import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
@@ -57,7 +58,7 @@ interface DepartureBoardModalProps {
   station: Stop;
   onClose: () => void;
   onTrainSelect: (train: Train) => void;
-  onSaveTrain?: (train: Train) => Promise<boolean>;
+  onSaveTrain?: (train: Train, travelDate: Date) => Promise<boolean>;
 }
 
 /**
@@ -213,7 +214,7 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-15, 15])
-    .failOffsetY([-10, 10])
+    .failOffsetY([-20, 20])
     .onUpdate(event => {
       if (isSaving.value) return;
 
@@ -229,11 +230,13 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
         hasTriggeredHaptic.value = false;
       }
     })
-    .onEnd(() => {
+    .onEnd(event => {
       if (isSaving.value) return;
 
+      const fastSwipe = event.velocityX < -800;
+
       // If past 50% threshold, trigger save and bounce back
-      if (translateX.value <= BOUNCE_BACK_THRESHOLD) {
+      if (translateX.value <= BOUNCE_BACK_THRESHOLD || fastSwipe) {
         runOnJS(handleSave)();
       } else {
         // Bounce back
@@ -489,6 +492,7 @@ export default function DepartureBoardModal({
           hour: 'numeric',
           minute: '2-digit',
           timeZone: stationTimezone,
+          timeZoneName: 'short',
         });
         setLocalTime(formatted);
       } catch { setLocalTime(null); }
@@ -588,41 +592,9 @@ export default function DepartureBoardModal({
 
   const handleTrainPress = useCallback(
     (train: Train) => {
-      const isTerminatingHere = train.toCode === station.stop_id;
-      const isOriginatingHere = train.fromCode === station.stop_id;
-
-      let updatedTrain: Train;
-      if (isOriginatingHere && isTerminatingHere) {
-        // Train both starts and ends here (shouldn't happen, but be safe)
-        updatedTrain = { ...train };
-      } else if (filterMode === 'arriving' || (!isOriginatingHere && isTerminatingHere)) {
-        // Arriving at this station: keep original origin, set destination to this station
-        const arrivalTime = getStationArrivalTime(train, station.stop_id);
-        updatedTrain = {
-          ...train,
-          fromCode: train.fromCode,
-          from: train.from,
-          toCode: station.stop_id,
-          to: station.stop_name,
-          arriveTime: arrivalTime.time,
-          arriveDayOffset: arrivalTime.dayOffset,
-        };
-      } else {
-        // Departing or passing through: set origin to this station, keep original destination
-        const departTime = getStationDepartureTime(train, station.stop_id);
-        updatedTrain = {
-          ...train,
-          fromCode: station.stop_id,
-          from: station.stop_name,
-          departTime: departTime.time,
-          departDayOffset: departTime.dayOffset,
-          toCode: train.toCode,
-          to: train.to,
-        };
-      }
-      onTrainSelect(updatedTrain);
+      onSaveTrain?.(train, selectedDate);
     },
-    [station, onTrainSelect, filterMode]
+    [onSaveTrain, selectedDate]
   );
 
   const departureKeyExtractor = useCallback((item: Train) => `${item.tripId || item.id}`, []);
@@ -640,7 +612,7 @@ export default function DepartureBoardModal({
         stationId={station.stop_id}
         selectedDate={selectedDate}
         onPress={() => handleTrainPress(train)}
-        onSave={() => onSaveTrain?.(train)}
+        onSave={() => onSaveTrain?.(train, selectedDate)}
       />
     );
   }, [filterMode, station.stop_id, selectedDate, handleTrainPress, onSaveTrain]);
@@ -701,9 +673,7 @@ export default function DepartureBoardModal({
                 <Text style={styles.headerSubtitle}>{localTime}</Text>
               )}
             </View>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {station.stop_name}
-            </Text>
+            <MarqueeText text={station.stop_name} style={styles.headerTitle} />
           </View>
           <TouchableOpacity onPress={() => { hapticLight(); onClose(); }} style={styles.closeButton} activeOpacity={0.6}>
             <Ionicons name="close" size={24} color={AppColors.primary} />

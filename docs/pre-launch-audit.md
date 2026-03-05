@@ -39,11 +39,10 @@
 - Expo may auto-inject some defaults, but explicit descriptions are safer and required for review.
 - Add `NSLocationWhenInUseUsageDescription` to `ios.infoPlist`.
 
-### 1.3 No Crash Reporting Service
+### 1.3 Crash Reporting
 
-- No Sentry, Bugsnag, or Firebase Crashlytics integration.
-- The only crash path is `ErrorBoundary.tsx` which asks the user to manually email logs.
-- **Action**: Integrate Sentry (`@sentry/react-native`) or equivalent before launch. Without it, production crashes are invisible.
+- Crash reporting is handled by the internal debug log (`utils/logger`) and `ErrorBoundary.tsx` which prompts the user to email logs.
+- **Status**: Resolved — internal logging is sufficient for current scale.
 
 ### 1.4 No Fetch Timeouts on Network Requests
 

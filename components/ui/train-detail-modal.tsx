@@ -370,6 +370,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
           hour: 'numeric',
           minute: '2-digit',
           timeZone: nextStopTz,
+          timeZoneName: 'short',
         });
         setTrainLocalTime(formatted);
       } catch { setTrainLocalTime(null); }

@@ -65,7 +65,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-15, 15])
-    .failOffsetY([-10, 10])
+    .failOffsetY([-20, 20])
     .onUpdate(event => {
       if (isDeleting.value) return;
 
@@ -81,13 +81,15 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
         hasTriggeredSecondHaptic.value = false;
       }
     })
-    .onEnd(() => {
+    .onEnd(event => {
       if (isDeleting.value) return;
+
+      const fastSwipe = event.velocityX < -800;
 
       // If past second threshold, auto-delete
       if (translateX.value <= SECOND_THRESHOLD) {
         runOnJS(performDelete)();
-      } else if (translateX.value <= FIRST_THRESHOLD) {
+      } else if (translateX.value <= FIRST_THRESHOLD || fastSwipe) {
         // Snap to show delete button
         translateX.value = withSpring(FIRST_THRESHOLD, {
           damping: 50,

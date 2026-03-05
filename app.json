@@ -121,8 +121,7 @@
             }
           ]
         }
-      ],
-      "@sentry/react-native"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

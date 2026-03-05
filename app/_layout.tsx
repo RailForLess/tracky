@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
@@ -14,13 +13,6 @@ import { info } from '../utils/logger';
 
 // Keep splash visible until GTFS data is ready
 SplashScreen.preventAutoHideAsync();
-
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
-  enabled: !__DEV__,
-  tracesSampleRate: 0.2,
-  sendDefaultPii: false,
-});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -54,4 +46,4 @@ function RootLayout() {
   );
 }
 
-export default Sentry.wrap(RootLayout);
+export default RootLayout;

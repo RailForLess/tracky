@@ -268,6 +268,24 @@ export class TrainStorageService {
   }
 
   /**
+   * Delete all trips that were synced from calendar
+   */
+  static async deleteCalendarSyncedTrips(): Promise<number> {
+    return withLock(STORAGE_KEYS.TRIP_HISTORY, async () => {
+      try {
+        const history = await this.getTripHistory();
+        const filtered = history.filter(h => !h.syncedFromCalendar);
+        const removed = history.length - filtered.length;
+        await AsyncStorage.setItem(STORAGE_KEYS.TRIP_HISTORY, JSON.stringify(filtered));
+        return removed;
+      } catch (error) {
+        logger.error('Error deleting calendar-synced trips:', error);
+        return 0;
+      }
+    });
+  }
+
+  /**
    * Get completed trip history
    */
   static async getTripHistory(): Promise<CompletedTrip[]> {

@@ -493,25 +493,27 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     throw new Error('Test crash triggered from debug menu');
   }
 
+  const handleDeleteSyncedTrips = useCallback(() => {
+    Alert.alert(
+      'Delete Synced Trips',
+      'This will delete all trips that were imported from your calendar. Manually added trips will not be affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const removed = await TrainStorageService.deleteCalendarSyncedTrips();
+            logger.info(`[Settings] Deleted ${removed} calendar-synced trips`);
+            Alert.alert('Done', `Deleted ${removed} synced trip${removed !== 1 ? 's' : ''}.`);
+          },
+        },
+      ]
+    );
+  }, []);
+
   const renderMainPage = () => (
     <>
-      <Text style={styles.sectionHeader}>AUTOMATIONS</Text>
-      <View style={styles.settingsList}>
-        <TouchableOpacity
-          style={[styles.settingsItem, styles.settingsItemLast]}
-          activeOpacity={0.7}
-          onPress={() => openSubpage('calendar')}
-        >
-          <View style={styles.itemIconContainer}>
-            <Ionicons name="calendar-outline" size={22} color={AppColors.primary} />
-          </View>
-          <View style={styles.itemContent}>
-            <Text style={styles.itemTitle}>Calendar Sync</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={AppColors.secondary} />
-        </TouchableOpacity>
-      </View>
-
       <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>
       <View style={styles.settingsList}>
         <TouchableOpacity
@@ -548,6 +550,38 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={AppColors.secondary} />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionHeader}>AUTOMATIONS</Text>
+      <View style={styles.settingsList}>
+        <TouchableOpacity
+          style={styles.settingsItem}
+          activeOpacity={0.7}
+          onPress={() => openSubpage('calendar')}
+        >
+          <View style={styles.itemIconContainer}>
+            <Ionicons name="calendar-outline" size={22} color={AppColors.primary} />
+          </View>
+          <View style={styles.itemContent}>
+            <Text style={styles.itemTitle}>Calendar Sync</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={AppColors.secondary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.settingsItem, styles.settingsItemLast]}
+          activeOpacity={0.7}
+          onPress={() => {
+            hapticLight();
+            handleDeleteSyncedTrips();
+          }}
+        >
+          <View style={styles.itemIconContainer}>
+            <Ionicons name="trash-outline" size={22} color={AppColors.error} />
+          </View>
+          <View style={styles.itemContent}>
+            <Text style={[styles.itemTitle, { color: AppColors.error }]}>Delete All Synced Trips</Text>
+          </View>
         </TouchableOpacity>
       </View>
 

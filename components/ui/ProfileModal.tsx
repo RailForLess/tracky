@@ -84,7 +84,7 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-15, 15])
-    .failOffsetY([-10, 10])
+    .failOffsetY([-20, 20])
     .onUpdate(event => {
       if (isDeleting.value) return;
       const clampedX = Math.min(0, event.translationX);
@@ -97,12 +97,14 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
         hasTriggeredSecondHaptic.value = false;
       }
     })
-    .onEnd(() => {
+    .onEnd(event => {
       if (isDeleting.value) return;
+
+      const fastSwipe = event.velocityX < -800;
 
       if (translateX.value <= SECOND_THRESHOLD) {
         runOnJS(performDelete)();
-      } else if (translateX.value <= FIRST_THRESHOLD) {
+      } else if (translateX.value <= FIRST_THRESHOLD || fastSwipe) {
         translateX.value = withSpring(FIRST_THRESHOLD, {
           damping: 50,
           stiffness: 200,

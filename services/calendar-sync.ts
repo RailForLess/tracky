@@ -177,6 +177,7 @@ function extractTripFromEvent(event: Calendar.Event): CompletedTrip | null {
     completedAt: Date.now(),
     duration,
     distance,
+    syncedFromCalendar: true,
   };
 }
 
@@ -484,6 +485,7 @@ export async function syncPastTrips(calendarIds: string[], scanDays: number, mat
         completedAt: Date.now(),
         duration,
         distance,
+        syncedFromCalendar: true,
       };
     }
 

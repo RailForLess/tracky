@@ -164,4 +164,5 @@ export interface CompletedTrip {
   delay?: number; // delay in minutes (positive = late, negative = early)
   distance?: number; // distance in miles
   duration?: number; // trip duration in minutes
+  syncedFromCalendar?: boolean; // true if this trip was imported via calendar sync
 }

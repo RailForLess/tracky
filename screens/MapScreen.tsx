@@ -28,7 +28,7 @@ import { useShapes } from '../hooks/useShapes';
 import { useStations } from '../hooks/useStations';
 import { TrainAPIService } from '../services/api';
 import { TrainStorageService } from '../services/storage';
-import type { Stop, Train, ViewportBounds } from '../types/train';
+import type { SavedTrainRef, Stop, Train, ViewportBounds } from '../types/train';
 import { ClusteringConfig } from '../utils/clustering-config';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { light as hapticLight } from '../utils/haptics';
@@ -367,18 +367,27 @@ function MapScreenInner() {
     [setSelectedTrain, navigateToTrain]
   );
 
-  // Handle saving train from departure board swipe
+  // Handle saving train from departure board tap or swipe, then navigate to train view
   const handleSaveTrainFromBoard = useCallback(
-    async (train: Train): Promise<boolean> => {
+    async (train: Train, travelDate: Date): Promise<boolean> => {
       if (!train.tripId) return false;
-      const saved = await TrainStorageService.saveTrain(train);
+      const ref: SavedTrainRef = {
+        tripId: train.tripId,
+        fromCode: train.fromCode || undefined,
+        toCode: train.toCode || undefined,
+        travelDate: travelDate.getTime(),
+        savedAt: Date.now(),
+      };
+      const saved = await TrainStorageService.saveTrainRef(ref);
       if (saved) {
         const updatedTrains = await TrainStorageService.getSavedTrains();
         setSavedTrains(updatedTrains);
       }
+      // Navigate to train detail view
+      handleDepartureBoardTrainSelect(train);
       return saved;
     },
-    [setSavedTrains]
+    [setSavedTrains, handleDepartureBoardTrainSelect]
   );
 
   // Handle close button on departure board
