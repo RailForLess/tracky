@@ -353,6 +353,31 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   const countdown = trainData ? getCountdownForTrain(trainData) : null;
   const unitLabel = countdown ? `${countdown.unit}${countdown.past ? ' AGO' : ''}` : '';
 
+  // Local time at the train's next stop (only for live trains)
+  const [trainLocalTime, setTrainLocalTime] = React.useState<string | null>(null);
+  const nextStopTz = React.useMemo(() => {
+    if (!isLiveTrain || nextStopIndex < 0 || allStops.length === 0) return null;
+    const stop = allStops[nextStopIndex];
+    const stopData = gtfsParser.getStop(stop.code);
+    return stopData ? getTimezoneForStop(stopData) : null;
+  }, [isLiveTrain, nextStopIndex, allStops]);
+  React.useEffect(() => {
+    const update = () => {
+      if (!nextStopTz) { setTrainLocalTime(null); return; }
+      try {
+        const formatted = new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: nextStopTz,
+        });
+        setTrainLocalTime(formatted);
+      } catch { setTrainLocalTime(null); }
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [nextStopTz]);
+
   const handleStationPress = (stationCode: string) => {
     if (!onStationSelect) return;
     hapticLight();
@@ -426,7 +451,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
           <View style={styles.headerTextContainer}>
             <View style={styles.headerTop}>
               <Text style={styles.headerTitle} numberOfLines={1}>
-                {trainData.routeName || trainData.operator} {trainData.trainNumber} • {trainData.date}
+                {trainData.routeName || trainData.operator} {trainData.trainNumber} · {isLiveTrain && trainLocalTime ? trainLocalTime : trainData.date}
               </Text>
             </View>
             <MarqueeText

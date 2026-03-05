@@ -478,6 +478,26 @@ export default function DepartureBoardModal({
   // Compute station timezone once for filtering
   const stationTimezone = useMemo(() => getTimezoneForStop(station), [station]);
 
+  // Format local time at the station
+  const [localTime, setLocalTime] = useState<string | null>(null);
+  useEffect(() => {
+    const update = () => {
+      if (!stationTimezone) { setLocalTime(null); return; }
+      try {
+        const now = new Date();
+        const formatted = now.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: stationTimezone,
+        });
+        setLocalTime(formatted);
+      } catch { setLocalTime(null); }
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [stationTimezone]);
+
   // Filter departures based on search, date, and filter mode
   const filteredDepartures = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -669,10 +689,16 @@ export default function DepartureBoardModal({
               <Text style={styles.headerSubtitle}>{station.stop_id}</Text>
               {weather && (
                 <View style={styles.weatherBadge}>
-                  <Text style={styles.weatherDot}> • </Text>
+                  <Text style={styles.weatherDot}> · </Text>
                   <Ionicons name={weather.icon as any} size={14} color={AppColors.secondary} />
                   <Text style={styles.weatherTemp}> {weather.temp}°{tempUnit}</Text>
                 </View>
+              )}
+              {localTime && (
+                <Text style={styles.weatherDot}> · </Text>
+              )}
+              {localTime && (
+                <Text style={styles.headerSubtitle}>{localTime}</Text>
               )}
             </View>
             <Text style={styles.headerTitle} numberOfLines={1}>
