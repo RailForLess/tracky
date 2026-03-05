@@ -356,8 +356,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   // Local time at the train's next stop (only for live trains)
   const [trainLocalTime, setTrainLocalTime] = React.useState<string | null>(null);
   const nextStopTz = React.useMemo(() => {
-    if (!isLiveTrain || nextStopIndex < 0 || allStops.length === 0) return null;
+    if (!isLiveTrain || nextStopIndex < 0 || nextStopIndex >= allStops.length) return null;
     const stop = allStops[nextStopIndex];
+    if (!stop) return null;
     const stopData = gtfsParser.getStop(stop.code);
     return stopData ? getTimezoneForStop(stopData) : null;
   }, [isLiveTrain, nextStopIndex, allStops]);
