@@ -127,7 +127,9 @@ export default function TrainCardContent({
         <MarqueeText
           text={`${fromName} to ${toName}`}
           style={[styles.route, { fontSize: 18 }, shouldFadeTitle ? { color: AppColors.secondary } : undefined]}
-        />
+        >
+          {fromName} <Text style={{ fontWeight: 'normal' }}>to</Text> {toName}
+        </MarqueeText>
 
         <View style={styles.timeRow}>
           {(() => {

@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -18,16 +19,20 @@ const EASING = Easing.bezier(0.4, 0, 0.2, 1);
  * and the new character slides in from the opposite direction while deblurring.
  * Uses Animated.View wrappers with RN's `filter` for real Gaussian blur.
  */
+const STAGGER_MS = 30;
+
 const CharSlot = memo(function CharSlot({
   char,
   style,
   charHeight,
   duration,
+  index,
 }: {
   char: string;
   style: StyleProp<TextStyle>;
   charHeight: number;
   duration: number;
+  index: number;
 }) {
   const prevRef = useRef(char);
   const mountedRef = useRef(false);
@@ -68,19 +73,20 @@ const CharSlot = memo(function CharSlot({
     inOpacity.value = 0;
     inBlur.value = BLUR_MAX;
 
+    const delay = index * STAGGER_MS;
     const cfg = { duration, easing: EASING };
     const springCfg = { damping: 14, stiffness: 180, mass: 0.8 };
 
     // Animate outgoing: partial slide + fade + blur
-    outY.value = withTiming(up ? -slide : slide, cfg);
-    outOpacity.value = withTiming(0, cfg);
-    outBlur.value = withTiming(BLUR_MAX, cfg);
+    outY.value = withDelay(delay, withTiming(up ? -slide : slide, cfg));
+    outOpacity.value = withDelay(delay, withTiming(0, cfg));
+    outBlur.value = withDelay(delay, withTiming(BLUR_MAX, cfg));
 
     // Animate incoming: spring in (overshoots & bounces), fade in, deblur
-    inY.value = withSpring(0, springCfg);
-    inOpacity.value = withTiming(1, cfg);
-    inBlur.value = withTiming(0, cfg);
-  }, [char, charHeight, duration, outY, outOpacity, outBlur, inY, inOpacity, inBlur]);
+    inY.value = withDelay(delay, withSpring(0, springCfg));
+    inOpacity.value = withDelay(delay, withTiming(1, cfg));
+    inBlur.value = withDelay(delay, withTiming(0, cfg));
+  }, [char, charHeight, duration, index, outY, outOpacity, outBlur, inY, inOpacity, inBlur]);
 
   const outWrapperStyle = useAnimatedStyle(() => {
     return {
@@ -174,6 +180,7 @@ export default memo(function AnimatedRollingText({
           style={textStyle}
           charHeight={charHeight}
           duration={duration}
+          index={i}
         />
       ))}
     </View>

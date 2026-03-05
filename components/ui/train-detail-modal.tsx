@@ -6,6 +6,7 @@ import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, CloseButtonStyle, Spacing } from '../../constants/theme';
+import { light as hapticLight } from '../../utils/haptics';
 import { isThruwayName, TrainIcon } from '../TrainIcon';
 import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToDate, timeToMinutes } from '../../utils/time-formatting';
 import { RealtimeService } from '../../services/realtime';
@@ -425,6 +426,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
   const handleStationPress = (stationCode: string) => {
     if (!onStationSelect) return;
+    hapticLight();
     try {
       const stop = gtfsParser.getStop(stationCode);
       if (stop) {
@@ -478,7 +480,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       <View style={styles.modalContent}>
         <View style={[styles.header]}>
           <View style={styles.headerContent} />
-          <TouchableOpacity onPress={onClose} style={styles.absoluteCloseButton} activeOpacity={0.6}>
+          <TouchableOpacity onPress={() => { hapticLight(); onClose(); }} style={styles.absoluteCloseButton} activeOpacity={0.6}>
             <Ionicons name="close" size={24} color={AppColors.primary} />
           </TouchableOpacity>
         </View>
@@ -504,7 +506,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
             />
           </View>
         </View>
-        <TouchableOpacity onPress={onClose} style={styles.absoluteCloseButton} activeOpacity={0.6}>
+        <TouchableOpacity onPress={() => { hapticLight(); onClose(); }} style={styles.absoluteCloseButton} activeOpacity={0.6}>
           <Ionicons name="close" size={24} color={AppColors.primary} />
         </TouchableOpacity>
       </View>
@@ -527,23 +529,33 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
           nestedScrollEnabled={true}
         >
           {/* Countdown Section */}
-          {countdown && (
-            <View style={styles.expandableSection}>
+          {countdown && (() => {
+            const liveDelay = isLiveTrain ? trainData.realtime?.delay : undefined;
+            const liveDelayKey = isLiveTrain ? getDelayColorKey(liveDelay) : null;
+            const bannerBg = liveDelayKey === 'delayed' ? 'rgba(239, 68, 68, 0.15)'
+              : liveDelayKey === 'onTime' ? 'rgba(16, 185, 129, 0.15)'
+              : undefined;
+            const bannerColor = liveDelayKey === 'delayed' ? AppColors.delayed
+              : liveDelayKey === 'onTime' ? AppColors.success
+              : AppColors.primary;
+            return (
+            <View style={[styles.expandableSection, bannerBg != null && { backgroundColor: bannerBg }]}>
               <View style={styles.statusRow}>
                 {isLiveTrain ? (
-                  <TrainIcon name={trainData?.routeName} size={20} color={AppColors.primary} style={{ marginRight: Spacing.sm }} />
+                  <TrainIcon name={trainData?.routeName} size={20} color={bannerColor} style={{ marginRight: Spacing.sm }} />
                 ) : (
                   <Ionicons name="time-outline" size={20} color={AppColors.primary} style={{ marginRight: Spacing.sm }} />
                 )}
-                <Text style={styles.statusText}>
+                <Text style={[styles.statusText, { color: bannerColor }]}>
                   {isLiveTrain ? 'En route, ' : ''}
                   {countdown.past ? (isLiveTrain ? 'departed ' : 'Departed ') : (isLiveTrain ? 'departs in ' : 'Departs in ')}
                 </Text>
-                <AnimatedRollingText value={String(countdown.value)} style={[styles.statusText, { fontWeight: 'bold' }]} />
-                <Text style={styles.statusText}>{' '}{unitLabel.toLowerCase()}</Text>
+                <AnimatedRollingText value={String(countdown.value)} style={[styles.statusText, { fontWeight: 'bold', color: bannerColor }]} />
+                <Text style={[styles.statusText, { color: bannerColor }]}>{' '}{unitLabel.toLowerCase()}</Text>
               </View>
             </View>
-          )}
+            );
+          })()}
 
           {/* Departure / Arrival Board */}
           <View style={styles.departArriveBoard}>
@@ -730,7 +742,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
             {/* Where's My Train? */}
             <TouchableOpacity
               style={styles.historyCard}
-              onPress={() => setIsWhereIsMyTrainExpanded(!isWhereIsMyTrainExpanded)}
+              onPress={() => { hapticLight(); setIsWhereIsMyTrainExpanded(!isWhereIsMyTrainExpanded); }}
               activeOpacity={0.7}
             >
               <View style={styles.infoCardRow}>
@@ -899,7 +911,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
           <TouchableOpacity
             style={styles.reportBadDataRow}
             activeOpacity={0.7}
-            onPress={() => openReportBadDataEmail()}
+            onPress={() => { hapticLight(); openReportBadDataEmail(); }}
           >
             <Ionicons name="information-circle-outline" size={16} color={AppColors.secondary} />
             <Text style={styles.reportBadDataText}>Report Bad Data</Text>

@@ -1,5 +1,4 @@
-import * as Haptics from 'expo-haptics';
-import { light as hapticLight } from '../utils/haptics';
+import { light as hapticLight, heavy as hapticHeavy, success as hapticSuccess } from '../utils/haptics';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -45,11 +44,11 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
   const isDeleting = useSharedValue(false);
 
   const triggerSecondHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    hapticHeavy();
   };
 
   const triggerDeleteHaptic = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
   };
 
   const handleDelete = () => {

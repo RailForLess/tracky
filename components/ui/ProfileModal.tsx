@@ -1,5 +1,4 @@
-import * as Haptics from 'expo-haptics';
-import { light as hapticLight } from '../../utils/haptics';
+import { light as hapticLight, heavy as hapticHeavy, success as hapticSuccess } from '../../utils/haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FlatList, Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -64,11 +63,11 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
   const isDeleting = useSharedValue(false);
 
   const triggerSecondHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    hapticHeavy();
   };
 
   const triggerDeleteHaptic = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
   };
 
   const handleDelete = () => {
@@ -184,10 +183,9 @@ const SwipeableHistoryCard = React.memo(function SwipeableHistoryCard({
             <Text style={styles.historyDate}>{trip.date}</Text>
           </View>
 
-          <MarqueeText
-            text={`${trip.from} to ${trip.to}`}
-            style={styles.historyRouteName}
-          />
+          <Text style={styles.historyRouteName}>
+            {trip.from} to {trip.to}
+          </Text>
         </Animated.View>
       </GestureDetector>
       {!isLast && <View style={swipeStyles.separator} />}
@@ -249,7 +247,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
   // Toggle sort field or direction
   const handleSortPress = useCallback(
     (field: SortField) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      hapticLight();
       if (sortField === field) {
         // Toggle direction if same field
         setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
@@ -402,22 +400,22 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
   }, [stats]);
 
   const handleYearPress = useCallback((year: number | null) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     setSelectedYear(year);
   }, []);
 
   const handleClosePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     onClose();
   }, [onClose]);
 
   const handleSettingsPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     onOpenSettings();
   }, [onOpenSettings]);
 
   const handleComingSoon = useCallback((title: string, message: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     Alert.alert(title, message);
   }, []);
 

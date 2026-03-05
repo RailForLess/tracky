@@ -347,7 +347,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
     const borderOpacity = 1 - progress;
 
     return {
-      borderColor: borderOpacity > 0.01 ? AppColors.border.primary : 'transparent',
+      borderColor: progress >= 1 ? AppColors.background.primary : borderOpacity > 0.01 ? AppColors.border.primary : 'transparent',
       borderWidth: 1,
     };
   });

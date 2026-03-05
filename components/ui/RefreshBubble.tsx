@@ -3,6 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../../constants/theme';
 import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
+import { light as hapticLight, warning as hapticWarning } from '../../utils/haptics';
 import AnimatedRollingText from './AnimatedRollingText';
 
 /**
@@ -58,12 +59,14 @@ export function RefreshBubble() {
 
   const handlePress = () => {
     if (refreshFailed) {
+      hapticLight();
       triggerRefresh();
     }
   };
 
   const handleLongPress = () => {
     if (refreshFailed) {
+      hapticWarning();
       dismissRefreshFailure();
     }
   };

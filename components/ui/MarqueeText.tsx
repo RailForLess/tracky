@@ -15,9 +15,11 @@ const GAP = 48;
 interface MarqueeTextProps {
   text: string;
   style?: StyleProp<TextStyle>;
+  /** Optional rich content to render instead of plain text. `text` is still used for measurement. */
+  children?: React.ReactNode;
 }
 
-export default function MarqueeText({ text, style }: MarqueeTextProps) {
+export default function MarqueeText({ text, style, children }: MarqueeTextProps) {
   const translateX = useSharedValue(0);
   const textWidthRef = React.useRef(0);
   const containerWidthRef = React.useRef(0);
@@ -70,11 +72,11 @@ export default function MarqueeText({ text, style }: MarqueeTextProps) {
       </View>
       {/* Two copies for seamless loop — when first scrolls off, second is already visible */}
       <Animated.View style={[{ flexDirection: 'row', width: 99999 }, animatedStyle]}>
-        <Text style={style}>{text}</Text>
+        <Text style={style}>{children ?? text}</Text>
         {overflows && (
           <>
             <View style={{ width: GAP }} />
-            <Text style={style}>{text}</Text>
+            <Text style={style}>{children ?? text}</Text>
           </>
         )}
       </Animated.View>

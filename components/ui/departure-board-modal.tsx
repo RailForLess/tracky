@@ -1,5 +1,4 @@
-import * as Haptics from 'expo-haptics';
-import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
+import { light as hapticLight, medium as hapticMedium, selection as hapticSelection, success as hapticSuccess } from '../../utils/haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -194,11 +193,11 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
   const isSaving = useSharedValue(false);
 
   const triggerHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
   };
 
   const triggerSaveHaptic = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
   };
 
   const handleSave = () => {
