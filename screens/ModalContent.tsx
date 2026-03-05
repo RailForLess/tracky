@@ -8,7 +8,7 @@ import { PlaceholderBlurb } from '../components/PlaceholderBlurb';
 import { TwoStationSearch } from '../components/TwoStationSearch';
 import { SlideUpModalContext } from '../components/ui/slide-up-modal';
 import { useGTFSRefresh } from '../context/GTFSRefreshContext';
-import { useModalContext } from '../context/ModalContext';
+import { useModalState } from '../context/ModalContext';
 import { useTrainContext } from '../context/TrainContext';
 import { useFrequentlyUsed } from '../hooks/useFrequentlyUsed';
 import { hasCalendarPermission, syncFutureTrips } from '../services/calendar-sync';
@@ -40,7 +40,7 @@ export const ModalContent = React.forwardRef<
   const { savedTrains, setSavedTrains, setSelectedTrain } = useTrainContext();
   const { refresh: refreshFrequentlyUsed } = useFrequentlyUsed();
   const { isLoadingCache, initializeGTFS, triggerRefresh } = useGTFSRefresh();
-  const { activeModal } = useModalContext();
+  const { activeModal } = useModalState();
 
   // Refs to avoid stale closures in useEffect
   const refreshFrequentlyUsedRef = useRef(refreshFrequentlyUsed);
@@ -69,14 +69,16 @@ export const ModalContent = React.forwardRef<
       // Auto-archive past trips (travel date before today, or arrived today)
       const now = new Date();
 
+      const POST_ARRIVAL_GRACE_MS = 10 * 60 * 1000; // 10 minutes
+
       const pastTrains = trains.filter(t => {
         if (!t.daysAway && t.daysAway !== 0) return false;
         // Yesterday or earlier — definitely past
         if (t.daysAway < 0) return true;
-        // Today — check if arrival time has passed
+        // Today — archive only 10 min after arrival time
         if (t.daysAway === 0 && t.arriveTime) {
           const arriveDate = parseTimeToDate(t.arriveTime, now);
-          if (arriveDate.getTime() < now.getTime()) return true;
+          if (arriveDate.getTime() + POST_ARRIVAL_GRACE_MS < now.getTime()) return true;
         }
         return false;
       });
@@ -86,7 +88,7 @@ export const ModalContent = React.forwardRef<
       }
       for (const train of pastTrains) {
         await TrainStorageService.moveToHistory(train);
-        TrainActivityManager.onTrainArchived(train).catch(() => {});
+        TrainActivityManager.onTrainArchived(train).catch(e => logger.warn('TrainActivityManager.onTrainArchived failed', e));
       }
       if (cancelled) return;
 
@@ -95,10 +97,10 @@ export const ModalContent = React.forwardRef<
         const updatedTrains = await TrainStorageService.getSavedTrains();
         if (cancelled) return;
         setSavedTrains(updatedTrains);
-        TrainActivityManager.onAppStartup(updatedTrains).catch(() => {});
+        TrainActivityManager.onAppStartup(updatedTrains).catch(e => logger.warn('TrainActivityManager.onAppStartup failed', e));
       } else {
         setSavedTrains(trains);
-        TrainActivityManager.onAppStartup(trains).catch(() => {});
+        TrainActivityManager.onAppStartup(trains).catch(e => logger.warn('TrainActivityManager.onAppStartup failed', e));
       }
 
       // Auto-sync future trips from calendar (if permission already granted)
@@ -130,11 +132,16 @@ export const ModalContent = React.forwardRef<
     return () => { cancelled = true; };
   }, [setSavedTrains, isLoadingCache]);
 
+  // Ref for imperatively scrolling the train list to top
+  const flatListRef = useRef<FlatList<Train>>(null);
+
   // Refresh saved trains when main modal becomes active (returning from profile, etc.)
   const isMainActive = activeModal === 'main';
   useEffect(() => {
     if (!isMainActive || !hasInitialized.current) return;
     TrainStorageService.getSavedTrains().then(setSavedTrains);
+    // Always scroll to top when navigating back to My Trains
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [isMainActive, setSavedTrains]);
 
   // Load cached GTFS and check if refresh is needed on mount (runs once)
@@ -162,7 +169,7 @@ export const ModalContent = React.forwardRef<
       setSavedTrains(updatedTrains);
       const savedTrain = updatedTrains.find(t => t.tripId === tripId && t.fromCode === fromCode && t.toCode === toCode);
       if (savedTrain) {
-        TrainActivityManager.onTrainSaved(savedTrain).catch(() => {});
+        TrainActivityManager.onTrainSaved(savedTrain).catch(e => logger.warn('TrainActivityManager.onTrainSaved failed', e));
       }
     }
     return saved;
@@ -225,7 +232,7 @@ export const ModalContent = React.forwardRef<
     await TrainStorageService.deleteTrainByTripId(train.tripId || '', train.fromCode, train.toCode, train.travelDate);
     const updatedTrains = await TrainStorageService.getSavedTrains();
     setSavedTrains(updatedTrains);
-    TrainActivityManager.onTrainDeleted(train.tripId || '', train.fromCode, train.toCode).catch(() => {});
+    TrainActivityManager.onTrainDeleted(train.tripId || '', train.fromCode, train.toCode).catch(e => logger.warn('TrainActivityManager.onTrainDeleted failed', e));
   }, [setSavedTrains]);
 
   const handleTrainSelect = useCallback((train: Train) => {
@@ -238,8 +245,8 @@ export const ModalContent = React.forwardRef<
   const renderTrainItem = useCallback(({ item, index }: { item: Train; index: number }) => (
     <SwipeableTrainCard
       train={item}
-      onPress={() => handleTrainSelect(item)}
-      onDelete={() => handleDeleteTrain(item)}
+      onPress={handleTrainSelect}
+      onDelete={handleDeleteTrain}
       isFirst={index === 0}
       isLast={index === sortedTrains.length - 1}
       contentOpacity={contentOpacity}
@@ -309,6 +316,7 @@ export const ModalContent = React.forwardRef<
         {/* Virtualized Train List */}
         {!isSearchFocused && !isLoading && (
           <FlatList
+            ref={flatListRef}
             data={sortedTrains}
             keyExtractor={trainKeyExtractor}
             renderItem={renderTrainItem}
@@ -327,7 +335,7 @@ export const ModalContent = React.forwardRef<
             keyboardShouldPersistTaps="handled"
             initialNumToRender={6}
             maxToRenderPerBatch={4}
-            windowSize={5}
+            windowSize={9}
             removeClippedSubviews={true}
           />
         )}

@@ -16,31 +16,15 @@ export interface ModalConfig {
   };
 }
 
-interface ModalContextType {
-  // Current modal state
-  activeModal: ModalType;
-  modalData: {
-    train: Train | null;
-    station: Stop | null;
-  };
-  currentSnap: 'min' | 'half' | 'max';
+// ── Stable actions context (refs + callbacks — rarely produces new object) ──
 
-  // Content visibility states (controls what renders inside always-mounted modal shells)
-  showMainContent: boolean;
-  showTrainDetailContent: boolean;
-  showDepartureBoardContent: boolean;
-  showProfileContent: boolean;
-  showSettingsContent: boolean;
-
+interface ModalActionsContextType {
   // Modal refs for imperative control
   mainModalRef: React.RefObject<SlideUpModalHandle | null>;
   detailModalRef: React.RefObject<SlideUpModalHandle | null>;
   departureBoardRef: React.RefObject<SlideUpModalHandle | null>;
   profileModalRef: React.RefObject<SlideUpModalHandle | null>;
   settingsModalRef: React.RefObject<SlideUpModalHandle | null>;
-
-  // Navigation stack for back navigation
-  modalStack: ModalConfig[];
 
   // Transition functions
   navigateToTrain: (train: Train, options?: { fromMarker?: boolean; returnTo?: ModalType }) => void;
@@ -59,12 +43,54 @@ interface ModalContextType {
   getInitialSnap: (type: ModalType) => 'min' | 'half' | 'max';
 }
 
-const ModalContext = createContext<ModalContextType | undefined>(undefined);
+// ── Changing state context (re-renders subscribers when modal state changes) ──
 
-export const useModalContext = () => {
-  const ctx = useContext(ModalContext);
-  if (!ctx) throw new Error('useModalContext must be used within ModalProvider');
+interface ModalStateContextType {
+  activeModal: ModalType;
+  modalData: {
+    train: Train | null;
+    station: Stop | null;
+  };
+  currentSnap: 'min' | 'half' | 'max';
+
+  // Content visibility states (controls what renders inside always-mounted modal shells)
+  showMainContent: boolean;
+  showTrainDetailContent: boolean;
+  showDepartureBoardContent: boolean;
+  showProfileContent: boolean;
+  showSettingsContent: boolean;
+
+  // Navigation stack for back navigation
+  modalStack: ModalConfig[];
+}
+
+// ── Combined type for backwards-compatible useModalContext ──
+
+type ModalContextType = ModalActionsContextType & ModalStateContextType;
+
+const ModalActionsContext = createContext<ModalActionsContextType | undefined>(undefined);
+const ModalStateContext = createContext<ModalStateContextType | undefined>(undefined);
+
+/** Use only when you need stable actions (refs, navigate*, goBack, etc.) — never re-renders on state changes. */
+export const useModalActions = () => {
+  const ctx = useContext(ModalActionsContext);
+  if (!ctx) throw new Error('useModalActions must be used within ModalProvider');
   return ctx;
+};
+
+/** Use only when you need reactive state (activeModal, currentSnap, show*Content, etc.). */
+export const useModalState = () => {
+  const ctx = useContext(ModalStateContext);
+  if (!ctx) throw new Error('useModalState must be used within ModalProvider');
+  return ctx;
+};
+
+/** Backwards-compatible hook — returns both actions and state merged. Prefer useModalActions / useModalState for performance. */
+export const useModalContext = (): ModalContextType => {
+  const actions = useModalActions();
+  const state = useModalState();
+  // Merge — callers destructure specific fields so no extra memoisation needed
+  return useMemo(() => ({ ...actions, ...state }), [actions, state]);
 };
 
 export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -110,7 +136,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   modalDataRef.current = modalData;
 
   // Get initial snap for a modal type based on pending transition
-  const getInitialSnap = useCallback((type: ModalType): 'min' | 'half' | 'max' => {
+  const getInitialSnap = useCallback((_type: ModalType): 'min' | 'half' | 'max' => {
     return nextModalSnapRef.current;
   }, []);
 
@@ -324,22 +350,14 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     else if (type === 'settings') setShowSettingsContent(false);
   }, [getModalRef]);
 
-  const value = useMemo<ModalContextType>(
+  // ── Actions context value — only changes when callbacks change (essentially never) ──
+  const actionsValue = useMemo<ModalActionsContextType>(
     () => ({
-      activeModal,
-      modalData,
-      currentSnap,
-      showMainContent,
-      showTrainDetailContent,
-      showDepartureBoardContent,
-      showProfileContent,
-      showSettingsContent,
       mainModalRef,
       detailModalRef,
       departureBoardRef,
       profileModalRef,
       settingsModalRef,
-      modalStack,
       navigateToTrain,
       navigateToStation,
       navigateToProfile,
@@ -352,15 +370,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       getInitialSnap,
     }),
     [
-      activeModal,
-      modalData,
-      currentSnap,
-      showMainContent,
-      showTrainDetailContent,
-      showDepartureBoardContent,
-      showProfileContent,
-      showSettingsContent,
-      modalStack,
       navigateToTrain,
       navigateToStation,
       navigateToProfile,
@@ -374,5 +383,37 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ]
   );
 
-  return <ModalContext.Provider value={value}>{children}</ModalContext.Provider>;
+  // ── State context value — changes when modal state changes ──
+  const stateValue = useMemo<ModalStateContextType>(
+    () => ({
+      activeModal,
+      modalData,
+      currentSnap,
+      showMainContent,
+      showTrainDetailContent,
+      showDepartureBoardContent,
+      showProfileContent,
+      showSettingsContent,
+      modalStack,
+    }),
+    [
+      activeModal,
+      modalData,
+      currentSnap,
+      showMainContent,
+      showTrainDetailContent,
+      showDepartureBoardContent,
+      showProfileContent,
+      showSettingsContent,
+      modalStack,
+    ]
+  );
+
+  return (
+    <ModalActionsContext.Provider value={actionsValue}>
+      <ModalStateContext.Provider value={stateValue}>
+        {children}
+      </ModalStateContext.Provider>
+    </ModalActionsContext.Provider>
+  );
 };

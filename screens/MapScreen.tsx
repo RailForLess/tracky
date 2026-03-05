@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Image, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -19,7 +19,7 @@ import SlideUpModal from '../components/ui/slide-up-modal';
 import TrainDetailModal from '../components/ui/train-detail-modal';
 import { AppColors } from '../constants/theme';
 import { GTFSRefreshProvider, useGTFSRefresh } from '../context/GTFSRefreshContext';
-import { ModalProvider, useModalContext } from '../context/ModalContext';
+import { ModalProvider, useModalActions, useModalState } from '../context/ModalContext';
 import { TrainProvider, useTrainContext } from '../context/TrainContext';
 import { UnitsProvider } from '../context/UnitsContext';
 import { useBatchedItems } from '../hooks/useBatchedItems';
@@ -65,12 +65,14 @@ function regionToViewportBounds(region: MapRegion): ViewportBounds {
  */
 function getLatitudeOffsetForModal(latitudeDelta: number, modalSnap: 'min' | 'half' | 'max' | null): number {
   if (modalSnap === 'half') {
-    // Modal covers 50% of screen, visible map is top 50%
-    // To place point at 20% from top of screen = 40% of visible area
-    // Offset = 30% of latitudeDelta (move center down so point appears higher)
-    return latitudeDelta * 0.3;
+    // Modal covers bottom 50% of screen — offset by half the viewport
+    return latitudeDelta * 0.4;
   }
-  // No offset for fullscreen modal, collapsed modal, or no modal
+  if (modalSnap === 'min') {
+    // Modal covers bottom 35% of screen
+    return latitudeDelta * 0.2;
+  }
+  // No offset for fullscreen modal or no modal
   return 0;
 }
 
@@ -79,7 +81,10 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(true);
 
   useEffect(() => {
-    if (!visible) {
+    if (visible) {
+      setMounted(true);
+      opacity.setValue(1);
+    } else {
       Animated.timing(opacity, {
         toValue: 0,
         duration: 400,
@@ -92,7 +97,7 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
 
   return (
     <Animated.View style={[loadingStyles.overlay, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
-      <Ionicons name="train" size={128} color="rgba(255, 255, 255, 0.25)" style={loadingStyles.icon} />
+      <Image source={require('../assets/images/tracky-logo.png')} style={loadingStyles.logo} />
       <Text style={loadingStyles.copyright}>Tracky - Made with &lt;3 by Jason</Text>
     </Animated.View>
   );
@@ -103,19 +108,13 @@ function MapScreenInner() {
   const modalContentRef = useRef<ModalContentHandle>(null);
   const { triggerRefresh, isLoadingCache } = useGTFSRefresh();
 
-  // Use centralized modal context
+  // Split modal context — actions (stable) vs state (reactive)
   const {
-    showMainContent,
-    showTrainDetailContent,
-    showDepartureBoardContent,
-    showProfileContent,
-    showSettingsContent,
     mainModalRef,
     detailModalRef,
     departureBoardRef,
     profileModalRef,
     settingsModalRef,
-    modalData,
     navigateToTrain,
     navigateToStation,
     navigateToProfile,
@@ -125,14 +124,27 @@ function MapScreenInner() {
     handleModalDismissed,
     handleSnapChange,
     getInitialSnap,
+  } = useModalActions();
+  const {
+    showMainContent,
+    showTrainDetailContent,
+    showDepartureBoardContent,
+    showProfileContent,
+    showSettingsContent,
+    modalData,
     currentSnap,
-  } = useModalContext();
-  const [region, setRegion] = useState<MapRegion | null>(null);
-  // Viewport bounds for lazy loading (shapes are progressively rendered by useShapes)
-  const [viewportBounds, setViewportBounds] = useState<ViewportBounds | null>(null);
-  // Debounced latitudeDelta for train clustering - prevents crash on rapid zoom
-  const [debouncedLatDelta, setDebouncedLatDelta] = useState<number>(1);
-  const trainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  } = useModalState();
+  // Region is stored as a ref — only the initial value matters for MapView.
+  // mapReady gates rendering; subsequent region changes don't need re-renders.
+  const regionRef = useRef<MapRegion | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  // Combined viewport state — single setState triggers one re-render instead of two
+  const [viewportState, setViewportState] = useState<{
+    bounds: ViewportBounds | null;
+    latDelta: number;
+  }>({ bounds: null, latDelta: 1 });
+  const viewportBounds = viewportState.bounds;
+  const debouncedLatDelta = viewportState.latDelta;
   const viewportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mapType, setMapType] = useState<MapType>('standard');
   const [routeMode, setRouteMode] = useState<RouteMode>('visible');
@@ -269,9 +281,12 @@ function MapScreenInner() {
         if (train) {
           setSelectedTrain(train);
           navigateToTrain(train, { fromMarker: true });
+        } else {
+          Alert.alert('Train Unavailable', 'Could not load details for this train. It may no longer be active.');
         }
       } catch (error) {
         logger.error('Error fetching train details:', error);
+        Alert.alert('Connection Error', 'Could not load train details. Check your internet connection and try again.');
       }
     },
     [setSelectedTrain, navigateToTrain]
@@ -415,6 +430,14 @@ function MapScreenInner() {
     [navigateToStation]
   );
 
+  // Set initial region (ref) and mark map ready — only called once
+  const setInitialRegion = useCallback((r: MapRegion) => {
+    if (!regionRef.current) {
+      regionRef.current = r;
+      setMapReady(true);
+    }
+  }, []);
+
   // Get user location on mount
   React.useEffect(() => {
     (async () => {
@@ -423,7 +446,7 @@ function MapScreenInner() {
         if (status === 'granted') {
           const location = await Location.getCurrentPositionAsync({});
           logger.debug(`[MapScreen] User location: ${location.coords.latitude.toFixed(3)}, ${location.coords.longitude.toFixed(3)}`);
-          setRegion({
+          setInitialRegion({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
             latitudeDelta: 0.0922,
@@ -431,8 +454,7 @@ function MapScreenInner() {
           });
         } else {
           logger.info('[MapScreen] Location permission denied, using fallback');
-          // Fallback to San Francisco if permission denied
-          setRegion({
+          setInitialRegion({
             latitude: 37.78825,
             longitude: -122.4324,
             latitudeDelta: 0.0922,
@@ -441,8 +463,7 @@ function MapScreenInner() {
         }
       } catch (error) {
         logger.error('Error getting initial location:', error);
-        // Fallback to San Francisco on error
-        setRegion({
+        setInitialRegion({
           latitude: 37.78825,
           longitude: -122.4324,
           latitudeDelta: 0.0922,
@@ -450,17 +471,18 @@ function MapScreenInner() {
         });
       }
     })();
-  }, []);
+  }, [setInitialRegion]);
 
   // Track when GTFS data is loaded
   const [gtfsLoaded, setGtfsLoaded] = React.useState(gtfsParser.isLoaded);
 
-  // Poll for GTFS loaded state
+  // Poll for GTFS loaded state — clear interval as soon as loaded
   React.useEffect(() => {
     if (gtfsLoaded) return;
 
     const interval = setInterval(() => {
       if (gtfsParser.isLoaded) {
+        clearInterval(interval);
         logger.info('[MapScreen] GTFS data ready');
         setGtfsLoaded(true);
       }
@@ -507,66 +529,36 @@ function MapScreenInner() {
     return () => subscription.remove();
   }, [setSelectedTrain, navigateToTrain]);
 
-  // Handle region changes with throttled region updates and debounced viewport bounds
-  const lastRegionUpdateRef = useRef<number>(0);
-  const pendingRegionRef = useRef<MapRegion | null>(null);
-  const regionThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  // Handle region changes — region ref is updated immediately (no re-render),
+  // viewport state is debounced to batch downstream recomputations.
   const handleRegionChangeComplete = useCallback((newRegion: MapRegion) => {
-    const now = Date.now();
-    const THROTTLE_MS = 100; // Throttle region state updates
+    regionRef.current = newRegion;
 
-    // Store pending region for deferred update
-    pendingRegionRef.current = newRegion;
-
-    // Throttle setRegion calls to reduce re-renders during fast movement
-    if (now - lastRegionUpdateRef.current >= THROTTLE_MS) {
-      lastRegionUpdateRef.current = now;
-      setRegion(newRegion);
-    } else if (!regionThrottleTimerRef.current) {
-      // Schedule a deferred update to catch the final position
-      regionThrottleTimerRef.current = setTimeout(() => {
-        regionThrottleTimerRef.current = null;
-        if (pendingRegionRef.current) {
-          lastRegionUpdateRef.current = Date.now();
-          setRegion(pendingRegionRef.current);
-        }
-      }, THROTTLE_MS);
-    }
-
-    // Debounce viewport bounds to avoid cascading downstream recomputation on every frame
+    // Debounce viewport bounds + latDelta together — single setState, single re-render
     if (viewportDebounceRef.current) {
       clearTimeout(viewportDebounceRef.current);
     }
     viewportDebounceRef.current = setTimeout(() => {
-      setViewportBounds(regionToViewportBounds(newRegion));
-    }, 60);
-
-    // Debounce train clustering latitudeDelta to avoid expensive reclustering during fast zoom
-    if (trainDebounceRef.current) {
-      clearTimeout(trainDebounceRef.current);
-    }
-    trainDebounceRef.current = setTimeout(() => {
-      setDebouncedLatDelta(newRegion.latitudeDelta);
+      setViewportState({
+        bounds: regionToViewportBounds(newRegion),
+        latDelta: newRegion.latitudeDelta,
+      });
     }, 100);
   }, []);
 
-  // Initialize viewport bounds when region is first set
+  // Initialize viewport bounds when map first becomes ready
   React.useEffect(() => {
-    if (region && !viewportBounds) {
-      setViewportBounds(regionToViewportBounds(region));
+    if (mapReady && regionRef.current && !viewportBounds) {
+      setViewportState({
+        bounds: regionToViewportBounds(regionRef.current),
+        latDelta: regionRef.current.latitudeDelta,
+      });
     }
-  }, [region, viewportBounds]);
+  }, [mapReady, viewportBounds]);
 
   // Cleanup timers on unmount
   React.useEffect(() => {
     return () => {
-      if (regionThrottleTimerRef.current) {
-        clearTimeout(regionThrottleTimerRef.current);
-      }
-      if (trainDebounceRef.current) {
-        clearTimeout(trainDebounceRef.current);
-      }
       if (viewportDebounceRef.current) {
         clearTimeout(viewportDebounceRef.current);
       }
@@ -627,7 +619,7 @@ function MapScreenInner() {
   const batchedSavedTrains = useBatchedItems(clusteredSavedTrains, 25, 20);
 
   // Don't render until we have a region
-  if (!region) {
+  if (!mapReady || !regionRef.current) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <Text style={{ color: AppColors.primary }}>Loading map...</Text>
@@ -641,7 +633,7 @@ function MapScreenInner() {
         ref={mapRef}
         style={styles.map}
         mapType={mapType}
-        initialRegion={region}
+        initialRegion={regionRef.current!}
         showsUserLocation={true}
         showsTraffic={false}
         showsIndoors={true}
@@ -880,8 +872,11 @@ const loadingStyles = StyleSheet.create({
     zIndex: 99999,
     elevation: 99999,
   },
-  icon: {
+  logo: {
+    width: 360,
+    height: 360,
     marginBottom: 16,
+    resizeMode: 'contain',
   },
   copyright: {
     position: 'absolute',

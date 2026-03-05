@@ -83,7 +83,8 @@ class Logger {
   }
 
   /**
-   * Store log entry in memory and schedule persistence
+   * Store log entry in memory and schedule persistence.
+   * In production, only WARN and ERROR are persisted to reduce AsyncStorage overhead.
    */
   private addEntry(level: LogLevel, message: string, data?: unknown): void {
     const entry: LogEntry = {
@@ -100,8 +101,11 @@ class Logger {
       this.logs = this.logs.slice(-this.maxLogs);
     }
 
-    this.dirty = true;
-    this.scheduleFlush();
+    // In production, only persist warn/error to reduce AsyncStorage writes
+    if (__DEV__ || level === LogLevel.WARN || level === LogLevel.ERROR) {
+      this.dirty = true;
+      this.scheduleFlush();
+    }
   }
 
   /**

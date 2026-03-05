@@ -4,6 +4,22 @@ import { TrainActivityManager } from '../services/train-activity-manager';
 import type { Train } from '../types/train';
 import { logger } from '../utils/logger';
 
+/** Compare realtime-changing fields to detect if a train actually changed */
+function hasRealtimeChanged(a: Train, b: Train): boolean {
+  const ar = a.realtime;
+  const br = b.realtime;
+  if (!ar && !br) return false;
+  if (!ar || !br) return true;
+  return (
+    ar.delay !== br.delay ||
+    ar.arrivalDelay !== br.arrivalDelay ||
+    ar.status !== br.status ||
+    ar.lastUpdated !== br.lastUpdated ||
+    ar.position?.lat !== br.position?.lat ||
+    ar.position?.lon !== br.position?.lon
+  );
+}
+
 export function useRealtime(trains: Train[], setTrains: (t: Train[]) => void, intervalMs: number = 20000) {
   // Use ref to avoid resetting interval when trains change
   const trainsRef = useRef(trains);
@@ -21,8 +37,12 @@ export function useRealtime(trains: Train[], setTrains: (t: Train[]) => void, in
       const oldTrains = trainsRef.current;
       const updated = await Promise.all(trainsRef.current.map(t => TrainAPIService.refreshRealtimeData(t)));
       if (mounted) {
-        setTrainsRef.current(updated);
-        TrainActivityManager.onRealtimeUpdate(oldTrains, updated).catch(() => {});
+        // Only trigger re-render if any train's realtime data actually changed
+        const anyChanged = updated.some((t, i) => hasRealtimeChanged(t, oldTrains[i]));
+        if (anyChanged) {
+          setTrainsRef.current(updated);
+        }
+        TrainActivityManager.onRealtimeUpdate(oldTrains, updated).catch(e => logger.warn('TrainActivityManager.onRealtimeUpdate failed', e));
       }
     };
 

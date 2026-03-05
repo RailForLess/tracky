@@ -34,12 +34,17 @@ export function useBatchedItems<T extends Identifiable>(
 
     // Use ref for rendered IDs to avoid stale closure reads
     const renderedIds = renderedIdsRef.current;
-    const targetIds = new Set(targetItems.map(item => item.id));
 
-    // Items that already exist — use fresh target data (positions may have updated)
-    const keep = targetItems.filter(item => renderedIds.has(item.id));
-    // New items to progressively add
-    const toAdd = targetItems.filter(item => !renderedIds.has(item.id));
+    // Single pass: partition into keep (already rendered) and toAdd (new)
+    const keep: T[] = [];
+    const toAdd: T[] = [];
+    for (const item of targetItems) {
+      if (renderedIds.has(item.id)) {
+        keep.push(item);
+      } else {
+        toAdd.push(item);
+      }
+    }
 
     // Zooming in / fewer items — set immediately, removal is cheap
     if (toAdd.length === 0) {

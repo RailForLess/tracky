@@ -32,8 +32,8 @@ const SECOND_THRESHOLD = -200;
 
 interface SwipeableTrainCardProps {
   train: Train;
-  onPress: () => void;
-  onDelete: () => void;
+  onPress: (train: Train) => void;
+  onDelete: (train: Train) => void;
   isFirst?: boolean;
   isLast?: boolean;
   contentOpacity?: SharedValue<number>;
@@ -54,7 +54,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
 
   const handleDelete = () => {
     triggerDeleteHaptic();
-    onDelete();
+    onDelete(train);
   };
 
   const performDelete = () => {
@@ -119,7 +119,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
       });
     } else {
       runOnJS(triggerLightHaptic)();
-      runOnJS(onPress)();
+      runOnJS(onPress)(train);
     }
   });
 
@@ -162,7 +162,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
   // Proper pluralization: "1 HOUR" vs "2 HOURS"
   const singularUnit = countdown.unit.slice(0, -1); // Remove trailing 'S' (DAYS->DAY, HOURS->HOUR, etc.)
   const unitText = countdown.value === 1 ? singularUnit : countdown.unit;
-  const unitLabel = `${unitText}${countdown.past ? ' AGO' : ''}`;
+  const unitLabel = unitText;
   const isPast = countdown.past;
 
   // Compute delayed times for today's trains
@@ -240,6 +240,7 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
             arriveDelayMinutes={arriveDelay}
             arriveDelayedTime={arriveDelayed?.time}
             arriveDelayedDayOffset={arriveDelayed?.dayOffset}
+            fadeOnlyOnArrival
           />
         </Animated.View>
       </GestureDetector>
@@ -256,8 +257,11 @@ interface TrainListProps {
   onDeleteTrain?: (train: Train) => void;
 }
 
+const noopDelete = () => {};
+
 export function TrainList({ trains, onTrainSelect, onDeleteTrain }: TrainListProps) {
   const { contentOpacity } = React.useContext(SlideUpModalContext);
+  const deleteHandler = onDeleteTrain ?? noopDelete;
 
   if (trains.length === 0) {
     return (
@@ -275,8 +279,8 @@ export function TrainList({ trains, onTrainSelect, onDeleteTrain }: TrainListPro
         <SwipeableTrainCard
           key={train.id}
           train={train}
-          onPress={() => onTrainSelect(train)}
-          onDelete={() => onDeleteTrain?.(train)}
+          onPress={onTrainSelect}
+          onDelete={deleteHandler}
           isFirst={index === 0}
           isLast={index === trains.length - 1}
           contentOpacity={contentOpacity}

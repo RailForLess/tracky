@@ -81,70 +81,69 @@ export class TrainStorageService {
   static async getSavedTrains(): Promise<Train[]> {
     try {
       const refs = await this.getSavedTrainRefs();
-      const trains: Train[] = [];
 
-      for (const ref of refs) {
+      const results = await Promise.all(refs.map(async (ref): Promise<Train | null> => {
         const train = await TrainAPIService.getTrainDetails(ref.tripId);
-        if (train) {
-          // If user saved a segmented trip, update from/to based on their segment
-          if (ref.fromCode || ref.toCode) {
-            const stopTimes = await TrainAPIService.getStopTimesForTrip(ref.tripId);
+        if (!train) return null;
 
-            if (ref.fromCode) {
-              const fromStop = stopTimes.find(s => s.stop_id === ref.fromCode);
-              if (fromStop) {
-                train.from = fromStop.stop_name;
-                train.fromCode = fromStop.stop_id;
-                const departFormatted = formatTimeWithDayOffset(fromStop.departure_time);
-                train.departTime = departFormatted.time;
-                train.departDayOffset = departFormatted.dayOffset;
-              }
-            }
+        // If user saved a segmented trip, update from/to based on their segment
+        if (ref.fromCode || ref.toCode) {
+          const stopTimes = await TrainAPIService.getStopTimesForTrip(ref.tripId);
 
-            if (ref.toCode) {
-              const toStop = stopTimes.find(s => s.stop_id === ref.toCode);
-              if (toStop) {
-                train.to = toStop.stop_name;
-                train.toCode = toStop.stop_id;
-                const arriveFormatted = formatTimeWithDayOffset(toStop.arrival_time);
-                train.arriveTime = arriveFormatted.time;
-                train.arriveDayOffset = arriveFormatted.dayOffset;
-              }
-            }
-
-            // Filter intermediate stops to only those between from and to
-            if (ref.fromCode && ref.toCode && train.intermediateStops) {
-              const fromIdx = stopTimes.findIndex(s => s.stop_id === ref.fromCode);
-              const toIdx = stopTimes.findIndex(s => s.stop_id === ref.toCode);
-              if (fromIdx !== -1 && toIdx !== -1) {
-                const segmentStops = stopTimes.slice(fromIdx + 1, toIdx);
-                train.intermediateStops = segmentStops.map(s => ({
-                  time: formatTime(s.departure_time),
-                  name: s.stop_name,
-                  code: s.stop_id,
-                }));
-              }
+          if (ref.fromCode) {
+            const fromStop = stopTimes.find(s => s.stop_id === ref.fromCode);
+            if (fromStop) {
+              train.from = fromStop.stop_name;
+              train.fromCode = fromStop.stop_id;
+              const departFormatted = formatTimeWithDayOffset(fromStop.departure_time);
+              train.departTime = departFormatted.time;
+              train.departDayOffset = departFormatted.dayOffset;
             }
           }
 
-          // Update date and daysAway based on travel date
-          if (ref.travelDate) {
-            train.travelDate = ref.travelDate;
-            train.date = formatDateForDisplay(ref.travelDate);
-            train.daysAway = calculateDaysAway(ref.travelDate);
-
-            // Clear realtime data for future trains — avoids matching
-            // a saved future train to today's live train with the same number
-            if (train.daysAway > 0) {
-              train.realtime = undefined;
+          if (ref.toCode) {
+            const toStop = stopTimes.find(s => s.stop_id === ref.toCode);
+            if (toStop) {
+              train.to = toStop.stop_name;
+              train.toCode = toStop.stop_id;
+              const arriveFormatted = formatTimeWithDayOffset(toStop.arrival_time);
+              train.arriveTime = arriveFormatted.time;
+              train.arriveDayOffset = arriveFormatted.dayOffset;
             }
           }
 
-          trains.push(train);
+          // Filter intermediate stops to only those between from and to
+          if (ref.fromCode && ref.toCode && train.intermediateStops) {
+            const fromIdx = stopTimes.findIndex(s => s.stop_id === ref.fromCode);
+            const toIdx = stopTimes.findIndex(s => s.stop_id === ref.toCode);
+            if (fromIdx !== -1 && toIdx !== -1) {
+              const segmentStops = stopTimes.slice(fromIdx + 1, toIdx);
+              train.intermediateStops = segmentStops.map(s => ({
+                time: formatTime(s.departure_time),
+                name: s.stop_name,
+                code: s.stop_id,
+              }));
+            }
+          }
         }
-      }
 
-      return trains;
+        // Update date and daysAway based on travel date
+        if (ref.travelDate) {
+          train.travelDate = ref.travelDate;
+          train.date = formatDateForDisplay(ref.travelDate);
+          train.daysAway = calculateDaysAway(ref.travelDate);
+
+          // Clear realtime data for future trains — avoids matching
+          // a saved future train to today's live train with the same number
+          if (train.daysAway > 0) {
+            train.realtime = undefined;
+          }
+        }
+
+        return train;
+      }));
+
+      return results.filter((t): t is Train => t !== null);
     } catch (error) {
       logger.error('Error loading saved trains:', error);
       return [];

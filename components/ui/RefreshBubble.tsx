@@ -1,22 +1,27 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../../constants/theme';
 import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
+import AnimatedRollingText from './AnimatedRollingText';
 
 /**
  * A floating pill that appears below the Dynamic Island / status bar
  * showing GTFS refresh progress while the user continues using the app.
+ * Persists on failure with a tap-to-retry action until dismissed.
  */
 export function RefreshBubble() {
   const insets = useSafeAreaInsets();
-  const { isRefreshing, refreshProgress, refreshStep } = useGTFSRefresh();
+  const { isRefreshing, refreshProgress, refreshStep, refreshFailed, triggerRefresh, dismissRefreshFailure } =
+    useGTFSRefresh();
   const slideAnim = useRef(new Animated.Value(-80)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const isVisible = useRef(false);
 
+  const shouldShow = isRefreshing || refreshFailed;
+
   useEffect(() => {
-    if (isRefreshing && !isVisible.current) {
+    if (shouldShow && !isVisible.current) {
       isVisible.current = true;
       Animated.parallel([
         Animated.spring(slideAnim, {
@@ -31,7 +36,7 @@ export function RefreshBubble() {
           useNativeDriver: true,
         }),
       ]).start();
-    } else if (!isRefreshing && isVisible.current) {
+    } else if (!shouldShow && isVisible.current) {
       isVisible.current = false;
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -46,33 +51,61 @@ export function RefreshBubble() {
         }),
       ]).start();
     }
-  }, [isRefreshing, slideAnim, opacityAnim]);
+  }, [shouldShow, slideAnim, opacityAnim]);
 
   const progressPct = Math.round(refreshProgress * 100);
   const isDone = refreshProgress >= 1;
 
+  const handlePress = () => {
+    if (refreshFailed) {
+      triggerRefresh();
+    }
+  };
+
+  const handleLongPress = () => {
+    if (refreshFailed) {
+      dismissRefreshFailure();
+    }
+  };
+
+  const pillContent = (
+    <View style={[styles.pill, refreshFailed && styles.pillFailed]}>
+      {/* Progress bar background */}
+      {!refreshFailed && (
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${Math.max(5, progressPct)}%` }]} />
+        </View>
+      )}
+
+      <View style={styles.content}>
+        <Text style={styles.icon}>{refreshFailed ? '✕' : isDone ? '✓' : '⟳'}</Text>
+        <Text style={styles.stepText} numberOfLines={1} ellipsizeMode="tail">
+          {refreshFailed ? (refreshStep || 'Schedule update failed') : refreshStep || 'Updating schedule...'}
+        </Text>
+        {refreshFailed ? (
+          <Text style={styles.retryText}>Tap to retry</Text>
+        ) : (
+          <AnimatedRollingText value={`${progressPct}%`} style={styles.pctText} />
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <Animated.View
-      pointerEvents="none"
+      pointerEvents={refreshFailed ? 'auto' : 'none'}
       style={[
         styles.container,
         { top: insets.top + 4, transform: [{ translateY: slideAnim }], opacity: opacityAnim },
       ]}
     >
-      <View style={styles.pill}>
-        {/* Progress bar background */}
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.max(5, progressPct)}%` }]} />
-        </View>
-
-        <View style={styles.content}>
-          <Text style={styles.icon}>{isDone ? '✓' : '⟳'}</Text>
-          <Text style={styles.stepText} numberOfLines={1} ellipsizeMode="tail">
-            {refreshStep || 'Updating schedule...'}
-          </Text>
-          <Text style={styles.pctText}>{progressPct}%</Text>
-        </View>
-      </View>
+      {refreshFailed ? (
+        <Pressable onPress={handlePress} onLongPress={handleLongPress}>
+          {pillContent}
+        </Pressable>
+      ) : (
+        pillContent
+      )}
     </Animated.View>
   );
 }
@@ -98,6 +131,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  pillFailed: {
+    borderColor: 'rgba(255, 69, 58, 0.4)',
   },
   progressTrack: {
     position: 'absolute',
@@ -135,5 +171,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     minWidth: 32,
     textAlign: 'right',
+  },
+  retryText: {
+    fontSize: 11,
+    color: 'rgba(255, 69, 58, 0.9)',
+    fontWeight: '600',
   },
 });

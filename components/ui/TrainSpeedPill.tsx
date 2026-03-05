@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppColors } from '../../constants/theme';
 import { useUnits } from '../../context/UnitsContext';
+import AnimatedRollingText from './AnimatedRollingText';
 
 interface TrainSpeedPillProps {
   speed: number | undefined; // m/s from GTFS-RT
@@ -31,9 +32,16 @@ export function TrainSpeedPill({ speed, bearing, visible }: TrainSpeedPillProps)
   const { distanceUnit } = useUnits();
   const slideAnim = useRef(new Animated.Value(-80)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
   const isVisible = useRef(false);
 
   const hasData = visible && (speed != null || bearing != null);
+
+  // Store last known values so content stays rendered during exit animation
+  const lastSpeed = useRef(speed);
+  const lastBearing = useRef(bearing);
+  if (speed != null) lastSpeed.current = speed;
+  if (bearing != null) lastBearing.current = bearing;
 
   useEffect(() => {
     if (hasData && !isVisible.current) {
@@ -50,32 +58,47 @@ export function TrainSpeedPill({ speed, bearing, visible }: TrainSpeedPillProps)
           duration: 200,
           useNativeDriver: true,
         }),
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
       ]).start();
     } else if (!hasData && isVisible.current) {
       isVisible.current = false;
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: -80,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Fade out content first, then slide the pill up
+      Animated.timing(contentOpacity, {
+        toValue: 0,
+        duration: 80,
+        useNativeDriver: true,
+      }).start(() => {
+        Animated.parallel([
+          Animated.timing(slideAnim, {
+            toValue: -80,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacityAnim, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     }
-  }, [hasData, slideAnim, opacityAnim]);
+  }, [hasData, slideAnim, opacityAnim, contentOpacity]);
+
+  const displaySpeed = speed ?? lastSpeed.current;
+  const displayBearing = bearing ?? lastBearing.current;
 
   const speedDisplay =
-    speed != null
+    displaySpeed != null
       ? distanceUnit === 'km'
-        ? `${Math.round(metersPerSecToKmh(speed))} km/h`
-        : `${Math.round(metersPerSecToMph(speed))} mph`
+        ? `${Math.round(metersPerSecToKmh(displaySpeed))} km/h`
+        : `${Math.round(metersPerSecToMph(displaySpeed))} mph`
       : null;
 
-  const bearingDisplay = bearing != null ? bearingToCompass(bearing) : null;
+  const bearingDisplay = displayBearing != null ? bearingToCompass(displayBearing) : null;
 
   return (
     <Animated.View
@@ -86,22 +109,22 @@ export function TrainSpeedPill({ speed, bearing, visible }: TrainSpeedPillProps)
       ]}
     >
       <View style={styles.pill}>
-        <View style={styles.content}>
+        <Animated.View style={[styles.content, { opacity: contentOpacity }]}>
           {speedDisplay && (
             <View style={styles.segment}>
               <Ionicons name="speedometer-outline" size={14} color={AppColors.secondary} />
-              <Text style={styles.valueText}>{speedDisplay}</Text>
+              <AnimatedRollingText value={speedDisplay} style={styles.valueText} />
             </View>
           )}
           {speedDisplay && bearingDisplay && <View style={styles.divider} />}
           {bearingDisplay && (
             <View style={styles.segment}>
               <Ionicons name="compass-outline" size={14} color={AppColors.secondary} />
-              <Text style={styles.valueText}>{bearingDisplay}</Text>
-              <Text style={styles.degreeText}>{Math.round(bearing!)}°</Text>
+              <AnimatedRollingText value={bearingDisplay} style={styles.valueText} />
+              <AnimatedRollingText value={`${Math.round(displayBearing!)}°`} style={styles.degreeText} />
             </View>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Animated.View>
   );

@@ -1,6 +1,6 @@
 /**
  * GTFS weekly sync service
- * - Checks freshness (7 days)
+ * - Checks freshness (3 days)
  * - Fetches GTFS.zip from Amtrak
  * - Unzips in memory (fflate) and parses CSVs
  * - Caches parsed JSON in AsyncStorage
@@ -259,22 +259,25 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
     const lastFetchStr = await AsyncStorage.getItem(STORAGE_KEYS.LAST_FETCH);
     const lastFetchMs = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
 
-    // If cache is fresh, apply and return
-    if (lastFetchMs && !isOlderThanDays(lastFetchMs, 7)) {
-      const routes = await readJSONFromFile<Route[]>(GTFS_FILES.routes);
-      const stops = await readJSONFromFile<Stop[]>(GTFS_FILES.stops);
-      const stopTimes = await readJSONFromFile<Record<string, StopTime[]>>(GTFS_FILES.stopTimes);
-      const shapes = await readJSONFromFile<Record<string, Shape[]>>(GTFS_FILES.shapes);
-      const trips = await readJSONFromFile<Trip[]>(GTFS_FILES.trips);
-      const calendar = await readJSONFromFile<CalendarEntry[]>(GTFS_FILES.calendar);
-      const calendarDates = await readJSONFromFile<CalendarDateException[]>(GTFS_FILES.calendarDates);
+    // If cache is fresh, apply and return (batched read)
+    if (lastFetchMs && !isOlderThanDays(lastFetchMs, 3)) {
+      const keys = [
+        STORAGE_KEYS.ROUTES, STORAGE_KEYS.STOPS, STORAGE_KEYS.STOP_TIMES,
+        STORAGE_KEYS.SHAPES, STORAGE_KEYS.TRIPS, STORAGE_KEYS.CALENDAR, STORAGE_KEYS.CALENDAR_DATES,
+      ];
+      const pairs = await AsyncStorage.multiGet(keys);
+      const map = new Map(pairs);
+      const routes = safeJSONParse<Route[]>(map.get(STORAGE_KEYS.ROUTES) ?? null);
+      const stops = safeJSONParse<Stop[]>(map.get(STORAGE_KEYS.STOPS) ?? null);
+      const stopTimes = safeJSONParse<Record<string, StopTime[]>>(map.get(STORAGE_KEYS.STOP_TIMES) ?? null);
+      const shapes = safeJSONParse<Record<string, Shape[]>>(map.get(STORAGE_KEYS.SHAPES) ?? null);
+      const trips = safeJSONParse<Trip[]>(map.get(STORAGE_KEYS.TRIPS) ?? null);
+      const calendar = safeJSONParse<CalendarEntry[]>(map.get(STORAGE_KEYS.CALENDAR) ?? null);
+      const calendarDates = safeJSONParse<CalendarDateException[]>(map.get(STORAGE_KEYS.CALENDAR_DATES) ?? null);
       if (routes && stops && stopTimes) {
         gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || []);
-
-        // Initialize shape loader for map rendering
         shapeLoader.initialize(shapes || {});
-
-        await report('Using cached GTFS', 1, 'Cache age < 7 days');
+        await report('Using cached GTFS', 1, 'Cache age < 3 days');
         return { usedCache: true };
       }
     }
@@ -342,40 +345,66 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
 }
 
 export async function hasCachedGTFS(): Promise<boolean> {
-  const routes = await AsyncStorage.getItem(STORAGE_KEYS.ROUTES);
-  const stops = await AsyncStorage.getItem(STORAGE_KEYS.STOPS);
-  const stopTimes = await AsyncStorage.getItem(STORAGE_KEYS.STOP_TIMES);
-  return !!(routes && stops && stopTimes);
+  const pairs = await AsyncStorage.multiGet([STORAGE_KEYS.ROUTES, STORAGE_KEYS.STOPS, STORAGE_KEYS.STOP_TIMES]);
+  return pairs.every(([, value]) => !!value);
 }
 
 export async function isCacheStale(): Promise<boolean> {
   const lastFetchStr = await AsyncStorage.getItem(STORAGE_KEYS.LAST_FETCH);
   const lastFetchMs = lastFetchStr ? parseInt(lastFetchStr, 10) : 0;
-  return !lastFetchMs || isOlderThanDays(lastFetchMs, 7);
+  return !lastFetchMs || isOlderThanDays(lastFetchMs, 3);
 }
+
+// Yield to the event loop so the JS thread can handle pending UI work
+const yieldToUI = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 /**
  * Load cached GTFS data into the parser (called on app startup)
- * This doesn't check staleness - just loads whatever is cached
+ * This doesn't check staleness - just loads whatever is cached.
+ * Uses multiGet to batch all reads into a single native bridge call,
+ * then yields between large JSON parses to avoid blocking the UI thread.
  */
 export async function loadCachedGTFS(): Promise<boolean> {
   try {
-    const routes = await readJSONFromFile<Route[]>(GTFS_FILES.routes);
-    const stops = await readJSONFromFile<Stop[]>(GTFS_FILES.stops);
-    const stopTimes = await readJSONFromFile<Record<string, StopTime[]>>(GTFS_FILES.stopTimes);
-    const shapes = await readJSONFromFile<Record<string, Shape[]>>(GTFS_FILES.shapes);
-    const trips = await readJSONFromFile<Trip[]>(GTFS_FILES.trips);
-    const calendar = await readJSONFromFile<CalendarEntry[]>(GTFS_FILES.calendar);
-    const calendarDates = await readJSONFromFile<CalendarDateException[]>(GTFS_FILES.calendarDates);
+    const keys = [
+      STORAGE_KEYS.ROUTES,
+      STORAGE_KEYS.STOPS,
+      STORAGE_KEYS.STOP_TIMES,
+      STORAGE_KEYS.SHAPES,
+      STORAGE_KEYS.TRIPS,
+      STORAGE_KEYS.CALENDAR,
+      STORAGE_KEYS.CALENDAR_DATES,
+    ];
+    const pairs = await AsyncStorage.multiGet(keys);
+    const map = new Map(pairs);
 
-    if (routes && stops && stopTimes) {
-      gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || []);
-      shapeLoader.initialize(shapes || {});
-      logger.info('[GTFS] Loaded cached data on startup');
-      return true;
+    // Parse large datasets with yields between them so the UI thread stays responsive
+    const routes = safeJSONParse<Route[]>(map.get(STORAGE_KEYS.ROUTES) ?? null);
+    const stops = safeJSONParse<Stop[]>(map.get(STORAGE_KEYS.STOPS) ?? null);
+    if (!routes || !stops) {
+      logger.info('[GTFS] No cached data found');
+      return false;
     }
-    logger.info('[GTFS] No cached data found');
-    return false;
+
+    await yieldToUI();
+    const stopTimes = safeJSONParse<Record<string, StopTime[]>>(map.get(STORAGE_KEYS.STOP_TIMES) ?? null);
+    if (!stopTimes) {
+      logger.info('[GTFS] No cached data found');
+      return false;
+    }
+
+    await yieldToUI();
+    const shapes = safeJSONParse<Record<string, Shape[]>>(map.get(STORAGE_KEYS.SHAPES) ?? null);
+
+    await yieldToUI();
+    const trips = safeJSONParse<Trip[]>(map.get(STORAGE_KEYS.TRIPS) ?? null);
+    const calendar = safeJSONParse<CalendarEntry[]>(map.get(STORAGE_KEYS.CALENDAR) ?? null);
+    const calendarDates = safeJSONParse<CalendarDateException[]>(map.get(STORAGE_KEYS.CALENDAR_DATES) ?? null);
+
+    gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || []);
+    shapeLoader.initialize(shapes || {});
+    logger.info('[GTFS] Loaded cached data on startup');
+    return true;
   } catch (error) {
     logger.error('[GTFS] Failed to load cached data:', error);
     return false;

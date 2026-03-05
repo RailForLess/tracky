@@ -17,6 +17,10 @@ let cachedPrefs: NotificationPrefs = DEFAULT_NOTIFICATION_PREFS;
 // foreground and background code paths share the same dedup state.
 const sentArrivalAlerts = new Set<string>();
 
+// Track the last delay value we notified about per train, so we only notify
+// when the delay actually changes (not on every poll cycle).
+const lastNotifiedDelay = new Map<string, number>();
+
 function trainKey(train: Train): string {
   return `${train.tripId}|${train.fromCode}|${train.toCode}`;
 }
@@ -107,6 +111,7 @@ export const TrainActivityManager = {
     await LiveActivityService.endForTrain(tripId, fromCode, toCode);
     const deletedKey = `${tripId}|${fromCode}|${toCode}`;
     sentArrivalAlerts.delete(deletedKey);
+    lastNotifiedDelay.delete(deletedKey);
     await TrainStorageService.clearArrivalAlert(deletedKey);
 
     const remaining = await TrainStorageService.getSavedTrains();
@@ -118,6 +123,7 @@ export const TrainActivityManager = {
     await LiveActivityService.endForTrain(train.tripId || '', train.fromCode, train.toCode);
     const archivedKey = trainKey(train);
     sentArrivalAlerts.delete(archivedKey);
+    lastNotifiedDelay.delete(archivedKey);
     await TrainStorageService.clearArrivalAlert(archivedKey);
 
     const remaining = await TrainStorageService.getSavedTrains();
@@ -140,16 +146,20 @@ export const TrainActivityManager = {
       );
 
       // Delay alerts + reschedule departure reminder when delay changes
-      if (oldTrain && oldTrain.realtime?.delay != null && newTrain.realtime?.delay != null) {
-        const oldDelay = oldTrain.realtime.delay;
+      if (newTrain.realtime?.delay != null) {
         const newDelay = newTrain.realtime.delay;
-        if (Math.abs(newDelay - oldDelay) >= 5) {
-          if (prefs.delayAlerts) {
-            await NotificationService.sendDelayAlert(newTrain, oldDelay, newDelay);
-          }
-          // Reschedule departure reminder with updated delay-adjusted time
-          if (prefs.departureReminders) {
-            await NotificationService.scheduleDepartureReminder(newTrain);
+        const prevNotified = lastNotifiedDelay.get(key);
+        const oldDelay = prevNotified ?? oldTrain?.realtime?.delay ?? 0;
+        if (prevNotified === undefined || newDelay !== prevNotified) {
+          lastNotifiedDelay.set(key, newDelay);
+          if (prevNotified !== undefined && Math.abs(newDelay - oldDelay) >= 5) {
+            if (prefs.delayAlerts) {
+              await NotificationService.sendDelayAlert(newTrain, oldDelay, newDelay);
+            }
+            // Reschedule departure reminder with updated delay-adjusted time
+            if (prefs.departureReminders) {
+              await NotificationService.scheduleDepartureReminder(newTrain);
+            }
           }
         }
       }

@@ -7,9 +7,10 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
+
+const GAP = 48;
 
 interface MarqueeTextProps {
   text: string;
@@ -20,7 +21,7 @@ export default function MarqueeText({ text, style }: MarqueeTextProps) {
   const translateX = useSharedValue(0);
   const textWidthRef = React.useRef(0);
   const containerWidthRef = React.useRef(0);
-  const [measured, setMeasured] = React.useState(false);
+  const [overflows, setOverflows] = React.useState(false);
 
   const startAnimation = React.useCallback(() => {
     const tw = textWidthRef.current;
@@ -28,34 +29,34 @@ export default function MarqueeText({ text, style }: MarqueeTextProps) {
     if (tw <= cw || cw === 0) {
       cancelAnimation(translateX);
       translateX.value = 0;
+      setOverflows(false);
       return;
     }
-    const overflow = tw - cw;
+    setOverflows(true);
+    const cycleWidth = tw + GAP;
     translateX.value = 0;
-    translateX.value = withRepeat(
-      withSequence(
-        withDelay(1500, withTiming(-overflow, { duration: overflow * 25, easing: Easing.linear })),
-        withDelay(1500, withTiming(0, { duration: overflow * 25, easing: Easing.linear })),
+    translateX.value = withDelay(
+      1500,
+      withRepeat(
+        withTiming(-cycleWidth, { duration: cycleWidth * 25, easing: Easing.linear }),
+        -1,
       ),
-      -1,
     );
-  }, []);
+  }, [translateX]);
 
   const onContainerLayout = React.useCallback((e: LayoutChangeEvent) => {
     containerWidthRef.current = e.nativeEvent.layout.width;
-    if (measured) startAnimation();
-  }, [measured, startAnimation]);
-
-  const onTextLayout = React.useCallback((e: LayoutChangeEvent) => {
-    textWidthRef.current = e.nativeEvent.layout.width;
-    setMeasured(true);
     startAnimation();
   }, [startAnimation]);
 
-  // Restart animation when text changes
+  const onTextLayout = React.useCallback((e: LayoutChangeEvent) => {
+    textWidthRef.current = e.nativeEvent.layout.width;
+    startAnimation();
+  }, [startAnimation]);
+
   React.useEffect(() => {
-    if (measured) startAnimation();
-  }, [text, measured, startAnimation]);
+    startAnimation();
+  }, [text, startAnimation]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -63,13 +64,19 @@ export default function MarqueeText({ text, style }: MarqueeTextProps) {
 
   return (
     <View style={{ overflow: 'hidden' }} onLayout={onContainerLayout}>
-      {/* Off-screen measurement text — positioned far left so it's not clipped */}
-      <View style={{ position: 'absolute', top: -9999, left: 0, right: undefined, flexDirection: 'row' }}>
+      {/* Off-screen measurement — wide parent prevents text from wrapping */}
+      <View style={{ position: 'absolute', top: -9999, left: 0, width: 99999, opacity: 0 }}>
         <Text style={style} onLayout={onTextLayout}>{text}</Text>
       </View>
-      {/* Visible scrolling text */}
-      <Animated.View style={[{ flexDirection: 'row' }, animatedStyle]}>
+      {/* Two copies for seamless loop — when first scrolls off, second is already visible */}
+      <Animated.View style={[{ flexDirection: 'row', width: 99999 }, animatedStyle]}>
         <Text style={style}>{text}</Text>
+        {overflows && (
+          <>
+            <View style={{ width: GAP }} />
+            <Text style={style}>{text}</Text>
+          </>
+        )}
       </Animated.View>
     </View>
   );

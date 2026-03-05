@@ -32,6 +32,7 @@ import { TrainActivityManager } from '../../services/train-activity-manager';
 import { useTrainContext } from '../../context/TrainContext';
 import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
 import { type LogEntry, LogLevel, logger, openReportBadDataEmail, openReportBugEmail } from '../../utils/logger';
+import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
 import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { SlideUpModalContext } from './slide-up-modal';
 
@@ -95,6 +96,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const [forceCrash, setForceCrash] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
   const { savedTrains } = useTrainContext();
+  const { debugShowLoadingScreen } = useGTFSRefresh();
 
   const { width: SCREEN_WIDTH } = Dimensions.get('window');
   const slideX = useSharedValue(0); // 0 = main, 1 = subpage
@@ -391,7 +393,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       const updated = { ...notifPrefs, [key]: value };
       setNotifPrefs(updated);
       hapticSelection();
-      TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(() => {});
+      TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(e => logger.warn('TrainActivityManager.onPrefsChanged failed', e));
     },
     [notifPrefs, savedTrains]
   );
@@ -682,6 +684,22 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               </View>
               <View style={styles.itemContent}>
                 <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Crash Screen</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticLight();
+                onClose();
+                setTimeout(() => debugShowLoadingScreen(), 300);
+              }}
+            >
+              <View style={styles.itemIconContainer}>
+                <Ionicons name="reload-outline" size={22} color="#FBBF24" />
+              </View>
+              <View style={styles.itemContent}>
+                <Text style={[styles.itemTitle, { color: '#FBBF24' }]}>Test Loading Screen (5s)</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity

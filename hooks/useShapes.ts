@@ -14,13 +14,18 @@ export function useShapes(bounds?: ViewportBounds) {
   const pendingQueueRef = useRef<VisibleShape[]>([]);
   const currentBoundsKeyRef = useRef<string>('');
 
-  // Poll for GTFS loaded state
+  // Poll for GTFS loaded state (max 30s)
   useEffect(() => {
     if (gtfsLoaded) return;
 
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60; // 60 × 500ms = 30s
     const interval = setInterval(() => {
       if (gtfsParser.isLoaded) {
         setGtfsLoaded(true);
+        clearInterval(interval);
+      } else if (++attempts >= MAX_ATTEMPTS) {
+        clearInterval(interval);
       }
     }, 500);
 

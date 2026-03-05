@@ -22,6 +22,7 @@ import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/tim
 import { calculateDuration, getCountdownForTrain, pluralize } from '../../utils/train-display';
 import { convertDistance, distanceSuffix, formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
+import AnimatedRollingText from './AnimatedRollingText';
 import MarqueeText from './MarqueeText';
 import { SlideUpModalContext } from './slide-up-modal';
 import TimeDisplay from './TimeDisplay';
@@ -537,9 +538,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                 <Text style={styles.statusText}>
                   {isLiveTrain ? 'En route, ' : ''}
                   {countdown.past ? (isLiveTrain ? 'departed ' : 'Departed ') : (isLiveTrain ? 'departs in ' : 'Departs in ')}
-                  <Text style={{ fontWeight: 'bold' }}>{countdown.value}</Text>{' '}
-                  {unitLabel.toLowerCase()}
                 </Text>
+                <AnimatedRollingText value={String(countdown.value)} style={[styles.statusText, { fontWeight: 'bold' }]} />
+                <Text style={styles.statusText}>{' '}{unitLabel.toLowerCase()}</Text>
               </View>
             </View>
           )}
@@ -577,14 +578,18 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                       hideDelayLabel
                     />
                     {trainData.daysAway <= 0 && dDelay != null && (
-                      <Text style={[styles.delayStatusText, colorKey === 'delayed' ? styles.delayStatusLate : styles.delayStatusEarly]}>
-                        {formatDelayStatus(dDelay)}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <AnimatedRollingText
+                          value={formatDelayStatus(dDelay)}
+                          style={[styles.delayStatusText, colorKey === 'delayed' ? styles.delayStatusLate : styles.delayStatusEarly]}
+                        />
                         {countdown && (
-                          <Text style={styles.countdownInline}>
-                            {' · '}{countdown.past ? `Departed ${countdown.value} ${countdown.unit.toLowerCase()} ago` : `Departs in ${countdown.value} ${countdown.unit.toLowerCase()}`}
-                          </Text>
+                          <AnimatedRollingText
+                            value={` · ${countdown.past ? `Departed ${countdown.value} ${countdown.unit.toLowerCase()} ago` : `Departs in ${countdown.value} ${countdown.unit.toLowerCase()}`}`}
+                            style={[styles.delayStatusText, styles.countdownInline]}
+                          />
                         )}
-                      </Text>
+                      </View>
                     )}
                   </>
                 );
@@ -597,18 +602,18 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                     color={AppColors.secondary}
                     style={{ marginRight: Spacing.sm }}
                   />
-                  <Text style={styles.durationText}>{duration}</Text>
+                  <AnimatedRollingText value={duration} style={styles.durationText} />
                   {distanceMiles !== null && (
-                    <Text style={[styles.durationText, { marginLeft: 0 }]}>
-                      {' '}
-                      • {Math.round(convertDistance(distanceMiles, distanceUnit)).toLocaleString()} {distanceSuffix(distanceUnit)}
-                    </Text>
+                    <AnimatedRollingText
+                      value={` • ${Math.round(convertDistance(distanceMiles, distanceUnit)).toLocaleString()} ${distanceSuffix(distanceUnit)}`}
+                      style={[styles.durationText, { marginLeft: 0 }]}
+                    />
                   )}
                   {allStops.length > 0 && (
-                    <Text style={[styles.durationText, { marginLeft: 0 }]}>
-                      {' '}
-                      • {allStops.length - 1} {pluralize(allStops.length - 1, 'stop')}
-                    </Text>
+                    <AnimatedRollingText
+                      value={` • ${allStops.length - 1} ${pluralize(allStops.length - 1, 'stop')}`}
+                      style={[styles.durationText, { marginLeft: 0 }]}
+                    />
                   )}
                 </View>
                 <View style={styles.horizontalLine} />
@@ -666,12 +671,16 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                       hideDelayLabel
                     />
                     {trainData.daysAway <= 0 && aDelay != null && (
-                      <Text style={[styles.delayStatusText, colorKey === 'delayed' ? styles.delayStatusLate : styles.delayStatusEarly]}>
-                        {formatDelayStatus(aDelay)}
-                        <Text style={styles.countdownInline}>
-                          {' · '}{arrPast ? `Arrived ${arrCountdownText} ago` : `Arrives in ${arrCountdownText}`}
-                        </Text>
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <AnimatedRollingText
+                          value={formatDelayStatus(aDelay)}
+                          style={[styles.delayStatusText, colorKey === 'delayed' ? styles.delayStatusLate : styles.delayStatusEarly]}
+                        />
+                        <AnimatedRollingText
+                          value={` · ${arrPast ? `Arrived ${arrCountdownText} ago` : `Arrives in ${arrCountdownText}`}`}
+                          style={[styles.delayStatusText, styles.countdownInline]}
+                        />
+                      </View>
                     )}
                   </>
                 );
@@ -788,7 +797,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                                   <>
                                     <Text style={[styles.timelineStopCode, isPast && styles.timelineTextPast, isCurrent && styles.timelineTextCurrent]}> • </Text>
                                     <Ionicons name={stopWeather[stop.code].icon as any} size={11} color={isCurrent ? '#FFFFFF' : AppColors.secondary} style={isPast ? { opacity: 0.6 } : undefined} />
-                                    <Text style={[styles.timelineStopCode, isPast && styles.timelineTextPast, isCurrent && styles.timelineTextCurrent]}> {stopWeather[stop.code].temp}°{tempUnit}</Text>
+                                    <AnimatedRollingText value={` ${stopWeather[stop.code].temp}°${tempUnit}`} style={[styles.timelineStopCode, isPast && styles.timelineTextPast, isCurrent && styles.timelineTextCurrent]} />
                                   </>
                                 )}
                                 {isCurrent && (() => {
@@ -801,7 +810,12 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                                   const arrivalText = diffMin >= 60
                                     ? `In ${Math.floor(diffMin / 60)}h${diffMin % 60 > 0 ? `${diffMin % 60}m` : ''}`
                                     : `In ${diffMin} min`;
-                                  return <Text style={styles.arrivalCountdown}> • {arrivalText}</Text>;
+                                  return (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                      <Text style={styles.arrivalCountdown}> • </Text>
+                                      <AnimatedRollingText value={arrivalText} style={styles.arrivalCountdown} />
+                                    </View>
+                                  );
                                 })()}
                               </View>
                             </TouchableOpacity>
@@ -844,32 +858,34 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
                   <Text style={styles.historyStatLabel}>Trips</Text>
                   <View style={styles.historyStatValueRow}>
                     <TrainIcon name={trainData?.routeName} size={14} style={styles.historyStatIcon} />
-                    <Text style={styles.historyStatValue}>
-                      {routeHistory && routeHistory.trips > 0 ? routeHistory.trips : 0}
-                    </Text>
+                    <AnimatedRollingText
+                      value={String(routeHistory && routeHistory.trips > 0 ? routeHistory.trips : 0)}
+                      style={styles.historyStatValue}
+                    />
                   </View>
                 </View>
                 <View style={styles.historyStat}>
                   <Text style={styles.historyStatLabel}>Distance</Text>
                   <View style={styles.historyStatValueRow}>
                     <Ionicons name="navigate" size={14} color={AppColors.primary} style={styles.historyStatIcon} />
-                    <Text style={styles.historyStatValue}>
-                      {routeHistory && routeHistory.trips > 0
+                    <AnimatedRollingText
+                      value={routeHistory && routeHistory.trips > 0
                         ? `${Math.round(convertDistance(routeHistory.distance, distanceUnit)).toLocaleString()} ${distanceSuffix(distanceUnit)}`
                         : `0 ${distanceSuffix(distanceUnit)}`}
-                    </Text>
+                      style={styles.historyStatValue}
+                    />
                   </View>
                 </View>
                 <View style={styles.historyStat}>
                   <Text style={styles.historyStatLabel}>Travel Time</Text>
                   <View style={styles.historyStatValueRow}>
                     <Ionicons name="time" size={14} color={AppColors.primary} style={styles.historyStatIcon} />
-                    <Text style={styles.historyStatValue}>
-                      {routeHistory && routeHistory.trips > 0
+                    <AnimatedRollingText
+                      value={routeHistory && routeHistory.trips > 0
                         ? `${Math.floor(routeHistory.duration / 60)}h ${routeHistory.duration % 60}m`
-                        : '0m'
-                      }
-                    </Text>
+                        : '0m'}
+                      style={styles.historyStatValue}
+                    />
                   </View>
                 </View>
               </View>

@@ -4,7 +4,7 @@
     "slug": "tracky",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/AppIcon.png",
+    "icon": "./assets/images/tracky-logo.png",
     "scheme": "tracky",
     "userInterfaceStyle": "automatic",
     "platforms": [
@@ -57,7 +57,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/tracky-logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",

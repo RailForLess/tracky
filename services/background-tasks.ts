@@ -1,12 +1,6 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
-import { TrainAPIService } from './api';
-import * as LiveActivityService from './live-activity';
-import * as NotificationService from './notifications';
-import { TrainStorageService } from './storage';
 import type { Train } from '../types/train';
-import { selectNextTrain, selectUpcomingTrains, buildTravelStats } from './widget-data';
-import { parseTimeToDate } from '../utils/time-formatting';
 import { logger } from '../utils/logger';
 import { Platform, NativeModules } from 'react-native';
 
@@ -30,6 +24,14 @@ const BACKGROUND_TASK_NAME = 'TRACKY_TRAIN_UPDATE';
 TaskManager.defineTask(BACKGROUND_TASK_NAME, async () => {
   try {
     logger.info('[BackgroundTask] Running train update');
+
+    // Lazy-load heavy services only when background task actually runs
+    const { TrainStorageService } = require('./storage') as typeof import('./storage');
+    const { TrainAPIService } = require('./api') as typeof import('./api');
+    const NotificationService = require('./notifications') as typeof import('./notifications');
+    const LiveActivityService = require('./live-activity') as typeof import('./live-activity');
+    const { parseTimeToDate } = require('../utils/time-formatting') as typeof import('../utils/time-formatting');
+    const { selectNextTrain, selectUpcomingTrains, buildTravelStats } = require('./widget-data') as typeof import('./widget-data');
 
     const prefs = await TrainStorageService.getNotificationPrefs();
     const trains = await TrainStorageService.getSavedTrains();

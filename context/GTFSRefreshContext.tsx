@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { ensureFreshGTFS, isCacheStale, loadCachedGTFS } from '../services/gtfs-sync';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { gtfsParser } from '../utils/gtfs-parser';
@@ -10,6 +12,7 @@ interface GTFSRefreshState {
   isLoadingCache: boolean;
   refreshProgress: number;
   refreshStep: string;
+  refreshFailed: boolean;
 }
 
 interface GTFSRefreshContextType extends GTFSRefreshState {
@@ -17,6 +20,10 @@ interface GTFSRefreshContextType extends GTFSRefreshState {
   initializeGTFS: (onCacheLoaded?: () => void) => Promise<void>;
   /** Manual refresh triggered from settings */
   triggerRefresh: () => void;
+  /** Dismiss the persistent failure indicator */
+  dismissRefreshFailure: () => void;
+  /** Debug: show loading screen for 5 seconds */
+  debugShowLoadingScreen: () => void;
 }
 
 const GTFSRefreshContext = createContext<GTFSRefreshContextType | undefined>(undefined);
@@ -35,6 +42,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
   const [isLoadingCache, setIsLoadingCache] = useState(true);
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [refreshStep, setRefreshStep] = useState('');
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const hasInitialized = useRef(false);
   const onRefreshCompleteRef = useRef(onRefreshComplete);
   onRefreshCompleteRef.current = onRefreshComplete;
@@ -57,8 +65,9 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       }
       setRefreshProgress(1);
       setRefreshStep('Refresh complete');
+      setRefreshFailed(false);
       logger.info(`[GTFS] Refresh complete (usedCache=${result.usedCache})`);
-      LocationSuggestionsService.initialize(gtfsParser).catch(() => {});
+      LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
       onRefreshCompleteRef.current?.();
       // Brief display of completion then clear
       setTimeout(() => {
@@ -68,11 +77,11 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       }, 1200);
     } catch (error) {
       logger.error('GTFS refresh failed:', error);
-      setRefreshStep('Refresh failed');
+      setRefreshStep('Schedule update failed');
+      setRefreshFailed(true);
       setTimeout(() => {
         setIsRefreshing(false);
         setRefreshProgress(0);
-        setRefreshStep('');
       }, 2000);
     }
   }, []);
@@ -93,9 +102,10 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
         setRefreshProgress(0);
         setRefreshStep('');
         onCacheLoaded?.();
+        SplashScreen.hideAsync();
 
         // Pre-compute location-based suggestions in background
-        LocationSuggestionsService.initialize(gtfsParser).catch(() => {});
+        LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
 
         // Check staleness in background
         const stale = await isCacheStale();
@@ -103,21 +113,39 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
           runRefresh(false);
         }
       } else {
-        // No cache at all — must fetch before app is usable
+        // No cache at all — hide splash so user sees refresh progress UI
         setIsLoadingCache(false);
+        SplashScreen.hideAsync();
         runRefresh(false);
       }
     } catch (error) {
       logger.error('GTFS initialization failed:', error);
       setIsLoadingCache(false);
       setRefreshStep('');
+      SplashScreen.hideAsync();
+      Alert.alert(
+        'Unable to Load Schedules',
+        'Tracky could not load train schedule data. Please check your internet connection and restart the app.',
+        [{ text: 'Retry', onPress: () => { hasInitialized.current = false; initializeGTFS(onCacheLoaded); } }, { text: 'OK' }]
+      );
     }
   }, [runRefresh]);
 
   const triggerRefresh = useCallback(() => {
     if (isRefreshing) return;
+    setRefreshFailed(false);
     runRefresh(false);
   }, [isRefreshing, runRefresh]);
+
+  const dismissRefreshFailure = useCallback(() => {
+    setRefreshFailed(false);
+    setRefreshStep('');
+  }, []);
+
+  const debugShowLoadingScreen = useCallback(() => {
+    setIsLoadingCache(true);
+    setTimeout(() => setIsLoadingCache(false), 5000);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -125,10 +153,13 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       isLoadingCache,
       refreshProgress,
       refreshStep,
+      refreshFailed,
       initializeGTFS,
       triggerRefresh,
+      dismissRefreshFailure,
+      debugShowLoadingScreen,
     }),
-    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, initializeGTFS, triggerRefresh]
+    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, refreshFailed, initializeGTFS, triggerRefresh, dismissRefreshFailure, debugShowLoadingScreen]
   );
 
   return (

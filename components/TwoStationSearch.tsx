@@ -482,7 +482,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
       RealtimeService.getAllActiveTrains().then(active => {
         const nums = new Set(active.map(t => t.trainNumber));
         setLiveTrainNumbers(nums);
-      }).catch(() => {});
+      }).catch(e => logger.warn('Failed to fetch active trains', e));
     }
   };
 
@@ -1087,7 +1087,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                 const countdown = getCountdownFromDeparture(trip.fromStop.departure_time, selectedDate);
                 const singularUnit = countdown.unit.slice(0, -1);
                 const unitText = countdown.value === 1 ? singularUnit : countdown.unit;
-                const countdownLabel = `${unitText}${countdown.past ? ' AGO' : ''}`;
+                const countdownLabel = unitText;
                 const depart = formatTimeWithDayOffset(trip.fromStop.departure_time);
                 const arrive = formatTimeWithDayOffset(trip.toStop.arrival_time);
                 const delays = tripDelays.get(trip.tripId);

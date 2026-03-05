@@ -24,6 +24,7 @@ import { useUnits } from '../../context/UnitsContext';
 import { logger } from '../../utils/logger';
 import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 import { addDelayToTime, formatDelayShort, parseTimeToMinutes } from '../../utils/time-formatting';
+import AnimatedRollingText from './AnimatedRollingText';
 import { getCurrentMinutesInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
@@ -313,7 +314,7 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
                       style={[styles.timeText, styles.timeTextDelayed]}
                       superscriptStyle={[styles.timeSuperscript, styles.timeTextDelayed]}
                     />
-                    <Text style={styles.delayText}>{formatDelayShort(train.realtime.delay)} delay</Text>
+                    <AnimatedRollingText value={`${formatDelayShort(train.realtime.delay)} delay`} style={styles.delayText} />
                   </>
                 );
               })()
@@ -465,6 +466,7 @@ export default function DepartureBoardModal({
 
   // Filter departures based on search, date, and filter mode
   const filteredDepartures = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
     const filtered = departures.filter(train => {
       // Filter by upcoming time for today (using relevant time based on filter mode)
       if (!isTrainUpcoming(train, selectedDate, station.stop_id, filterMode, stationTimezone)) {
@@ -482,21 +484,14 @@ export default function DepartureBoardModal({
       }
 
       // Filter by search query (destination, train number, route name)
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesDestination = train.to.toLowerCase().includes(query);
-        const matchesToCode = train.toCode.toLowerCase().includes(query);
-        const matchesOrigin = train.from.toLowerCase().includes(query);
-        const matchesFromCode = train.fromCode.toLowerCase().includes(query);
-        const matchesTrainNumber = train.trainNumber.toLowerCase().includes(query);
-        const matchesRouteName = train.routeName?.toLowerCase().includes(query);
+      if (query) {
         return (
-          matchesDestination ||
-          matchesToCode ||
-          matchesOrigin ||
-          matchesFromCode ||
-          matchesTrainNumber ||
-          matchesRouteName
+          train.to.toLowerCase().includes(query) ||
+          train.toCode.toLowerCase().includes(query) ||
+          train.from.toLowerCase().includes(query) ||
+          train.fromCode.toLowerCase().includes(query) ||
+          train.trainNumber.toLowerCase().includes(query) ||
+          (train.routeName?.toLowerCase().includes(query) ?? false)
         );
       }
 
@@ -795,7 +790,7 @@ export default function DepartureBoardModal({
           nestedScrollEnabled={true}
           initialNumToRender={12}
           maxToRenderPerBatch={8}
-          windowSize={5}
+          windowSize={9}
           removeClippedSubviews={true}
         />
       </Animated.View>

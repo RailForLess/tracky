@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
@@ -10,6 +11,9 @@ import 'react-native-reanimated';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import '../services/background-tasks';
 import { info } from '../utils/logger';
+
+// Keep splash visible until GTFS data is ready
+SplashScreen.preventAutoHideAsync();
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',

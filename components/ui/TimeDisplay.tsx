@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { AppColors, Spacing } from '../../constants/theme';
 import { formatDelayStatus } from '../../utils/time-formatting';
+import AnimatedRollingText from './AnimatedRollingText';
 
 interface TimeDisplayProps {
   time: string;
@@ -25,6 +26,8 @@ interface TimeDisplayProps {
  *
  * When delayMinutes > 0, shows original time with strikethrough in secondary color,
  * followed by the new delayed time in the primary style
+ *
+ * All time values use AnimatedRollingText for departure-board-style transitions.
  */
 export default function TimeDisplay({
   time,
@@ -46,15 +49,15 @@ export default function TimeDisplay({
     return (
       <View style={[styles.delayContainerVertical, containerStyle]}>
         <View style={styles.container}>
-          <Text style={[style, styles.delayedTime]}>{delayedTime}</Text>
+          <AnimatedRollingText value={delayedTime!} style={[style, styles.delayedTime]} />
           {(delayedDayOffset ?? 0) > 0 && (
-            <Text style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]}>+{delayedDayOffset}</Text>
+            <AnimatedRollingText value={`+${delayedDayOffset}`} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
           )}
         </View>
         <View style={styles.originalTimeRow}>
-          <Text style={[style, styles.originalTimeSmall, styles.delayLabel]}>{delayStr} · </Text>
+          <AnimatedRollingText value={`${delayStr} · `} style={[style, styles.originalTimeSmall, styles.delayLabel]} />
           <View style={styles.originalTimeContainer}>
-            <Text style={[style, styles.originalTimeSmall]}>{time}</Text>
+            <AnimatedRollingText value={time} style={[style, styles.originalTimeSmall]} />
             {dayOffset > 0 && (
               <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript, styles.originalSuperscriptSmall]}>+{dayOffset}</Text>
             )}
@@ -66,18 +69,19 @@ export default function TimeDisplay({
 
   if (hasDelay) {
     // Horizontal layout: side by side (default)
+    const delayLabel = !hideDelayLabel ? ` (${delayStr})` : '';
     return (
       <View style={[styles.delayContainer, containerStyle]}>
         {/* New delayed time (primary) with delay label */}
         <View style={styles.container}>
-          <Text style={[style, styles.delayedTime]}>{delayedTime}{!hideDelayLabel ? ` (${delayStr})` : ''}</Text>
+          <AnimatedRollingText value={`${delayedTime}${delayLabel}`} style={[style, styles.delayedTime]} />
           {(delayedDayOffset ?? 0) > 0 && (
-            <Text style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]}>+{delayedDayOffset}</Text>
+            <AnimatedRollingText value={`+${delayedDayOffset}`} style={[styles.superscript, superscriptStyle, styles.delayedSuperscript]} />
           )}
         </View>
         {/* Original time (strikethrough, faded) */}
         <View style={styles.originalTimeContainer}>
-          <Text style={[style, styles.originalTime]}>{time}</Text>
+          <AnimatedRollingText value={time} style={[style, styles.originalTime]} />
           {dayOffset > 0 && (
             <Text style={[styles.superscript, superscriptStyle, styles.originalSuperscript]}>+{dayOffset}</Text>
           )}
@@ -87,12 +91,12 @@ export default function TimeDisplay({
   }
 
   if (dayOffset === 0) {
-    return <Text style={style}>{time}</Text>;
+    return <AnimatedRollingText value={time} style={style} />;
   }
 
   return (
     <View style={[styles.container, containerStyle]}>
-      <Text style={style}>{time}</Text>
+      <AnimatedRollingText value={time} style={style} />
       <Text style={[styles.superscript, superscriptStyle]}>+{dayOffset}</Text>
     </View>
   );

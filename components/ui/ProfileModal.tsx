@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { light as hapticLight } from '../../utils/haptics';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FlatList, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -15,13 +15,14 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, BorderRadius, CloseButtonStyle, FontSizes, Spacing } from '../../constants/theme';
 import { PlaceholderBlurb } from '../PlaceholderBlurb';
-import { useModalContext } from '../../context/ModalContext';
+import { useModalState } from '../../context/ModalContext';
 import { useUnits } from '../../context/UnitsContext';
 import { TrainStorageService } from '../../services/storage';
 import type { CompletedTrip } from '../../types/train';
 import { calculateProfileStats, formatDuration } from '../../utils/profile-stats';
 import { formatDistance } from '../../utils/units';
 import { error as logError } from '../../utils/logger';
+import AnimatedRollingText from './AnimatedRollingText';
 import { SlideUpModalContext } from './slide-up-modal';
 
 interface ProfileModalProps {
@@ -203,7 +204,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { isFullscreen, scrollOffset, panRef } = React.useContext(SlideUpModalContext);
   const { distanceUnit } = useUnits();
-  const { activeModal } = useModalContext();
+  const { activeModal } = useModalState();
 
   const currentYear = new Date().getFullYear();
 
@@ -219,12 +220,17 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 
   const isActive = activeModal === 'profile';
 
+  // Ref for imperatively scrolling to top
+  const flatListRef = useRef<FlatList<ListItem>>(null);
+
   // Load history on mount and refresh when profile becomes active
   useEffect(() => {
     if (!isActive) return;
     TrainStorageService.backfillHistoryStats()
       .then(() => TrainStorageService.getTripHistory())
       .then(setHistory);
+    // Always scroll to top when navigating to Profile
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [isActive]);
 
   const handleDeleteHistory = useCallback(async (trip: CompletedTrip) => {
@@ -475,39 +481,30 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
         <View style={styles.passportStatsGrid}>
           <View style={styles.passportStatBlock}>
             <Text style={styles.passportStatLabel}>TRIPS</Text>
-            <Text style={styles.passportStatValue} numberOfLines={1}>
-              {stats.totalTrips}
-            </Text>
+            <AnimatedRollingText value={String(stats.totalTrips)} style={styles.passportStatValue} />
           </View>
           <View style={styles.passportStatBlock}>
             <Text style={styles.passportStatLabel}>DISTANCE</Text>
-            <Text style={styles.passportStatValue} numberOfLines={1}>
-              {formatDistance(stats.totalDistance, distanceUnit)}
-            </Text>
-            <Text style={styles.passportStatSubtext}>
-              {stats.totalDistance > 0 ? `${(stats.totalDistance / 24901).toFixed(1)}x around the world` : '—'}
-            </Text>
+            <AnimatedRollingText value={formatDistance(stats.totalDistance, distanceUnit)} style={styles.passportStatValue} />
+            <AnimatedRollingText
+              value={stats.totalDistance > 0 ? `${(stats.totalDistance / 24901).toFixed(1)}x around the world` : '—'}
+              style={styles.passportStatSubtext}
+            />
           </View>
         </View>
 
         <View style={styles.passportStatsRow}>
           <View style={styles.passportStatSmall}>
             <Text style={styles.passportStatLabel}>TRAVEL TIME</Text>
-            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-              {formatDuration(stats.totalDuration)}
-            </Text>
+            <AnimatedRollingText value={formatDuration(stats.totalDuration)} style={styles.passportStatValueSmall} />
           </View>
           <View style={styles.passportStatSmall}>
             <Text style={styles.passportStatLabel}>STATIONS</Text>
-            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-              {stats.uniqueStations}
-            </Text>
+            <AnimatedRollingText value={String(stats.uniqueStations)} style={styles.passportStatValueSmall} />
           </View>
           <View style={styles.passportStatSmall}>
             <Text style={styles.passportStatLabel}>ROUTES</Text>
-            <Text style={styles.passportStatValueSmall} numberOfLines={1}>
-              {stats.uniqueRoutes}
-            </Text>
+            <AnimatedRollingText value={String(stats.uniqueRoutes)} style={styles.passportStatValueSmall} />
           </View>
         </View>
 
@@ -524,7 +521,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
       {/* Delay Stats Card */}
       <View style={styles.delayCard}>
         <View style={styles.delayHeader}>
-          <Text style={styles.delayBigNumber}>{Math.floor(stats.totalDelayMinutes / 60)}</Text>
+          <AnimatedRollingText value={String(Math.floor(stats.totalDelayMinutes / 60))} style={styles.delayBigNumber} />
           <TouchableOpacity
             onPress={handleShareDelays}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -534,11 +531,12 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
           </TouchableOpacity>
         </View>
         <Text style={styles.delayTitle}>hours lost from delays</Text>
-        <Text style={styles.delaySubtext}>
-          {stats.delayedTripsCount > 0
+        <AnimatedRollingText
+          value={stats.delayedTripsCount > 0
             ? `Delayed trips averaged ${Math.round(stats.averageDelayMinutes)}m late`
             : 'No delays recorded yet'}
-        </Text>
+          style={styles.delaySubtext}
+        />
         <TouchableOpacity
           style={styles.delayButton}
           activeOpacity={0.7}
@@ -563,7 +561,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
             </TouchableOpacity>
           </View>
           <Text style={styles.mostRiddenRouteName}>{stats.mostRiddenRoute.routeName}</Text>
-          <Text style={styles.mostRiddenCount}>{stats.mostRiddenRoute.count} trips</Text>
+          <AnimatedRollingText value={`${stats.mostRiddenRoute.count} trips`} style={styles.mostRiddenCount} />
           <View style={styles.mostRiddenIcon}>
             <MaterialCommunityIcons name="train-car" size={32} color={AppColors.secondary} />
           </View>
@@ -679,6 +677,7 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
 
       {/* Virtualized Scrollable Content */}
       <FlatList
+        ref={flatListRef}
         data={flatListData}
         renderItem={renderItem}
         keyExtractor={keyExtractor}

@@ -7,6 +7,7 @@ export const AppColors = {
   success: '#10B981',
   error: '#EF4444',
   delayed: '#EF4444',
+  inProgress: '#10B981',
   shadow: '#000',
   background: {
     primary: '#18181B',
