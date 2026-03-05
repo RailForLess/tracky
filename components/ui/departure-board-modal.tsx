@@ -1,4 +1,4 @@
-import { light as hapticLight, medium as hapticMedium, selection as hapticSelection, success as hapticSuccess } from '../../utils/haptics';
+import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -10,8 +10,8 @@ import {
     View,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
-import { FlatList, Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { FlatList } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { AppColors, BorderRadius, CloseButtonStyle, Spacing } from '../../constants/theme';
@@ -176,119 +176,15 @@ function getStationArrivalTime(train: Train, stationId: string): { time: string;
   return { time: train.arriveTime, dayOffset: train.arriveDayOffset };
 }
 
-// Swipe threshold - card bounces back at 50% of reveal width
-const SWIPE_THRESHOLD = -80;
-const BOUNCE_BACK_THRESHOLD = -40; // 50% of SWIPE_THRESHOLD
-
-interface SwipeableDepartureItemProps {
+interface DepartureItemProps {
   train: Train;
   stationTime: { time: string; dayOffset?: number };
   stationId: string;
   selectedDate: Date;
   onPress: () => void;
-  onSave: () => void;
 }
 
-const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ train, stationTime, stationId, selectedDate, onPress, onSave }: SwipeableDepartureItemProps) {
-  const translateX = useSharedValue(0);
-  const hasTriggeredHaptic = useSharedValue(false);
-  const isSaving = useSharedValue(false);
-
-  const triggerHaptic = () => {
-    hapticMedium();
-  };
-
-  const triggerSaveHaptic = () => {
-    hapticSuccess();
-  };
-
-  const handleSave = () => {
-    triggerSaveHaptic();
-    onSave();
-    // Bounce back after saving
-    translateX.value = withSpring(0, {
-      damping: 50,
-      stiffness: 200,
-    });
-  };
-
-  const panGesture = Gesture.Pan()
-    .activeOffsetX([-15, 15])
-    .failOffsetY([-20, 20])
-    .onUpdate(event => {
-      if (isSaving.value) return;
-
-      // Only allow left swipe (negative values)
-      const clampedX = Math.min(0, Math.max(SWIPE_THRESHOLD, event.translationX));
-      translateX.value = clampedX;
-
-      // Haptic when crossing threshold
-      if (clampedX <= BOUNCE_BACK_THRESHOLD && !hasTriggeredHaptic.value) {
-        hasTriggeredHaptic.value = true;
-        runOnJS(triggerHaptic)();
-      } else if (clampedX > BOUNCE_BACK_THRESHOLD && hasTriggeredHaptic.value) {
-        hasTriggeredHaptic.value = false;
-      }
-    })
-    .onEnd(event => {
-      if (isSaving.value) return;
-
-      const fastSwipe = event.velocityX < -800;
-
-      // If past 50% threshold, trigger save and bounce back
-      if (translateX.value <= BOUNCE_BACK_THRESHOLD || fastSwipe) {
-        runOnJS(handleSave)();
-      } else {
-        // Bounce back
-        translateX.value = withSpring(0, {
-          damping: 50,
-          stiffness: 200,
-        });
-      }
-      hasTriggeredHaptic.value = false;
-    });
-
-  const triggerLightHaptic = () => {
-    hapticLight();
-  };
-
-  const tapGesture = Gesture.Tap().onEnd(() => {
-    if (isSaving.value) return;
-
-    if (translateX.value < -10) {
-      // If swiped, tap closes it
-      translateX.value = withSpring(0, {
-        damping: 50,
-        stiffness: 200,
-      });
-    } else {
-      runOnJS(triggerLightHaptic)();
-      runOnJS(onPress)();
-    }
-  });
-
-  const composedGesture = Gesture.Race(panGesture, tapGesture);
-
-  const cardAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-    };
-  });
-
-  const saveContainerAnimatedStyle = useAnimatedStyle(() => {
-    const absX = Math.abs(translateX.value);
-    const progress = Math.min(1, absX / Math.abs(BOUNCE_BACK_THRESHOLD));
-
-    return {
-      opacity: progress,
-      width: absX > 0 ? absX : 0,
-    };
-  });
-
-  const handleSavePress = () => {
-    handleSave();
-  };
-
+const DepartureItem = React.memo(function DepartureItem({ train, stationTime, stationId, selectedDate, onPress }: DepartureItemProps) {
   const countdown = useMemo(() => {
     const [hStr, mStr] = stationTime.time.split(':');
     let h = parseInt(hStr, 10);
@@ -324,21 +220,9 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
   const arrDelayed = arrDelay && arrDelay > 0 ? addDelayToTime(train.arriveTime, arrDelay, train.arriveDayOffset) : undefined;
 
   return (
-    <View style={swipeStyles.container}>
-      {/* Save button behind the card */}
-      <Animated.View style={[swipeStyles.saveButtonContainer, saveContainerAnimatedStyle]}>
-        <View style={swipeStyles.saveButtonWrapper}>
-          <GestureDetector gesture={Gesture.Tap().onEnd(() => runOnJS(handleSavePress)())}>
-            <Animated.View style={swipeStyles.saveButton}>
-              <Ionicons name="bookmark" size={20} color={AppColors.primary} />
-            </Animated.View>
-          </GestureDetector>
-        </View>
-      </Animated.View>
-
-      {/* The actual card */}
-      <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[trainCardStyles.trainCard, cardAnimatedStyle]}>
+    <View>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => { hapticLight(); onPress(); }}>
+        <View style={trainCardStyles.trainCard}>
           <TrainCardContent
             countdownValue={countdown.value}
             countdownLabel={countdownLabel}
@@ -361,9 +245,9 @@ const SwipeableDepartureItem = React.memo(function SwipeableDepartureItem({ trai
             arriveDelayedTime={arrDelayed?.time}
             arriveDelayedDayOffset={arrDelayed?.dayOffset}
           />
-        </Animated.View>
-      </GestureDetector>
-      <View style={swipeStyles.separator} />
+        </View>
+      </TouchableOpacity>
+      <View style={departureStyles.separator} />
     </View>
   );
 });
@@ -606,16 +490,15 @@ export default function DepartureBoardModal({
         ? getStationArrivalTime(train, station.stop_id)
         : getStationDepartureTime(train, station.stop_id);
     return (
-      <SwipeableDepartureItem
+      <DepartureItem
         train={train}
         stationTime={stationTime}
         stationId={station.stop_id}
         selectedDate={selectedDate}
         onPress={() => handleTrainPress(train)}
-        onSave={() => onSaveTrain?.(train, selectedDate)}
       />
     );
-  }, [filterMode, station.stop_id, selectedDate, handleTrainPress, onSaveTrain]);
+  }, [filterMode, station.stop_id, selectedDate, handleTrainPress]);
 
   const departureListHeader = useMemo(() => (
     <Text style={styles.sectionTitle}>
@@ -985,33 +868,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const swipeStyles = StyleSheet.create({
-  container: {
-    position: 'relative',
-  },
-  saveButtonContainer: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    paddingRight: 4,
-    paddingLeft: 12,
-  },
-  saveButtonWrapper: {
-    height: 36,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  saveButton: {
-    flex: 1,
-    borderRadius: 18,
-    backgroundColor: AppColors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
+const departureStyles = StyleSheet.create({
   separator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: AppColors.border.primary,

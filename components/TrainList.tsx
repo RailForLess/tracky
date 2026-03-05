@@ -42,6 +42,9 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
   const translateX = useSharedValue(0);
   const hasTriggeredSecondHaptic = useSharedValue(false);
   const isDeleting = useSharedValue(false);
+  const panStartX = useSharedValue(0);
+  const panStartY = useSharedValue(0);
+  const panDecided = useSharedValue(false);
 
   const triggerSecondHaptic = () => {
     hapticHeavy();
@@ -64,8 +67,36 @@ const SwipeableTrainCard = React.memo(function SwipeableTrainCard({ train, onPre
   };
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-15, 15])
-    .failOffsetY([-20, 20])
+    .manualActivation(true)
+    .onTouchesDown((event, stateManager) => {
+      if (event.numberOfTouches > 1) {
+        stateManager.fail();
+        return;
+      }
+      panStartX.value = event.allTouches[0].absoluteX;
+      panStartY.value = event.allTouches[0].absoluteY;
+      panDecided.value = false;
+    })
+    .onTouchesMove((event, stateManager) => {
+      if (panDecided.value || event.numberOfTouches === 0) return;
+      if (event.numberOfTouches > 1) {
+        stateManager.fail();
+        panDecided.value = true;
+        return;
+      }
+      const dx = event.allTouches[0].absoluteX - panStartX.value;
+      const dy = event.allTouches[0].absoluteY - panStartY.value;
+
+      if (Math.abs(dy) > 15) {
+        stateManager.fail();
+        panDecided.value = true;
+        return;
+      }
+      if (Math.abs(dx) > 10) {
+        stateManager.activate();
+        panDecided.value = true;
+      }
+    })
     .onUpdate(event => {
       if (isDeleting.value) return;
 
