@@ -151,9 +151,9 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     return () => { cancelled = true; };
   }, [toCode, tempUnit]);
 
-  // Fetch hourly weather for each stop when "Where's My Train?" is expanded
+  // Fetch hourly weather for each stop (starts immediately so data is ready)
   React.useEffect(() => {
-    if (!isWhereIsMyTrainExpanded || allStops.length === 0 || !tripId) return;
+    if (allStops.length === 0 || !tripId) return;
 
     const key = `${tripId}-${allStops.length}-${tempUnit}`;
     if (stopWeatherKeyRef.current === key) return;
@@ -199,7 +199,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
     fetchAllStopWeather();
     return () => { cancelled = true; };
-  }, [isWhereIsMyTrainExpanded, allStops, tripId, tempUnit]);
+  }, [allStops, tripId, tempUnit]);
 
   // Fetch route history stats — only when route name changes
   const routeName = trainData?.routeName;
