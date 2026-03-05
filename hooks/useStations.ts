@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ViewportBounds, VisibleStation } from '../services/station-loader';
+import type { VisibleStation } from '../services/station-loader';
 import { stationLoader } from '../services/station-loader';
+import type { ViewportBounds } from '../types/train';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { debug } from '../utils/logger';
 
@@ -42,7 +43,7 @@ export function useStations(bounds?: ViewportBounds) {
 
     if (bounds) {
       // Use padding for smoother panning
-      return stationLoader.getVisibleStations(bounds, 0.2);
+      return stationLoader.getVisibleStations(bounds);
     }
 
     // No bounds - return all stations (fallback)

@@ -107,6 +107,13 @@ export interface Shape {
   shape_pt_sequence: number;
 }
 
+export interface ViewportBounds {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+}
+
 export type SearchResultType = 'station' | 'train' | 'route';
 
 export interface SearchResult {

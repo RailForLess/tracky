@@ -4,7 +4,7 @@
  * Uses spatial indexing for fast viewport-based queries
  */
 
-import type { Stop } from '../types/train';
+import type { Stop, ViewportBounds } from '../types/train';
 import { info } from '../utils/logger';
 
 export interface StationBounds {
@@ -12,13 +12,6 @@ export interface StationBounds {
   name: string;
   lat: number;
   lon: number;
-}
-
-export interface ViewportBounds {
-  minLat: number;
-  maxLat: number;
-  minLon: number;
-  maxLon: number;
 }
 
 export interface VisibleStation extends StationBounds {}
@@ -49,12 +42,14 @@ export class StationLoader {
    * Get stations visible in the given viewport with padding
    * Adds padding to load stations slightly outside viewport
    */
-  getVisibleStations(viewport: ViewportBounds, paddingDegrees: number = 0.15): VisibleStation[] {
+  getVisibleStations(viewport: ViewportBounds, paddingFraction: number = 0.3): VisibleStation[] {
+    const latPad = (viewport.maxLat - viewport.minLat) * paddingFraction;
+    const lonPad = (viewport.maxLon - viewport.minLon) * paddingFraction;
     const paddedBounds = {
-      minLat: viewport.minLat - paddingDegrees,
-      maxLat: viewport.maxLat + paddingDegrees,
-      minLon: viewport.minLon - paddingDegrees,
-      maxLon: viewport.maxLon + paddingDegrees,
+      minLat: viewport.minLat - latPad,
+      maxLat: viewport.maxLat + latPad,
+      minLon: viewport.minLon - lonPad,
+      maxLon: viewport.maxLon + lonPad,
     };
 
     const visible: VisibleStation[] = [];

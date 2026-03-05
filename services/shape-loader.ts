@@ -4,7 +4,7 @@
  * Uses bounding box indexing for fast spatial queries
  */
 
-import type { Shape } from '../types/train';
+import type { Shape, ViewportBounds } from '../types/train';
 import { debug, info } from '../utils/logger';
 
 export interface ShapeBounds {
@@ -14,13 +14,6 @@ export interface ShapeBounds {
   minLon: number;
   maxLon: number;
   pointCount: number;
-}
-
-export interface ViewportBounds {
-  minLat: number;
-  maxLat: number;
-  minLon: number;
-  maxLon: number;
 }
 
 export interface VisibleShape {
@@ -83,12 +76,14 @@ export class ShapeLoader {
    * Get shapes visible in the given viewport with padding
    * Adds padding to load shapes slightly outside viewport for smoother panning
    */
-  getVisibleShapes(viewport: ViewportBounds, paddingDegrees: number = 0.1): VisibleShape[] {
+  getVisibleShapes(viewport: ViewportBounds, paddingFraction: number = 0.3): VisibleShape[] {
+    const latPad = (viewport.maxLat - viewport.minLat) * paddingFraction;
+    const lonPad = (viewport.maxLon - viewport.minLon) * paddingFraction;
     const paddedBounds = {
-      minLat: viewport.minLat - paddingDegrees,
-      maxLat: viewport.maxLat + paddingDegrees,
-      minLon: viewport.minLon - paddingDegrees,
-      maxLon: viewport.maxLon + paddingDegrees,
+      minLat: viewport.minLat - latPad,
+      maxLat: viewport.maxLat + latPad,
+      minLon: viewport.minLon - lonPad,
+      maxLon: viewport.maxLon + lonPad,
     };
 
     const visible: VisibleShape[] = [];
