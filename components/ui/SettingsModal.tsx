@@ -126,7 +126,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
 
   const mainAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -slideX.value * SCREEN_WIDTH * 0.3 }],
-    opacity: 1 - slideX.value * 0.3,
+    opacity: 1 - slideX.value,
   }));
 
   const subpageAnimatedStyle = useAnimatedStyle(() => ({
