@@ -8,7 +8,7 @@ import { gtfsParser } from '../utils/gtfs-parser';
 import { RealtimeService } from './realtime';
 import { formatTime, formatTimeWithDayOffset, type FormattedTime } from '../utils/time-formatting';
 import { convertGtfsTimeForStop } from '../utils/timezone';
-import { extractTrainNumber } from '../utils/train-helpers';
+import { extractDateFromTripId, extractTrainNumber } from '../utils/train-helpers';
 import { calculateDaysAway, formatDateForDisplay, getDaysAwayLabel } from '../utils/date-helpers';
 import { logger } from '../utils/logger';
 
@@ -426,6 +426,9 @@ export class TrainAPIService {
       const departFormatted = convertGtfsTimeForStop(firstStop.departure_time, firstStop.stop_id);
       const arriveFormatted = convertGtfsTimeForStop(lastStop.arrival_time, lastStop.stop_id);
 
+      // Infer departure date from trip ID when no explicit date provided
+      const effectiveDate = date ?? extractDateFromTripId(tripId) ?? undefined;
+
       const train: Train = {
         id: simpleHash(tripId),
         operator: 'Amtrak',
@@ -438,9 +441,9 @@ export class TrainAPIService {
         arriveTime: arriveFormatted.time,
         departDayOffset: departFormatted.dayOffset,
         arriveDayOffset: arriveFormatted.dayOffset,
-        date: date ? getDaysAwayLabel(calculateDaysAway(date)) : 'Today',
-        daysAway: date ? calculateDaysAway(date) : 0,
-        travelDate: date ? date.getTime() : undefined,
+        date: effectiveDate ? getDaysAwayLabel(calculateDaysAway(effectiveDate)) : 'Today',
+        daysAway: effectiveDate ? calculateDaysAway(effectiveDate) : 0,
+        travelDate: effectiveDate ? effectiveDate.getTime() : undefined,
         routeName: routeName || '',
         tripId: tripId,
         intermediateStops: stopTimes.slice(1, -1).map(stop => {

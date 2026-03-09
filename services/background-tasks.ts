@@ -34,8 +34,8 @@ TaskManager.defineTask(BACKGROUND_TASK_NAME, async () => {
     const prefs = await TrainStorageService.getNotificationPrefs();
     const trains = await TrainStorageService.getSavedTrains();
 
-    // Only process today's trains
-    const todayTrains = trains.filter(t => t.daysAway === 0);
+    // Process today's and overnight trains (daysAway <= 0 means departed today or earlier)
+    const todayTrains = trains.filter(t => t.daysAway <= 0);
     if (todayTrains.length === 0) {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }

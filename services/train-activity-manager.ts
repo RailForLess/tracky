@@ -59,12 +59,17 @@ function refreshTrainWidgets(trains: Train[]): void {
 }
 
 function isArrived(train: Train): boolean {
-  if (train.daysAway !== 0) return false;
+  // Future trains haven't arrived
+  if (train.daysAway > 0) return false;
   const now = new Date();
   const arriveDate = parseTimeToDate(train.arriveTime, now);
   // Account for multi-day journeys (e.g., departs today, arrives tomorrow)
   if (train.arriveDayOffset) {
     arriveDate.setDate(arriveDate.getDate() + train.arriveDayOffset);
+  }
+  // For overnight trains (daysAway < 0), shift arrival date back
+  if (train.daysAway < 0) {
+    arriveDate.setDate(arriveDate.getDate() + train.daysAway);
   }
   const delay = train.realtime?.arrivalDelay ?? train.realtime?.delay ?? 0;
   const adjustedArrival = new Date(arriveDate.getTime() + delay * 60 * 1000);
@@ -123,7 +128,7 @@ export const TrainActivityManager = {
     if (!hasAnyFeatureEnabled(prefs)) return;
 
     for (const newTrain of newTrains) {
-      if (newTrain.daysAway !== 0) continue;
+      if (newTrain.daysAway > 0) continue;
 
       const key = trainKey(newTrain);
       const oldTrain = oldTrains.find(

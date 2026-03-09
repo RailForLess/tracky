@@ -32,7 +32,8 @@ export function isSupported(): boolean {
 }
 
 export function isTrainActiveNow(train: Train): boolean {
-  if (train.daysAway !== 0) return false;
+  // Future trains are never active now
+  if (train.daysAway > 0) return false;
 
   const now = new Date();
   const departDate = parseTimeToDate(train.departTime, now);
@@ -44,6 +45,12 @@ export function isTrainActiveNow(train: Train): boolean {
   }
   if (train.arriveDayOffset) {
     arriveDate.setDate(arriveDate.getDate() + train.arriveDayOffset);
+  }
+
+  // For overnight trains (daysAway < 0), shift the date window back
+  if (train.daysAway < 0) {
+    departDate.setDate(departDate.getDate() + train.daysAway);
+    arriveDate.setDate(arriveDate.getDate() + train.daysAway);
   }
 
   const delay = train.realtime?.delay ?? 0;
@@ -65,6 +72,11 @@ function buildProps(train: Train): TrainActivityProps {
   if (train.departDayOffset) departDate.setDate(departDate.getDate() + train.departDayOffset);
   const arriveDate = parseTimeToDate(train.arriveTime, now);
   if (train.arriveDayOffset) arriveDate.setDate(arriveDate.getDate() + train.arriveDayOffset);
+  // For overnight trains (daysAway < 0), shift the date window back
+  if (train.daysAway < 0) {
+    departDate.setDate(departDate.getDate() + train.daysAway);
+    arriveDate.setDate(arriveDate.getDate() + train.daysAway);
+  }
 
   const minutesUntilDeparture = Math.round((departDate.getTime() + departDelay * 60_000 - now.getTime()) / 60_000);
   const minutesRemaining = Math.max(0, Math.round((arriveDate.getTime() + arrivalDelay * 60_000 - now.getTime()) / 60_000));

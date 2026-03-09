@@ -85,7 +85,8 @@ export class TrainStorageService {
       const refs = await this.getSavedTrainRefs();
 
       const results = await Promise.all(refs.map(async (ref): Promise<Train | null> => {
-        const train = await TrainAPIService.getTrainDetails(ref.tripId);
+        const date = ref.travelDate ? new Date(ref.travelDate) : undefined;
+        const train = await TrainAPIService.getTrainDetails(ref.tripId, date);
         if (!train) return null;
 
         // If user saved a segmented trip, update from/to based on their segment

@@ -76,7 +76,17 @@ export const ModalContent = React.forwardRef<
 
       const pastTrains = trains.filter(t => {
         if (!t.daysAway && t.daysAway !== 0) return false;
-        // Yesterday or earlier — definitely past
+        // For overnight trains (daysAway < 0), check if arrival has actually passed
+        // by shifting the arrival date back by |daysAway| days
+        if (t.daysAway < 0 && t.arriveTime) {
+          const arriveDate = parseTimeToDate(t.arriveTime, now);
+          // arriveDayOffset is relative to departure day; shift to today's frame
+          const arrivalDayFromToday = (t.arriveDayOffset ?? 0) + t.daysAway;
+          arriveDate.setDate(arriveDate.getDate() + arrivalDayFromToday);
+          if (arriveDate.getTime() + POST_ARRIVAL_GRACE_MS < now.getTime()) return true;
+          return false;
+        }
+        // Yesterday or earlier with no arrival time — definitely past
         if (t.daysAway < 0) return true;
         // Today — archive only 10 min after arrival time
         if (t.daysAway === 0 && t.arriveTime) {

@@ -6,6 +6,19 @@
 import { gtfsParser } from './gtfs-parser';
 
 /**
+ * Extract the departure date embedded in a GTFS-RT trip ID.
+ * Trip IDs follow the format "YYYY-MM-DD_CARRIER_NUMBER" (e.g., "2026-03-08_AMTK_5").
+ * Returns the parsed Date or null if the format doesn't match.
+ */
+export function extractDateFromTripId(tripId: string): Date | null {
+  const match = tripId.match(/^(\d{4}-\d{2}-\d{2})_/);
+  if (!match) return null;
+  const date = new Date(match[1] + 'T00:00:00');
+  if (isNaN(date.getTime())) return null;
+  return date;
+}
+
+/**
  * Extract the actual train number from a tripId
  * Uses GTFS trips.txt trip_short_name as source of truth
  * Falls back to parsing trip_id if trips data not available
