@@ -409,7 +409,18 @@ export class TrainAPIService {
    */
   static async getTrainDetails(tripId: string, date?: Date): Promise<Train | null> {
     try {
-      const stopTimes = gtfsParser.getStopTimesForTrip(tripId);
+      let stopTimes = gtfsParser.getStopTimesForTrip(tripId);
+
+      // If direct lookup failed, resolve via train number + date
+      // This handles GTFS-RT trip_ids that differ from static GTFS trip_ids
+      if (stopTimes.length === 0) {
+        const trainNumber = extractTrainNumber(tripId);
+        const inferredDate = date ?? extractDateFromTripId(tripId) ?? new Date();
+        const trip = gtfsParser.getTripForTrainOnDate(trainNumber, inferredDate);
+        if (trip) {
+          stopTimes = gtfsParser.getStopTimesForTrip(trip.trip_id);
+        }
+      }
 
       if (stopTimes.length === 0) {
         logger.debug(`[API] getTrainDetails(${tripId}): no stop times found`);

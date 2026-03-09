@@ -386,13 +386,19 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
       const stop = allStops[i];
       const currentMinutes = getCurrentMinutesInTimezone(stop.timezone);
       const stopMinutes = timeToMinutes(stop.time);
-      const adjustedStopMinutes = stopMinutes + stop.dayOffset * 24 * 60;
+      const isDest = i === allStops.length - 1;
+      const delayData = stopDelays.get(stop.code);
+      const delayMin = isDest
+        ? (delayData?.arrivalDelay ?? delayData?.departureDelay ?? 0)
+        : (delayData?.departureDelay ?? delayData?.arrivalDelay ?? 0);
+      const adjustedStopMinutes = stopMinutes + stop.dayOffset * 24 * 60
+        + (delayMin > 0 ? delayMin : 0);
       if (adjustedStopMinutes > currentMinutes) {
         return i;
       }
     }
     return -1;
-  }, [isLiveTrain, allStops]);
+  }, [isLiveTrain, allStops, stopDelays]);
 
   // Local time at the train's next stop (only for live trains)
   const [trainLocalTime, setTrainLocalTime] = React.useState<string | null>(null);
