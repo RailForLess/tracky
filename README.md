@@ -288,4 +288,4 @@ const updated = await TrainAPIService.refreshRealtimeData(existingSavedTrain);
 
 ## License
 
-MIT
+CC‑BY‑NC (Creative Use, Attribution Required, Non-Commerical) 
