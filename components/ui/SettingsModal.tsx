@@ -32,7 +32,7 @@ import { type NotificationPrefs, DEFAULT_NOTIFICATION_PREFS, TrainStorageService
 import { TrainActivityManager } from '../../services/train-activity-manager';
 import { useTrainContext } from '../../context/TrainContext';
 import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
-import { type LogEntry, LogLevel, logger, openReportBadDataEmail, openReportBugEmail } from '../../utils/logger';
+import { type LogEntry, LogLevel, logger, openReportBugEmail } from '../../utils/logger';
 import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
 import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { SlideUpModalContext } from './slide-up-modal';
@@ -618,7 +618,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
           </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.settingsItem}
+          style={[styles.settingsItem, styles.settingsItemLast]}
           activeOpacity={0.7}
           onPress={() => {
             hapticLight();
@@ -629,25 +629,9 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             <Ionicons name="bug-outline" size={22} color={colors.primary} />
           </View>
           <View style={styles.itemContent}>
-            <Text style={styles.itemTitle}>Report a Bug</Text>
+            <Text style={styles.itemTitle}>Report a Bug / Bad Data</Text>
           </View>
-          <Ionicons name="mail-outline" size={20} color={colors.secondary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.settingsItem, styles.settingsItemLast]}
-          activeOpacity={0.7}
-          onPress={() => {
-            hapticLight();
-            openReportBadDataEmail();
-          }}
-        >
-          <View style={styles.itemIconContainer}>
-            <Ionicons name="alert-circle-outline" size={22} color={colors.primary} />
-          </View>
-          <View style={styles.itemContent}>
-            <Text style={styles.itemTitle}>Report Bad Data</Text>
-          </View>
-          <Ionicons name="mail-outline" size={20} color={colors.secondary} />
+          <Ionicons name="logo-github" size={20} color={colors.secondary} />
         </TouchableOpacity>
       </View>
 

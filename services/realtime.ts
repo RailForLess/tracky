@@ -123,7 +123,11 @@ function parseVehiclePositions(buffer: Uint8Array): Map<string, RealtimePosition
     for (const entity of feed.entity) {
       if (entity.vehicle && entity.vehicle.position && entity.vehicle.trip) {
         const tripId = entity.vehicle.trip.tripId || '';
-        const trainNumber = extractTrainNumber(tripId);
+        const vehicleLabel = entity.vehicle.vehicle?.label ?? '';
+        // Prefer vehicle label if it looks like a train number (1-4 digits)
+        const trainNumber = /^\d{1,4}$/.test(vehicleLabel)
+          ? vehicleLabel
+          : extractTrainNumber(tripId);
 
         positions.set(tripId, {
           trip_id: tripId,

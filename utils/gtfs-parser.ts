@@ -243,7 +243,9 @@ export class GTFSParser {
     }
     // Fallback: extract from trip_id (for backwards compatibility)
     const match = tripId.match(/_(\d+)$/);
-    return match ? match[1] : tripId;
+    if (match) return match[1];
+    const matches = tripId.match(/\d+/g);
+    return matches ? matches[matches.length - 1] : tripId;
   }
 
   /**

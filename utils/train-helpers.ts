@@ -39,9 +39,9 @@ export function extractTrainNumber(tripId: string): string {
     return trainNumber;
   }
 
-  // Fallback: Try to extract numeric train number from trip ID
-  const match = tripId.match(/\d+/);
-  return match ? match[0] : tripId;
+  // Fallback: Try to extract last numeric train number from trip ID
+  const matches = tripId.match(/\d+/g);
+  return matches ? matches[matches.length - 1] : tripId;
 }
 
 /**
