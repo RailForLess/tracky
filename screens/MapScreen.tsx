@@ -291,7 +291,7 @@ function MapScreenInner() {
 
   // Handle live train marker press - zoom immediately, fetch train details in parallel
   const handleLiveTrainMarkerPress = useCallback(
-    async (tripId: string, lat: number, lon: number) => {
+    async (tripId: string, trainNumber: string, lat: number, lon: number) => {
       hapticLight();
       // Start map zoom immediately — don't wait for API
       const latitudeDelta = 0.05;
@@ -307,7 +307,7 @@ function MapScreenInner() {
       );
 
       try {
-        const train = await TrainAPIService.getTrainDetails(tripId);
+        const train = await TrainAPIService.getTrainDetails(tripId, undefined, trainNumber);
         if (train) {
           setSelectedTrain(train);
           navigateToTrain(train, { fromMarker: true });
@@ -768,7 +768,7 @@ function MapScreenInner() {
                     handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);
                   } else {
                     // Fetch train details for non-saved trains
-                    handleLiveTrainMarkerPress(trainData.tripId, cluster.lat, cluster.lon);
+                    handleLiveTrainMarkerPress(trainData.tripId, trainData.trainNumber, cluster.lat, cluster.lon);
                   }
                 }
               }}

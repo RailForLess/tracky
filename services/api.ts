@@ -407,18 +407,20 @@ export class TrainAPIService {
   /**
    * Get train details for a specific trip
    */
-  static async getTrainDetails(tripId: string, date?: Date): Promise<Train | null> {
+  static async getTrainDetails(tripId: string, date?: Date, knownTrainNumber?: string): Promise<Train | null> {
     try {
       let stopTimes = gtfsParser.getStopTimesForTrip(tripId);
+      let resolvedTripId = tripId;
 
       // If direct lookup failed, resolve via train number + date
       // This handles GTFS-RT trip_ids that differ from static GTFS trip_ids
       if (stopTimes.length === 0) {
-        const trainNumber = extractTrainNumber(tripId);
+        const trainNumber = knownTrainNumber || extractTrainNumber(tripId);
         const inferredDate = date ?? extractDateFromTripId(tripId) ?? new Date();
         const trip = gtfsParser.getTripForTrainOnDate(trainNumber, inferredDate);
         if (trip) {
-          stopTimes = gtfsParser.getStopTimesForTrip(trip.trip_id);
+          resolvedTripId = trip.trip_id;
+          stopTimes = gtfsParser.getStopTimesForTrip(resolvedTripId);
         }
       }
 
@@ -431,17 +433,17 @@ export class TrainAPIService {
       const lastStop = stopTimes[stopTimes.length - 1];
 
       // Get proper train number and route name
-      const { routeName, trainNumber } = getTrainDisplayName(tripId);
+      const { routeName, trainNumber } = getTrainDisplayName(resolvedTripId);
 
       // Format times with day offset info, converting to each stop's local timezone
       const departFormatted = convertGtfsTimeForStop(firstStop.departure_time, firstStop.stop_id);
       const arriveFormatted = convertGtfsTimeForStop(lastStop.arrival_time, lastStop.stop_id);
 
       // Infer departure date from trip ID when no explicit date provided
-      const effectiveDate = date ?? extractDateFromTripId(tripId) ?? undefined;
+      const effectiveDate = date ?? extractDateFromTripId(resolvedTripId) ?? undefined;
 
       const train: Train = {
-        id: simpleHash(tripId),
+        id: simpleHash(resolvedTripId),
         operator: 'Amtrak',
         trainNumber: trainNumber,
         from: firstStop.stop_name,
@@ -456,7 +458,7 @@ export class TrainAPIService {
         daysAway: effectiveDate ? calculateDaysAway(effectiveDate) : 0,
         travelDate: effectiveDate ? effectiveDate.getTime() : undefined,
         routeName: routeName || '',
-        tripId: tripId,
+        tripId: resolvedTripId,
         intermediateStops: stopTimes.slice(1, -1).map(stop => {
           const formatted = convertGtfsTimeForStop(stop.departure_time, stop.stop_id);
           return {
