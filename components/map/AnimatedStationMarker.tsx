@@ -82,7 +82,7 @@ export function AnimatedStationMarker({ cluster, showFullName, displayName, onPr
       coordinate={{ latitude: cluster.lat, longitude: cluster.lon }}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={onPress}
-      tracksViewChanges={false}
+      tracksViewChanges={true}
     >
       <Animated.View
         style={{
