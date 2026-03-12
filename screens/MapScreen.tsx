@@ -710,7 +710,7 @@ function MapScreenInner() {
       >
         {shouldRenderRoutes &&
           visibleShapes.map(shape => {
-            const colorScheme = getRouteColor(shape.id, colors.primary);
+            const colorScheme = getRouteColor(shape.id, colors.accentBlue);
             return (
               <AnimatedRoute
                 key={shape.id}
@@ -736,7 +736,7 @@ function MapScreenInner() {
               cluster={cluster}
               showFullName={showFullName}
               displayName={displayName}
-              color={colors.primary}
+              color={colors.accentBlue}
               onPress={() => {
                 // Center map on station with offset for 50% modal (departure board opens at half)
                 const latitudeDelta = 0.02;
@@ -771,7 +771,7 @@ function MapScreenInner() {
               isSaved={true}
               isCluster={cluster.isCluster}
               clusterCount={cluster.trains.length}
-              color={colors.primary}
+              color={colors.accentBlue}
               onPress={() => {
                 if (!cluster.isCluster && cluster.trains[0]?.originalTrain) {
                   handleTrainMarkerPress(cluster.trains[0].originalTrain, cluster.lat, cluster.lon);
@@ -794,7 +794,7 @@ function MapScreenInner() {
               isSaved={cluster.isSaved}
               isCluster={cluster.isCluster}
               clusterCount={cluster.trains.length}
-              color={colors.primary}
+              color={colors.accentBlue}
               onPress={() => {
                 if (!cluster.isCluster && cluster.trains[0]) {
                   const trainData = cluster.trains[0];
