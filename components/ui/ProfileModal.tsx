@@ -30,6 +30,7 @@ import { SlideUpModalContext } from './slide-up-modal';
 interface ProfileModalProps {
   onClose: () => void;
   onOpenSettings: () => void;
+  onYearChange?: (year: number | null) => void;
 }
 
 function buildTicketArt(header: string, rows: [string, string][]): string {
@@ -238,7 +239,7 @@ type ListItem =
   | { type: 'group-header'; key: string; groupKey: string; count: number }
   | { type: 'trip'; key: string; trip: CompletedTrip; isLast: boolean };
 
-export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalProps) {
+export default function ProfileModal({ onClose, onOpenSettings, onYearChange }: ProfileModalProps) {
   const { colors, isDark, closeButtonStyle } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [history, setHistory] = useState<CompletedTrip[]>([]);
@@ -442,7 +443,8 @@ export default function ProfileModal({ onClose, onOpenSettings }: ProfileModalPr
   const handleYearPress = useCallback((year: number | null) => {
     hapticLight();
     setSelectedYear(year);
-  }, []);
+    onYearChange?.(year);
+  }, [onYearChange]);
 
   const handleClosePress = useCallback(() => {
     hapticLight();

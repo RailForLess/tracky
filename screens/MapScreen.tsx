@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Image, StyleSheet, Text, View } from 'react-native';
-import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -178,6 +178,7 @@ function MapScreenInner() {
     getInitialSnap,
   } = useModalActions();
   const {
+    activeModal,
     showMainContent,
     showTrainDetailContent,
     showDepartureBoardContent,
@@ -186,6 +187,7 @@ function MapScreenInner() {
     modalData,
     currentSnap,
   } = useModalState();
+  const isProfileActive = activeModal === 'profile';
   // Region is stored as a ref — only the initial value matters for MapView.
   // mapReady gates rendering; subsequent region changes don't need re-renders.
   const regionRef = useRef<MapRegion | null>(null);
@@ -204,6 +206,79 @@ function MapScreenInner() {
   const [trainMode, setTrainMode] = useState<TrainMode>('all');
   const { savedTrains, setSavedTrains, selectedTrain, setSelectedTrain } = useTrainContext();
   const insets = useSafeAreaInsets();
+
+  // Travel overlay state for profile view
+  const [travelLines, setTravelLines] = useState<{ key: string; from: { latitude: number; longitude: number }; to: { latitude: number; longitude: number } }[]>([]);
+  const [travelStations, setTravelStations] = useState<{ latitude: number; longitude: number; id: string }[]>([]);
+  const [profileYear, setProfileYear] = useState<number | null>(null);
+  const tripHistoryRef = useRef<Awaited<ReturnType<typeof TrainStorageService.getTripHistory>>>([]);
+
+  // Resolve trip history into travel lines/stations, filtered by year
+  const resolveTravelOverlay = useCallback((history: typeof tripHistoryRef.current, year: number | null) => {
+    const lines: typeof travelLines = [];
+    const stationMap = new Map<string, { latitude: number; longitude: number }>();
+
+    for (const trip of history) {
+      if (year && new Date(trip.travelDate).getFullYear() !== year) continue;
+
+      const fromStop = gtfsParser.getStop(trip.fromCode);
+      const toStop = gtfsParser.getStop(trip.toCode);
+      if (!fromStop || !toStop) continue;
+
+      const fromCoord = { latitude: fromStop.stop_lat, longitude: fromStop.stop_lon };
+      const toCoord = { latitude: toStop.stop_lat, longitude: toStop.stop_lon };
+
+      lines.push({
+        key: `${trip.tripId}-${trip.fromCode}-${trip.toCode}-${trip.travelDate}`,
+        from: fromCoord,
+        to: toCoord,
+      });
+
+      if (!stationMap.has(trip.fromCode)) stationMap.set(trip.fromCode, fromCoord);
+      if (!stationMap.has(trip.toCode)) stationMap.set(trip.toCode, toCoord);
+    }
+
+    setTravelLines(lines);
+    setTravelStations(Array.from(stationMap.entries()).map(([id, coord]) => ({ ...coord, id })));
+  }, []);
+
+  // Load trip history when profile opens
+  useEffect(() => {
+    if (!isProfileActive) {
+      setTravelLines([]);
+      setTravelStations([]);
+      setProfileYear(null);
+      tripHistoryRef.current = [];
+      return;
+    }
+
+    (async () => {
+      const history = await TrainStorageService.getTripHistory();
+      tripHistoryRef.current = history;
+      resolveTravelOverlay(history, profileYear);
+    })();
+  }, [isProfileActive]);
+
+  // Handle year change from profile modal
+  const handleProfileYearChange = useCallback((year: number | null) => {
+    setProfileYear(year);
+    resolveTravelOverlay(tripHistoryRef.current, year);
+  }, [resolveTravelOverlay]);
+
+  // Zoom to fit all travel points when profile opens
+  useEffect(() => {
+    if (!isProfileActive || travelStations.length === 0) return;
+
+    const coords = travelStations.map(s => ({ latitude: s.latitude, longitude: s.longitude }));
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 100, right: 60, bottom: 400, left: 60 },
+        animated: true,
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [isProfileActive, travelStations]);
 
   // Use lazy-loaded stations and shapes based on viewport
   const stations = useStations(viewportBounds ?? undefined);
@@ -708,7 +783,7 @@ function MapScreenInner() {
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
-        {shouldRenderRoutes &&
+        {!isProfileActive && shouldRenderRoutes &&
           visibleShapes.map(shape => {
             const colorScheme = getRouteColor(shape.id, colors.accentBlue);
             return (
@@ -722,7 +797,7 @@ function MapScreenInner() {
             );
           })}
 
-        {stationClusters.map(cluster => {
+        {!isProfileActive && stationClusters.map(cluster => {
           // Show full name when zoomed in enough
           const showFullName = !cluster.isCluster && debouncedLatDelta < ClusteringConfig.fullNameThreshold;
           const displayName = cluster.isCluster
@@ -758,7 +833,7 @@ function MapScreenInner() {
         })}
 
         {/* Render saved trains when mode is 'saved' */}
-        {trainMode === 'saved' &&
+        {!isProfileActive && trainMode === 'saved' &&
           clusteredSavedTrains.map(cluster => (
             <LiveTrainMarker
               key={cluster.id}
@@ -781,7 +856,7 @@ function MapScreenInner() {
           ))}
 
         {/* Render all live trains when mode is 'all' */}
-        {trainMode === 'all' &&
+        {!isProfileActive && trainMode === 'all' &&
           clusteredLiveTrains.map(cluster => (
             <LiveTrainMarker
               key={cluster.id}
@@ -809,6 +884,31 @@ function MapScreenInner() {
               }}
             />
           ))}
+
+        {/* Travel history overlay when profile is open */}
+        {isProfileActive && travelLines.map(line => (
+          <Polyline
+            key={line.key}
+            coordinates={[line.from, line.to]}
+            strokeColor={colors.accentBlue}
+            strokeWidth={2}
+          />
+        ))}
+        {isProfileActive && travelStations.map(station => (
+          <Marker
+            key={station.id}
+            coordinate={station}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+          >
+            <View style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: colors.accentBlue,
+            }} />
+          </Marker>
+        ))}
       </MapView>
 
       <RefreshBubble />
@@ -903,6 +1003,7 @@ function MapScreenInner() {
           <ProfileModal
             onClose={() => goBack()}
             onOpenSettings={() => navigateToSettings()}
+            onYearChange={handleProfileYearChange}
           />
         )}
       </SlideUpModal>
