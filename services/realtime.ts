@@ -130,7 +130,7 @@ function parseVehiclePositions(buffer: Uint8Array): { positions: Map<string, Rea
         const vehicleIdMatch = vehicleId.match(/_(\d+)$/);
         const trainNumber = vehicleIdMatch
           ? vehicleIdMatch[1]
-          : extractTrainNumber(tripId);
+          : extractTrainNumber(tripId) || tripId;
 
         trainNumberMap.set(tripId, trainNumber);
 
@@ -175,7 +175,7 @@ function parseTripUpdates(buffer: Uint8Array, trainNumberMap?: Map<string, strin
     for (const entity of feed.entity) {
       if (entity.tripUpdate && entity.tripUpdate.trip) {
         const tripId = entity.tripUpdate.trip.tripId || '';
-        const trainNumber = trainNumberMap?.get(tripId) || extractTrainNumber(tripId);
+        const trainNumber = trainNumberMap?.get(tripId) || extractTrainNumber(tripId) || tripId;
         const stopUpdates: RealtimeUpdate[] = [];
 
         for (const stopTime of entity.tripUpdate.stopTimeUpdate || []) {
@@ -224,7 +224,9 @@ export class RealtimeService {
       // If not found, try extracting/matching train number
       if (!position) {
         const trainNumber = extractTrainNumber(tripIdOrTrainNumber);
-        position = positions.get(trainNumber);
+        if (trainNumber) {
+          position = positions.get(trainNumber);
+        }
       }
 
       return position || null;
@@ -278,7 +280,9 @@ export class RealtimeService {
       // If not found, try extracting/matching train number
       if (!tripUpdates) {
         const trainNumber = extractTrainNumber(tripIdOrTrainNumber);
-        tripUpdates = updates.get(trainNumber);
+        if (trainNumber) {
+          tripUpdates = updates.get(trainNumber);
+        }
       }
 
       return tripUpdates || [];
@@ -416,7 +420,7 @@ export class RealtimeService {
     const seen = new Set<string>();
 
     for (const [key, position] of positions.entries()) {
-      const trainNumber = position.train_number || extractTrainNumber(key);
+      const trainNumber = position.train_number || extractTrainNumber(key) || key;
       if (!seen.has(trainNumber)) {
         trains.push({ trainNumber, position });
         seen.add(trainNumber);

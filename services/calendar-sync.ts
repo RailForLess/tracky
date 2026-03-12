@@ -241,7 +241,7 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
       for (const trip of trips) {
         const departMinutes = gtfsTimeToMinutes(trip.fromStop.departure_time);
         if (Math.abs(departMinutes - eventMinutesAtOrigin) <= TIME_TOLERANCE_MINUTES) {
-          const trainNumber = gtfsParser.getTrainNumber(trip.tripId);
+          const trainNumber = gtfsParser.getTrainNumber(trip.tripId) || '';
           const routeId = gtfsParser.getRouteIdForTrip(trip.tripId);
           const routeName = routeId ? gtfsParser.getRouteName(routeId) : 'Unknown Route';
 
@@ -283,7 +283,7 @@ function matchEventToTrip(eventTitle: string, eventStartDate: Date, eventLocatio
         if (!destStopTime) continue;
         if (stop.stop_sequence >= destStopTime.stop_sequence) continue;
 
-        const trainNumber = gtfsParser.getTrainNumber(tripId);
+        const trainNumber = gtfsParser.getTrainNumber(tripId) || '';
         const routeId = gtfsParser.getRouteIdForTrip(tripId);
         const routeName = routeId ? gtfsParser.getRouteName(routeId) : 'Unknown Route';
 

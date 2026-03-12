@@ -8,12 +8,12 @@ import { gtfsParser } from '../utils/gtfs-parser';
 import { RealtimeService } from './realtime';
 import { formatTime, formatTimeWithDayOffset, type FormattedTime } from '../utils/time-formatting';
 import { convertGtfsTimeForStop } from '../utils/timezone';
-import { extractDateFromTripId, extractTrainNumber } from '../utils/train-helpers';
+import { extractDateFromTripId, extractTrainNumber, isLikelyTrainNumber } from '../utils/train-helpers';
 import { calculateDaysAway, formatDateForDisplay, getDaysAwayLabel } from '../utils/date-helpers';
 import { logger } from '../utils/logger';
 
 // Re-export for backwards compatibility
-export { formatTime, formatTimeWithDayOffset, extractTrainNumber };
+export { formatTime, formatTimeWithDayOffset, extractTrainNumber, isLikelyTrainNumber };
 export type { FormattedTime };
 
 /** Deterministic numeric hash from a string (avoids Date.now() collisions) */
@@ -338,16 +338,20 @@ function getRouteNameForTrainNumber(trainNumber: string): string | null {
 /**
  * Get display info for a train (route name and number formatted for display)
  * Examples: "Pennsylvanian 43", "Acela 2151", "Amtrak 171"
+ * @param knownTrainNumber - Optional pre-resolved train number (e.g. from vehicle.id)
  */
-export function getTrainDisplayName(tripId: string): {
+export function getTrainDisplayName(
+  tripId: string,
+  knownTrainNumber?: string,
+): {
   routeName: string | null;
   trainNumber: string;
   displayName: string;
 } {
-  const trainNumber = extractTrainNumber(tripId);
+  const trainNumber = knownTrainNumber || extractTrainNumber(tripId) || '';
 
   // First try the hardcoded mapping (covers named trains with friendly names)
-  let routeName = getRouteNameForTrainNumber(trainNumber);
+  let routeName = trainNumber ? getRouteNameForTrainNumber(trainNumber) : null;
 
   // If not in mapping, try to get from GTFS route data
   if (!routeName) {
@@ -360,7 +364,9 @@ export function getTrainDisplayName(tripId: string): {
     }
   }
 
-  const displayName = routeName ? `${routeName} ${trainNumber}` : `Amtrak ${trainNumber}`;
+  const displayName = routeName
+    ? `${routeName}${trainNumber ? ' ' + trainNumber : ''}`
+    : trainNumber ? `Amtrak ${trainNumber}` : 'Amtrak';
 
   return { routeName, trainNumber, displayName };
 }
@@ -416,6 +422,10 @@ export class TrainAPIService {
       // This handles GTFS-RT trip_ids that differ from static GTFS trip_ids
       if (stopTimes.length === 0) {
         const trainNumber = knownTrainNumber || extractTrainNumber(tripId);
+        if (!trainNumber) {
+          logger.debug(`[API] getTrainDetails(${tripId}): cannot extract train number`);
+          return null;
+        }
         const inferredDate = date ?? extractDateFromTripId(tripId) ?? new Date();
         const trip = gtfsParser.getTripForTrainOnDate(trainNumber, inferredDate);
         if (trip) {
@@ -433,7 +443,7 @@ export class TrainAPIService {
       const lastStop = stopTimes[stopTimes.length - 1];
 
       // Get proper train number and route name
-      const { routeName, trainNumber } = getTrainDisplayName(resolvedTripId);
+      const { routeName, trainNumber } = getTrainDisplayName(resolvedTripId, knownTrainNumber || undefined);
 
       // Format times with day offset info, converting to each stop's local timezone
       const departFormatted = convertGtfsTimeForStop(firstStop.departure_time, firstStop.stop_id);
@@ -486,7 +496,7 @@ export class TrainAPIService {
    */
   private static async enrichWithRealtimeData(train: Train): Promise<void> {
     try {
-      const tripKey = train.tripId || train.trainNumber;
+      const tripKey = train.trainNumber || train.tripId || '';
       const position = await RealtimeService.getPositionForTrip(tripKey);
       const delay = await RealtimeService.getDelayForStop(tripKey, train.fromCode);
       const arrivalDelay = await RealtimeService.getArrivalDelayForStop(tripKey, train.toCode);

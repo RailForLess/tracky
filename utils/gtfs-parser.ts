@@ -235,17 +235,14 @@ export class GTFSParser {
   /**
    * Get the actual train number (trip_short_name) for a trip_id
    * Falls back to extracting from trip_id if not found
+   * Returns null if no valid train number can be determined
    */
-  getTrainNumber(tripId: string): string {
+  getTrainNumber(tripId: string): string | null {
     const trip = this.trips.get(tripId);
-    if (trip?.trip_short_name) {
-      return trip.trip_short_name;
-    }
-    // Fallback: extract from trip_id (for backwards compatibility)
-    const match = tripId.match(/_(\d+)$/);
+    if (trip?.trip_short_name) return trip.trip_short_name;
+    const match = tripId.match(/_(\d{1,4})$/);
     if (match) return match[1];
-    const matches = tripId.match(/\d+/g);
-    return matches ? matches[matches.length - 1] : tripId;
+    return null;
   }
 
   /**
@@ -355,7 +352,7 @@ export class GTFSParser {
 
     // Search trips (trains) by their stops
     this.stopTimes.forEach((times, tripId) => {
-      const trainNumber = this.getTrainNumber(tripId);
+      const trainNumber = this.getTrainNumber(tripId) || tripId;
       const trip = this.trips.get(tripId);
       const routeName = trip?.route_id ? this.getRouteName(trip.route_id) : '';
       const displayName =

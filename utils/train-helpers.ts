@@ -21,27 +21,41 @@ export function extractDateFromTripId(tripId: string): Date | null {
 }
 
 /**
+ * Check if a string looks like a valid Amtrak train number (1-4 digits).
+ * Pure-numeric strings with 5+ digits are opaque database IDs, not train numbers.
+ */
+export function isLikelyTrainNumber(s: string): boolean {
+  return /^\d{1,4}$/.test(s);
+}
+
+/**
  * Extract the actual train number from a tripId
  * Uses GTFS trips.txt trip_short_name as source of truth
  * Falls back to parsing trip_id if trips data not available
+ * Returns null if no valid train number can be extracted
  * @param tripId - GTFS trip identifier
- * @returns Train number string
+ * @returns Train number string or null
  * @example
- * extractTrainNumber("Amtrak-43-20240104") // "43"
+ * extractTrainNumber("2026-03-10_AMTK_43") // "43"
  * extractTrainNumber("2151") // "2151"
+ * extractTrainNumber("248766") // null (opaque database ID)
  */
-export function extractTrainNumber(tripId: string): string {
-  // Try to get from trips data first (source of truth)
-  const trainNumber = gtfsParser.getTrainNumber(tripId);
-
-  // If we got something different than the tripId, use it
-  if (trainNumber && trainNumber !== tripId) {
-    return trainNumber;
+export function extractTrainNumber(tripId: string): string | null {
+  // 1. GTFS static data (source of truth)
+  const fromGtfs = gtfsParser.getTrainNumber(tripId);
+  if (fromGtfs && fromGtfs !== tripId && isLikelyTrainNumber(fromGtfs)) {
+    return fromGtfs;
   }
 
-  // Fallback: Try to extract last numeric train number from trip ID
-  const matches = tripId.match(/\d+/g);
-  return matches ? matches[matches.length - 1] : tripId;
+  // 2. Structured: trailing number after underscore (YYYY-MM-DD_AMTK_543)
+  const underscoreMatch = tripId.match(/_(\d{1,4})$/);
+  if (underscoreMatch) return underscoreMatch[1];
+
+  // 3. If input itself is a valid train number
+  if (isLikelyTrainNumber(tripId)) return tripId;
+
+  // 4. Cannot safely extract — return null instead of returning garbage
+  return null;
 }
 
 /**

@@ -37,7 +37,7 @@ export function useLiveTrains(intervalMs: number = 15000, enabled: boolean = tru
       const activeTrains = await RealtimeService.getAllActiveTrains();
 
       const trains: LiveTrain[] = activeTrains.map(({ trainNumber, position }) => {
-        const { routeName } = getTrainDisplayName(position.trip_id);
+        const { routeName } = getTrainDisplayName(position.trip_id, trainNumber);
         return {
           trainNumber,
           tripId: position.trip_id,
