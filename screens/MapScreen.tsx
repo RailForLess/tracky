@@ -536,14 +536,36 @@ function MapScreenInner() {
 
   // Stable callback for saved train cluster presses
   const handleSavedTrainClusterPress = useCallback((cluster: any) => {
-    if (!cluster.isCluster && cluster.trains[0]?.originalTrain) {
+    if (cluster.isCluster) {
+      const coords = cluster.trains.map((t: any) => ({
+        latitude: t.position.lat,
+        longitude: t.position.lon,
+      }));
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 100, right: 60, bottom: 200, left: 60 },
+        animated: true,
+      });
+      return;
+    }
+    if (cluster.trains[0]?.originalTrain) {
       handleTrainMarkerPress(cluster.trains[0].originalTrain, cluster.lat, cluster.lon);
     }
   }, [handleTrainMarkerPress]);
 
   // Stable callback for live train cluster presses
   const handleLiveTrainClusterPress = useCallback((cluster: any) => {
-    if (!cluster.isCluster && cluster.trains[0]) {
+    if (cluster.isCluster) {
+      const coords = cluster.trains.map((t: any) => ({
+        latitude: t.position.lat,
+        longitude: t.position.lon,
+      }));
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 100, right: 60, bottom: 200, left: 60 },
+        animated: true,
+      });
+      return;
+    }
+    if (cluster.trains[0]) {
       const trainData = cluster.trains[0];
       if (trainData.savedTrain && trainData.savedTrain.realtime?.position) {
         handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);

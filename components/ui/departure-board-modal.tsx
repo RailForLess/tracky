@@ -852,7 +852,8 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create(withTextShadow(
     borderBottomRightRadius: 18,
   },
   filterButtonActive: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 18,
   },
   filterText: {
     fontSize: 14,
