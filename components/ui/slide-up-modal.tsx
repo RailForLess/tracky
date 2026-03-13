@@ -16,7 +16,8 @@ import { BorderRadius, Spacing } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { medium as hapticMedium } from '../../utils/haptics';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const FULL_HEIGHT = Platform.OS === 'android' ? Dimensions.get('screen').height : SCREEN_HEIGHT;
 
 const DEFAULT_SNAP_POINTS = {
   MIN: SCREEN_HEIGHT * 0.35,
@@ -89,7 +90,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
     return SNAP_POINTS.HALF;
   };
 
-  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const translateY = useSharedValue(FULL_HEIGHT);
   const context = useSharedValue({ y: 0 });
   const currentSnap = useSharedValue<'min' | 'half' | 'max'>(initialSnap);
   const scrollOffset = useSharedValue(0);
@@ -139,7 +140,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
   const dismiss = useCallback((fast?: boolean) => {
     if (fast) {
       translateY.value = withTiming(
-        SCREEN_HEIGHT,
+        FULL_HEIGHT,
         { duration: 150, easing: Easing.out(Easing.quad) },
         finished => {
           if (finished && onDismissRef.current) {
@@ -149,7 +150,7 @@ export default React.forwardRef<SlideUpModalHandle, SlideUpModalProps>(function 
       );
     } else {
       translateY.value = withSpring(
-        SCREEN_HEIGHT,
+        FULL_HEIGHT,
         {
           damping: 60,
           stiffness: 500,
@@ -394,7 +395,7 @@ const staticStyles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT,
+    height: FULL_HEIGHT,
     zIndex: 1000,
   },
   blurContainerFullscreen: {
