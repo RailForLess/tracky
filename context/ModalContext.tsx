@@ -132,9 +132,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Track initial snap for next modal
   const nextModalSnapRef = useRef<'min' | 'half' | 'max'>('half');
 
-  // For same-modal transitions (e.g. train→train), need sequential dismiss→slideIn
-  const pendingSameModalRef = useRef<{ snap: 'min' | 'half' | 'max' } | null>(null);
-
   // Pending slideIn — stored here, fired by useLayoutEffect AFTER React commits content
   const pendingSlideInRef = useRef<{ type: ModalType; snap: 'min' | 'half' | 'max' } | null>(null);
 
@@ -206,9 +203,13 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setActiveModal('trainDetail');
 
       if (currentActive === 'trainDetail') {
-        // Same-modal transition: dismiss first, slideIn after dismiss completes
-        pendingSameModalRef.current = { snap: targetSnap };
-        detailModalRef.current?.dismiss?.(true);
+        // Same-modal transition: swap content in place, no dismiss/slideIn cycle.
+        // Data was already set above — modal stays visible and re-renders with new train.
+        // Only adjust snap if needed (e.g. marker opens at 'half').
+        const currentSnapValue = currentSnapRef.current;
+        if (currentSnapValue !== targetSnap) {
+          detailModalRef.current?.snapToPoint?.(targetSnap);
+        }
       } else {
         // Different modal: dismiss old, slideIn fires from useLayoutEffect after content commits
         getModalRef(currentActive).current?.dismiss?.(true);
@@ -238,9 +239,11 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setActiveModal('departureBoard');
 
       if (currentActive === 'departureBoard') {
-        // Same-modal transition: dismiss first, slideIn after
-        pendingSameModalRef.current = { snap: 'half' };
-        departureBoardRef.current?.dismiss?.(true);
+        // Same-modal transition: swap content in place, no dismiss/slideIn cycle.
+        const currentSnapValue = currentSnapRef.current;
+        if (currentSnapValue !== 'half') {
+          departureBoardRef.current?.snapToPoint?.('half');
+        }
       } else {
         // Different modal: dismiss old, slideIn fires from useLayoutEffect after content commits
         getModalRef(currentActive).current?.dismiss?.(true);
@@ -344,21 +347,12 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Handle when a modal finishes its dismiss animation
   const handleModalDismissed = useCallback((type: ModalType) => {
-    // Check if this is a same-modal transition (e.g. train→train)
-    const pending = pendingSameModalRef.current;
-    if (pending) {
-      pendingSameModalRef.current = null;
-      // Content was already updated, just slide back in with new content
-      getModalRef(type).current?.slideIn?.(pending.snap);
-      return;
-    }
-
     // Hide content of the dismissed modal to free resources
     // Main + Profile modals stay mounted to avoid re-initialization flash
     if (type === 'trainDetail') setShowTrainDetailContent(false);
     else if (type === 'departureBoard') setShowDepartureBoardContent(false);
     else if (type === 'settings') setShowSettingsContent(false);
-  }, [getModalRef]);
+  }, []);
 
   // Fire pending slideIn AFTER React has committed the content to the view tree.
   // useLayoutEffect runs synchronously after commit — content is guaranteed to be rendered.
