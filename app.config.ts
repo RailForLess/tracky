@@ -58,7 +58,6 @@ const config: ExpoConfig = {
         androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
       },
     ],
-    "expo-router",
     [
       "expo-splash-screen",
       {
@@ -117,7 +116,6 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: {
-    typedRoutes: true,
     reactCompiler: true,
   },
   extra: {

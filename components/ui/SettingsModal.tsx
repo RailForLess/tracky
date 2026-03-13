@@ -17,7 +17,8 @@ import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handl
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { type ColorPalette, BorderRadius, Spacing, getCloseButtonStyle, withTextShadow } from '../../constants/theme';
-import { useTheme } from '../../context/ThemeContext';
+import { useHaptics } from '../../context/HapticsContext';
+import { type ThemeMode, useTheme } from '../../context/ThemeContext';
 import { type DistanceUnit, type TempUnit, useUnits } from '../../context/UnitsContext';
 import {
   type DeviceCalendar,
@@ -63,6 +64,12 @@ const DISTANCE_OPTIONS: { label: string; value: DistanceUnit; desc: string }[] =
   { label: '🌭', value: 'hotdogs', desc: '🌭' },
 ];
 
+const THEME_OPTIONS: { label: string; value: ThemeMode; desc: string; icon: string }[] = [
+  { label: 'System', value: 'system', desc: 'Match device setting', icon: 'phone-portrait-outline' },
+  { label: 'Light', value: 'light', desc: 'Always light', icon: 'sunny-outline' },
+  { label: 'Dark', value: 'dark', desc: 'Always dark', icon: 'moon-outline' },
+];
+
 const LOG_FILTER_KEY = 'DEBUG_LOG_FILTER';
 
 const LOG_LEVEL_COLORS: Record<LogLevel, string> = {
@@ -82,12 +89,13 @@ function formatLogDate(iso: string): string {
 }
 
 export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalProps) {
-  const { colors } = useTheme();
+  const { colors, themeMode, setThemeMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { isFullscreen, scrollOffset, panRef } = useContext(SlideUpModalContext);
   const { tempUnit, distanceUnit, setTempUnit, setDistanceUnit } = useUnits();
+  const { hapticsEnabled, setHapticsEnabled } = useHaptics();
   const [currentPage, setCurrentPage] = useState<
-    'main' | 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications'
+    'main' | 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications' | 'haptics' | 'appearance'
   >('main');
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
@@ -106,7 +114,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const slideX = useSharedValue(0); // 0 = main, 1 = subpage
 
   const openSubpage = useCallback(
-    (page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications') => {
+    (page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications' | 'haptics' | 'appearance') => {
       hapticLight();
       setCurrentPage(page);
       slideX.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
@@ -531,8 +539,99 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     );
   }, []);
 
+  const renderHapticsPage = () => (
+    <>
+      <Text style={styles.sectionHeader}>HAPTIC FEEDBACK</Text>
+      <View style={styles.settingsList}>
+        <View style={[styles.settingsItem, styles.settingsItemLast]}>
+          <View style={styles.itemIconContainer}>
+            <Ionicons name="radio-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.itemContent}>
+            <Text style={styles.itemTitle}>Haptic Feedback</Text>
+            <Text style={styles.itemSubtitle}>Vibration on taps, selections, and actions</Text>
+          </View>
+          <Switch
+            value={hapticsEnabled}
+            onValueChange={v => {
+              setHapticsEnabled(v);
+              hapticSelection();
+            }}
+            trackColor={{ false: colors.border.primary, true: colors.accent }}
+          />
+        </View>
+      </View>
+    </>
+  );
+
+  const renderAppearancePage = () => (
+    <>
+      <Text style={styles.sectionHeader}>THEME</Text>
+      <View style={styles.settingsList}>
+        {THEME_OPTIONS.map((opt, i) => (
+          <TouchableOpacity
+            key={opt.value}
+            style={[
+              styles.settingsItem,
+              { paddingHorizontal: Spacing.lg },
+              i === THEME_OPTIONS.length - 1 && styles.settingsItemLast,
+            ]}
+            onPress={() => {
+              hapticSelection();
+              setThemeMode(opt.value);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.itemIconContainer}>
+              <Ionicons name={opt.icon as any} size={22} color={colors.primary} />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>{opt.label}</Text>
+              <Text style={styles.itemSubtitle}>{opt.desc}</Text>
+            </View>
+            {themeMode === opt.value && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  );
+
   const renderMainPage = () => (
     <>
+      <Text style={styles.sectionHeader}>GENERAL</Text>
+      <View style={styles.settingsList}>
+        <TouchableOpacity
+          style={styles.settingsItem}
+          activeOpacity={0.7}
+          onPress={() => openSubpage('appearance')}
+        >
+          <View style={styles.itemIconContainer}>
+            <Ionicons name="color-palette-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.itemContent}>
+            <Text style={styles.itemTitle}>Appearance</Text>
+            <Text style={styles.itemSubtitle}>
+              {THEME_OPTIONS.find(o => o.value === themeMode)?.label}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.secondary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.settingsItem, styles.settingsItemLast]}
+          activeOpacity={0.7}
+          onPress={() => openSubpage('haptics')}
+        >
+          <View style={styles.itemIconContainer}>
+            <Ionicons name="radio-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.itemContent}>
+            <Text style={styles.itemTitle}>Haptics</Text>
+            <Text style={styles.itemSubtitle}>{hapticsEnabled ? 'On' : 'Off'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.secondary} />
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>
       <View style={styles.settingsList}>
         <TouchableOpacity
@@ -1271,6 +1370,8 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     dataProviders: 'Data Providers',
     debugLog: 'Debug Log',
     notifications: 'Notifications',
+    haptics: 'Haptics',
+    appearance: 'Appearance',
   };
 
   return (
@@ -1398,6 +1499,8 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               {currentPage === 'dataProviders' && renderDataProvidersPage()}
               {currentPage === 'debugLog' && renderDebugLogPage()}
               {currentPage === 'notifications' && renderNotificationsPage()}
+              {currentPage === 'haptics' && renderHapticsPage()}
+              {currentPage === 'appearance' && renderAppearancePage()}
             </ScrollView>
           </Animated.View>
         </GestureDetector>

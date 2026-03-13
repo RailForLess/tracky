@@ -73,11 +73,11 @@ function writeCompressedJSON(file: File, data: unknown): void {
   file.write(compressed);
 }
 
-/** Read zlib-compressed file and parse as JSON */
-function readCompressedJSON<T>(file: File): T | null {
+/** Read zlib-compressed file and parse as JSON (async I/O) */
+async function readCompressedJSON<T>(file: File): Promise<T | null> {
   try {
     if (!file.exists) return null;
-    const compressed = file.bytesSync();
+    const compressed = await file.bytes();
     const json = strFromU8(unzlibSync(compressed));
     return JSON.parse(json) as T;
   } catch {
@@ -277,13 +277,15 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
 
     // If cache is fresh, apply and return
     if (lastFetchMs && !isOlderThanDays(lastFetchMs, 3)) {
-      const routes = await readCompressedJSON<Route[]>(CACHE_FILES.routes);
-      const stops = await readCompressedJSON<Stop[]>(CACHE_FILES.stops);
-      const stopTimes = await readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes);
-      const shapes = await readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes);
-      const trips = await readCompressedJSON<Trip[]>(CACHE_FILES.trips);
-      const calendar = await readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar);
-      const calendarDates = await readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates);
+      const [routes, stops, stopTimes, shapes, trips, calendar, calendarDates] = await Promise.all([
+        readCompressedJSON<Route[]>(CACHE_FILES.routes),
+        readCompressedJSON<Stop[]>(CACHE_FILES.stops),
+        readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes),
+        readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes),
+        readCompressedJSON<Trip[]>(CACHE_FILES.trips),
+        readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar),
+        readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates),
+      ]);
       const agencyTimezone = CACHE_FILES.agencyTimezone.exists ? CACHE_FILES.agencyTimezone.textSync() || null : null;
       if (routes && stops && stopTimes) {
         gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
@@ -384,35 +386,52 @@ export async function loadCachedGTFS(): Promise<boolean> {
   try {
     ensureCacheDirSync();
 
-    const routes = await readCompressedJSON<Route[]>(CACHE_FILES.routes);
-    const stops = await readCompressedJSON<Stop[]>(CACHE_FILES.stops);
+    // Read routes + stops in parallel (small files, needed to check if cache exists)
+    const [routes, stops] = await Promise.all([
+      readCompressedJSON<Route[]>(CACHE_FILES.routes),
+      readCompressedJSON<Stop[]>(CACHE_FILES.stops),
+    ]);
     if (!routes || !stops) {
       logger.info('[GTFS] No cached data found');
       return false;
     }
 
     await yieldToUI();
-    const stopTimes = await readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes);
+
+    // Read remaining core files in parallel (shapes deferred to after splash)
+    const [stopTimes, trips, calendar, calendarDates] = await Promise.all([
+      readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes),
+      readCompressedJSON<Trip[]>(CACHE_FILES.trips),
+      readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar),
+      readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates),
+    ]);
     if (!stopTimes) {
       logger.info('[GTFS] No cached data found');
       return false;
     }
 
-    await yieldToUI();
-    const shapes = await readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes);
-
-    await yieldToUI();
-    const trips = await readCompressedJSON<Trip[]>(CACHE_FILES.trips);
-    const calendar = await readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar);
-    const calendarDates = await readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates);
     const agencyTimezone = CACHE_FILES.agencyTimezone.exists ? CACHE_FILES.agencyTimezone.textSync() || null : null;
 
-    gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
-    shapeLoader.initialize(shapes || {});
-    logger.info('[GTFS] Loaded cached data on startup');
+    // Load core data without shapes — shapes loaded after splash hides
+    gtfsParser.overrideData(routes, stops, stopTimes, {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
+    logger.info('[GTFS] Loaded cached core data on startup (shapes deferred)');
     return true;
   } catch (error) {
     logger.error('[GTFS] Failed to load cached data:', error);
     return false;
+  }
+}
+
+/** Load shapes in the background after splash screen is hidden */
+export async function loadDeferredShapes(): Promise<void> {
+  try {
+    const shapes = await readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes);
+    if (shapes) {
+      gtfsParser.updateShapes(shapes);
+      shapeLoader.initialize(shapes);
+      logger.info('[GTFS] Deferred shapes loaded');
+    }
+  } catch (error) {
+    logger.error('[GTFS] Failed to load deferred shapes:', error);
   }
 }

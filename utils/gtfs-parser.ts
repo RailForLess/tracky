@@ -109,6 +109,15 @@ export class GTFSParser {
     }
   }
 
+  /** Update only shapes data (used for deferred shape loading) */
+  updateShapes(shapes: Record<string, Shape[]>): void {
+    this.shapes.clear();
+    Object.entries(shapes).forEach(([shapeId, points]) => {
+      if (shapeId && Array.isArray(points)) this.shapes.set(shapeId, points);
+    });
+    debug(`[GTFSParser] Shapes updated: ${this.shapes.size} shapes`);
+  }
+
   getRouteName(routeId: string): string {
     return this.routes.get(routeId)?.route_long_name || 'Unknown Route';
   }
