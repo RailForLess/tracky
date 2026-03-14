@@ -95,6 +95,9 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       setRefreshStep('Loading cached data...');
       setRefreshProgress(0.1);
 
+      // Hide native splash immediately — the app's own LoadingOverlay handles the visual loading state
+      SplashScreen.hideAsync();
+
       try {
         const loaded = await loadCachedGTFS();
         if (loaded) {
@@ -102,7 +105,6 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
           setIsLoadingCache(false);
           setRefreshProgress(0);
           setRefreshStep('');
-          SplashScreen.hideAsync();
 
           // Pre-compute location-based suggestions in background
           LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
@@ -113,9 +115,8 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
             runRefresh(false);
           }
         } else {
-          // No cache at all — hide splash so user sees refresh progress UI
+          // No cache at all — show refresh progress UI
           setIsLoadingCache(false);
-          SplashScreen.hideAsync();
           runRefresh(false);
         }
       } catch (error) {
@@ -123,11 +124,10 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
         logger.error(`GTFS initialization failed: ${msg}`, error);
         setIsLoadingCache(false);
         setRefreshStep('');
-        SplashScreen.hideAsync();
         Alert.alert(
-          'Unable to Load Schedules',
-          'Tracky could not load train schedule data. Please check your internet connection and restart the app.',
-          [{ text: 'Retry', onPress: () => { hasInitialized.current = false; initialize(); } }, { text: 'OK' }]
+          'Schedule Data Needs Refresh',
+          'Cached schedule data could not be loaded. A fresh download is required.',
+          [{ text: 'Refresh Now', onPress: () => runRefresh(true) }]
         );
       }
     };

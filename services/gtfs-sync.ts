@@ -85,6 +85,29 @@ async function readCompressedJSON<T>(file: File): Promise<T | null> {
   }
 }
 
+/** Convert full Shape objects to compact [lat, lon] tuples for smaller cache */
+function compactifyShapes(shapes: Record<string, Shape[]>): Record<string, [number, number][]> {
+  const compact: Record<string, [number, number][]> = {};
+  for (const [id, points] of Object.entries(shapes)) {
+    compact[id] = points.map(p => [p.shape_pt_lat, p.shape_pt_lon]);
+  }
+  return compact;
+}
+
+/** Expand compact [lat, lon] tuples back to full Shape objects */
+function expandShapes(compact: Record<string, [number, number][]>): Record<string, Shape[]> {
+  const shapes: Record<string, Shape[]> = {};
+  for (const [id, points] of Object.entries(compact)) {
+    shapes[id] = points.map(([lat, lon], i) => ({
+      shape_id: id,
+      shape_pt_lat: lat,
+      shape_pt_lon: lon,
+      shape_pt_sequence: i,
+    }));
+  }
+  return shapes;
+}
+
 // Basic CSV parser that respects quoted fields
 function parseCSV(text: string): Array<Record<string, string>> {
   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
@@ -277,19 +300,20 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
 
     // If cache is fresh, apply and return
     if (lastFetchMs && !isOlderThanDays(lastFetchMs, 3)) {
-      const [routes, stops, stopTimes, shapes, trips, calendar, calendarDates] = await Promise.all([
+      const [routes, stops, stopTimes, compactShapes, trips, calendar, calendarDates] = await Promise.all([
         readCompressedJSON<Route[]>(CACHE_FILES.routes),
         readCompressedJSON<Stop[]>(CACHE_FILES.stops),
         readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes),
-        readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes),
+        readCompressedJSON<Record<string, [number, number][]>>(CACHE_FILES.shapes),
         readCompressedJSON<Trip[]>(CACHE_FILES.trips),
         readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar),
         readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates),
       ]);
       const agencyTimezone = CACHE_FILES.agencyTimezone.exists ? CACHE_FILES.agencyTimezone.textSync() || null : null;
       if (routes && stops && stopTimes) {
-        gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
-        shapeLoader.initialize(shapes || {});
+        const shapes = compactShapes ? expandShapes(compactShapes) : {};
+        gtfsParser.overrideData(routes, stops, stopTimes, shapes, trips || [], calendar || [], calendarDates || [], agencyTimezone);
+        shapeLoader.initialize(shapes);
         await report('Using cached GTFS', 1, 'Cache age < 3 days');
         return { usedCache: true };
       }
@@ -337,7 +361,7 @@ export async function ensureFreshGTFS(onProgress?: (update: ProgressUpdate) => v
     writeCompressedJSON(CACHE_FILES.routes, routes);
     writeCompressedJSON(CACHE_FILES.stops, stops);
     writeCompressedJSON(CACHE_FILES.stopTimes, stopTimes);
-    writeCompressedJSON(CACHE_FILES.shapes, shapes);
+    writeCompressedJSON(CACHE_FILES.shapes, compactifyShapes(shapes));
     writeCompressedJSON(CACHE_FILES.trips, trips);
     writeCompressedJSON(CACHE_FILES.calendar, calendar);
     writeCompressedJSON(CACHE_FILES.calendarDates, calendarDates);
@@ -399,12 +423,12 @@ export async function loadCachedGTFS(): Promise<boolean> {
     await yieldToUI();
 
     // Read all files including shapes in parallel
-    const [stopTimes, trips, calendar, calendarDates, shapes] = await Promise.all([
+    const [stopTimes, trips, calendar, calendarDates, compactShapes] = await Promise.all([
       readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes),
       readCompressedJSON<Trip[]>(CACHE_FILES.trips),
       readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar),
       readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates),
-      readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes),
+      readCompressedJSON<Record<string, [number, number][]>>(CACHE_FILES.shapes),
     ]);
     if (!stopTimes) {
       logger.info('[GTFS] No cached data found');
@@ -412,11 +436,10 @@ export async function loadCachedGTFS(): Promise<boolean> {
     }
 
     const agencyTimezone = CACHE_FILES.agencyTimezone.exists ? CACHE_FILES.agencyTimezone.textSync() || null : null;
+    const shapes = compactShapes ? expandShapes(compactShapes) : {};
 
-    gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
-    if (shapes) {
-      shapeLoader.initialize(shapes);
-    }
+    gtfsParser.overrideData(routes, stops, stopTimes, shapes, trips || [], calendar || [], calendarDates || [], agencyTimezone);
+    shapeLoader.initialize(shapes);
     logger.info('[GTFS] Loaded all cached data on startup');
     return true;
   } catch (error) {
