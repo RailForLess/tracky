@@ -20,6 +20,7 @@ export class GTFSParser {
   private _isLoaded: boolean = false;
   private _agencyTimezone: string | null = null;
   private _onLoadedListeners: Array<() => void> = [];
+  private _onShapesUpdatedListeners: Array<() => void> = [];
 
   constructor() {
     // Parser starts empty - data is loaded dynamically via overrideData()
@@ -38,6 +39,18 @@ export class GTFSParser {
     this._onLoadedListeners.push(listener);
     return () => {
       this._onLoadedListeners = this._onLoadedListeners.filter(l => l !== listener);
+    };
+  }
+
+  /** Subscribe to be notified when shapes data is updated (e.g. deferred load). Fires immediately if shapes already loaded. */
+  onShapesUpdated(listener: () => void): () => void {
+    if (this.shapes.size > 0) {
+      listener();
+      return () => {};
+    }
+    this._onShapesUpdatedListeners.push(listener);
+    return () => {
+      this._onShapesUpdatedListeners = this._onShapesUpdatedListeners.filter(l => l !== listener);
     };
   }
 
@@ -128,6 +141,13 @@ export class GTFSParser {
       }
       this._onLoadedListeners = [];
     }
+    // Notify shapes listeners if shapes were provided (fresh download path)
+    if (this.shapes.size > 0) {
+      for (const listener of this._onShapesUpdatedListeners) {
+        listener();
+      }
+      this._onShapesUpdatedListeners = [];
+    }
   }
 
   /** Update only shapes data (used for deferred shape loading) */
@@ -137,6 +157,10 @@ export class GTFSParser {
       if (shapeId && Array.isArray(points)) this.shapes.set(shapeId, points);
     });
     debug(`[GTFSParser] Shapes updated: ${this.shapes.size} shapes`);
+    for (const listener of this._onShapesUpdatedListeners) {
+      listener();
+    }
+    this._onShapesUpdatedListeners = [];
   }
 
   getRouteName(routeId: string): string {

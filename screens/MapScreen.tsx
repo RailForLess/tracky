@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -108,11 +108,8 @@ const createLoadingStyles = (colors: ColorPalette) =>
       zIndex: 99999,
       elevation: 99999,
     },
-    logo: {
-      width: 360,
-      height: 360,
+    icon: {
       marginBottom: 16,
-      resizeMode: 'contain',
     },
     copyright: {
       position: 'absolute',
@@ -147,7 +144,7 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
 
   return (
     <Animated.View style={[lStyles.overlay, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
-      <Image source={require('../assets/images/tracky-logo.png')} style={lStyles.logo} />
+      <Ionicons name="train" size={128} color="rgba(255, 255, 255, 0.25)" style={lStyles.icon} />
       <Text style={lStyles.copyright}>Tracky - Made with &lt;3 by Jason</Text>
     </Animated.View>
   );
@@ -857,11 +854,6 @@ function MapScreenInner() {
     // 'auto' mode - use clustering
     return clusterStations(stations, debouncedLatDelta);
   }, [stations, debouncedLatDelta, stationMode]);
-
-  // Don't render until we have a region
-  if (!mapReady || !regionRef.current) {
-    return <LoadingOverlay visible={true} />;
-  }
 
   return (
     <View style={styles.container}>

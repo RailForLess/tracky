@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { ensureFreshGTFS, isCacheStale, loadCachedGTFS } from '../services/gtfs-sync';
+import { ensureFreshGTFS, isCacheStale, loadCachedGTFS, loadDeferredShapes } from '../services/gtfs-sync';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
@@ -105,6 +105,9 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
           setIsLoadingCache(false);
           setRefreshProgress(0);
           setRefreshStep('');
+
+          // Load shapes in background after splash is hidden
+          loadDeferredShapes();
 
           // Pre-compute location-based suggestions in background
           LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));

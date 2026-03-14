@@ -6,6 +6,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { type ColorPalette, BorderRadius, FontSizes, Spacing, withTextShadow } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import TrainCardContent from './TrainCardContent';
+import { SkeletonBox } from './ui/SkeletonBox';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
 import { getTrainDisplayName } from '../services/api';
 import { TrainIcon } from './TrainIcon';
@@ -140,6 +141,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const [toStation, setToStation] = useState<Stop | null>(null);
   const [stationResults, setStationResults] = useState<Stop[]>([]);
   const [tripResults, setTripResults] = useState<TripResult[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
   const [tripDelays, setTripDelays] = useState<Map<string, { departDelay?: number; arriveDelay?: number }>>(new Map());
   const [activeField, setActiveField] = useState<'from' | 'to'>('from');
 
@@ -276,14 +278,22 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   // Find trips when both stations AND date are selected (station flow)
   useEffect(() => {
     if (fromStation && toStation && selectedDate) {
-      logger.info(
-        `[Search] Finding trips: ${fromStation.stop_name} → ${toStation.stop_name} on ${selectedDate.toLocaleDateString()}`
-      );
-      const trips = gtfsParser.findTripsWithStops(fromStation.stop_id, toStation.stop_id, selectedDate);
-      logger.info(`[Search] Found ${trips.length} trips`);
-      setTripResults(trips);
+      setLoadingTrips(true);
+      setTripResults([]);
+      // Defer heavy work so skeleton paints first
+      const timeout = setTimeout(() => {
+        logger.info(
+          `[Search] Finding trips: ${fromStation.stop_name} → ${toStation.stop_name} on ${selectedDate.toLocaleDateString()}`
+        );
+        const trips = gtfsParser.findTripsWithStops(fromStation.stop_id, toStation.stop_id, selectedDate);
+        logger.info(`[Search] Found ${trips.length} trips`);
+        setTripResults(trips);
+        setLoadingTrips(false);
+      }, 50);
+      return () => clearTimeout(timeout);
     } else {
       setTripResults([]);
+      setLoadingTrips(false);
     }
   }, [fromStation, toStation, selectedDate]);
 
@@ -1075,12 +1085,37 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         {/* Trip Results */}
         {showingResults && (
           <View style={styles.resultsContainer}>
-            <Text style={styles.sectionLabel}>
-              {pluralCount(tripResults.length, 'TRAIN')} FOUND
-            </Text>
-            {tripResults.length === 0 ? (
-              <Text style={styles.noResults}>No direct trains between these stations</Text>
+            {loadingTrips ? (
+              <View>
+                <SkeletonBox width={120} height={14} borderRadius={4} style={{ marginBottom: Spacing.md }} />
+                {[0, 1, 2].map((i) => (
+                  <View key={i}>
+                    <View style={{ flexDirection: 'row', paddingVertical: 12 }}>
+                      <View style={{ width: 52, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        <SkeletonBox width={40} height={36} borderRadius={8} />
+                        <SkeletonBox width={30} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <SkeletonBox width={100} height={14} borderRadius={4} />
+                        <SkeletonBox width="80%" height={18} borderRadius={4} style={{ marginTop: 6 }} />
+                        <View style={{ flexDirection: 'row', marginTop: 6, gap: 16 }}>
+                          <SkeletonBox width={60} height={13} borderRadius={4} />
+                          <SkeletonBox width={60} height={13} borderRadius={4} />
+                        </View>
+                      </View>
+                    </View>
+                    {i < 2 && <View style={styles.tripCardSeparator} />}
+                  </View>
+                ))}
+              </View>
             ) : (
+              <>
+                <Text style={styles.sectionLabel}>
+                  {pluralCount(tripResults.length, 'TRAIN')} FOUND
+                </Text>
+                {tripResults.length === 0 ? (
+                  <Text style={styles.noResults}>No direct trains between these stations</Text>
+                ) : (
               [...tripResults].sort((a, b) => {
                 const now = Date.now();
                 const getDepMs = (dep: string) => {
@@ -1147,6 +1182,8 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
                   </TouchableOpacity>
                 );
               })
+            )}
+              </>
             )}
           </View>
         )}
