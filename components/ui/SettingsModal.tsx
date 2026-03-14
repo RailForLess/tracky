@@ -1115,7 +1115,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             </View>
             <View style={styles.itemContent}>
               <Text style={styles.itemTitle}>Website</Text>
-              <Text style={styles.itemSubtitle}>trytracky.com</Text>
+              <Text style={styles.itemSubtitle}>TryTracky.com</Text>
             </View>
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
           </TouchableOpacity>
@@ -1132,7 +1132,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             </View>
             <View style={styles.itemContent}>
               <Text style={styles.itemTitle}>Discord</Text>
-              <Text style={styles.itemSubtitle}>Join the community</Text>
+              <Text style={styles.itemSubtitle}>Join Tracky on Discord!</Text>
             </View>
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
           </TouchableOpacity>
@@ -1149,7 +1149,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             </View>
             <View style={styles.itemContent}>
               <Text style={styles.itemTitle}>View on GitHub</Text>
-              <Text style={styles.itemSubtitle}>Tracky's open-source!</Text>
+              <Text style={styles.itemSubtitle}>It's open-source!</Text>
             </View>
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
           </TouchableOpacity>
