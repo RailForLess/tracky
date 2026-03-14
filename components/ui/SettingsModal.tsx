@@ -1120,6 +1120,23 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
           </TouchableOpacity>
           <TouchableOpacity
+            style={styles.settingsItem}
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticLight();
+              Linking.openURL('https://discord.gg/PqYt7NJvcp');
+            }}
+          >
+            <View style={styles.itemIconContainer}>
+              <Ionicons name="logo-discord" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>Discord</Text>
+              <Text style={styles.itemSubtitle}>Join the community</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={colors.secondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.settingsItem, styles.settingsItemLast]}
             activeOpacity={0.7}
             onPress={() => {
