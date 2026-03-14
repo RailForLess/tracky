@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 interface GTFSRefreshState {
   isRefreshing: boolean;
   isLoadingCache: boolean;
+  isStreamingData: boolean;
   refreshProgress: number;
   refreshStep: string;
   refreshFailed: boolean;
@@ -41,6 +42,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [refreshStep, setRefreshStep] = useState('');
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [isStreamingData, setIsStreamingData] = useState(false);
   const hasInitialized = useRef(false);
   const onRefreshCompleteRef = useRef(onRefreshComplete);
   onRefreshCompleteRef.current = onRefreshComplete;
@@ -107,7 +109,8 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
           setRefreshStep('');
 
           // Load shapes in background after splash is hidden
-          loadDeferredShapes();
+          setIsStreamingData(true);
+          loadDeferredShapes().finally(() => setIsStreamingData(false));
 
           // Pre-compute location-based suggestions in background
           LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
@@ -158,6 +161,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
     () => ({
       isRefreshing,
       isLoadingCache,
+      isStreamingData,
       refreshProgress,
       refreshStep,
       refreshFailed,
@@ -165,7 +169,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       dismissRefreshFailure,
       debugShowLoadingScreen,
     }),
-    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, refreshFailed, triggerRefresh, dismissRefreshFailure, debugShowLoadingScreen]
+    [isRefreshing, isLoadingCache, isStreamingData, refreshProgress, refreshStep, refreshFailed, triggerRefresh, dismissRefreshFailure, debugShowLoadingScreen]
   );
 
   return (
