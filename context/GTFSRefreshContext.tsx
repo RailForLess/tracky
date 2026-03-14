@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { ensureFreshGTFS, isCacheStale, loadCachedGTFS, loadDeferredShapes } from '../services/gtfs-sync';
+import { ensureFreshGTFS, isCacheStale, loadCachedGTFS } from '../services/gtfs-sync';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
@@ -16,8 +16,6 @@ interface GTFSRefreshState {
 }
 
 interface GTFSRefreshContextType extends GTFSRefreshState {
-  /** Initialize GTFS on app startup (load cache, auto-refresh if stale) */
-  initializeGTFS: (onCacheLoaded?: () => void) => Promise<void>;
   /** Manual refresh triggered from settings */
   triggerRefresh: () => void;
   /** Dismiss the persistent failure indicator */
@@ -87,53 +85,54 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
     }
   }, []);
 
-  const initializeGTFS = useCallback(async (onCacheLoaded?: () => void) => {
+  // Auto-initialize GTFS on provider mount (runs once)
+  useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 
-    setIsLoadingCache(true);
-    setRefreshStep('Loading cached data...');
-    setRefreshProgress(0.1);
+    const initialize = async () => {
+      setIsLoadingCache(true);
+      setRefreshStep('Loading cached data...');
+      setRefreshProgress(0.1);
 
-    try {
-      const loaded = await loadCachedGTFS();
-      if (loaded) {
-        // Cache loaded — app is usable now
-        setIsLoadingCache(false);
-        setRefreshProgress(0);
-        setRefreshStep('');
-        onCacheLoaded?.();
-        SplashScreen.hideAsync();
+      try {
+        const loaded = await loadCachedGTFS();
+        if (loaded) {
+          // Cache loaded — app is usable now
+          setIsLoadingCache(false);
+          setRefreshProgress(0);
+          setRefreshStep('');
+          SplashScreen.hideAsync();
 
-        // Load shapes in background after splash is hidden
-        loadDeferredShapes().catch(e => logger.warn('Deferred shapes load failed', e));
+          // Pre-compute location-based suggestions in background
+          LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
 
-        // Pre-compute location-based suggestions in background
-        LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
-
-        // Check staleness in background
-        const stale = await isCacheStale();
-        if (stale) {
+          // Check staleness in background
+          const stale = await isCacheStale();
+          if (stale) {
+            runRefresh(false);
+          }
+        } else {
+          // No cache at all — hide splash so user sees refresh progress UI
+          setIsLoadingCache(false);
+          SplashScreen.hideAsync();
           runRefresh(false);
         }
-      } else {
-        // No cache at all — hide splash so user sees refresh progress UI
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error(`GTFS initialization failed: ${msg}`, error);
         setIsLoadingCache(false);
+        setRefreshStep('');
         SplashScreen.hideAsync();
-        runRefresh(false);
+        Alert.alert(
+          'Unable to Load Schedules',
+          'Tracky could not load train schedule data. Please check your internet connection and restart the app.',
+          [{ text: 'Retry', onPress: () => { hasInitialized.current = false; initialize(); } }, { text: 'OK' }]
+        );
       }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`GTFS initialization failed: ${msg}`, error);
-      setIsLoadingCache(false);
-      setRefreshStep('');
-      SplashScreen.hideAsync();
-      Alert.alert(
-        'Unable to Load Schedules',
-        'Tracky could not load train schedule data. Please check your internet connection and restart the app.',
-        [{ text: 'Retry', onPress: () => { hasInitialized.current = false; initializeGTFS(onCacheLoaded); } }, { text: 'OK' }]
-      );
-    }
+    };
+
+    initialize();
   }, [runRefresh]);
 
   const triggerRefresh = useCallback(() => {
@@ -159,12 +158,11 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       refreshProgress,
       refreshStep,
       refreshFailed,
-      initializeGTFS,
       triggerRefresh,
       dismissRefreshFailure,
       debugShowLoadingScreen,
     }),
-    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, refreshFailed, initializeGTFS, triggerRefresh, dismissRefreshFailure, debugShowLoadingScreen]
+    [isRefreshing, isLoadingCache, refreshProgress, refreshStep, refreshFailed, triggerRefresh, dismissRefreshFailure, debugShowLoadingScreen]
   );
 
   return (

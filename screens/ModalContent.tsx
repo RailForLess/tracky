@@ -42,7 +42,7 @@ export const ModalContent = React.forwardRef<
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const { savedTrains, setSavedTrains, setSelectedTrain } = useTrainContext();
   const { refresh: refreshFrequentlyUsed } = useFrequentlyUsed();
-  const { isLoadingCache, initializeGTFS, triggerRefresh } = useGTFSRefresh();
+  const { isLoadingCache, triggerRefresh } = useGTFSRefresh();
   const { activeModal } = useModalState();
 
   // Refs to avoid stale closures in useEffect
@@ -50,9 +50,6 @@ export const ModalContent = React.forwardRef<
   refreshFrequentlyUsedRef.current = refreshFrequentlyUsed;
   const snapToPointRef = useRef(snapToPoint);
   snapToPointRef.current = snapToPoint;
-
-  // Track if initialization has run
-  const hasInitialized = useRef(false);
 
   // Only block UI for initial cache load (no cache at all)
   const isLoading = isLoadingCache;
@@ -153,7 +150,7 @@ export const ModalContent = React.forwardRef<
   // Refresh saved trains when main modal becomes active (returning from profile, etc.)
   const isMainActive = activeModal === 'main';
   useEffect(() => {
-    if (!isMainActive || !hasInitialized.current) return;
+    if (!isMainActive || isLoadingCache) return;
     TrainStorageService.getSavedTrains().then(freshTrains => {
       setSavedTrains(prev => {
         const realtimeByKey = new Map<string, Train['realtime']>();
@@ -172,15 +169,14 @@ export const ModalContent = React.forwardRef<
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [isMainActive, setSavedTrains]);
 
-  // Load cached GTFS and check if refresh is needed on mount (runs once)
+  // Refresh frequently used items once GTFS cache is ready
+  const hasRefreshedFreqUsed = useRef(false);
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-
-    initializeGTFS(() => {
+    if (!isLoadingCache && !hasRefreshedFreqUsed.current) {
+      hasRefreshedFreqUsed.current = true;
       refreshFrequentlyUsedRef.current();
-    });
-  }, [initializeGTFS]);
+    }
+  }, [isLoadingCache]);
 
   // Save train with segmentation support
   const saveTrainWithSegment = async (tripId: string, fromCode: string, toCode: string, travelDate: Date) => {

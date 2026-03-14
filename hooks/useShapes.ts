@@ -7,22 +7,10 @@ import { debug } from '../utils/logger';
 export function useShapes(bounds?: ViewportBounds) {
   const [gtfsLoaded, setGtfsLoaded] = useState(gtfsParser.isLoaded);
 
-  // Poll for GTFS loaded state (max 30s)
+  // Subscribe to GTFS loaded event — no polling
   useEffect(() => {
     if (gtfsLoaded) return;
-
-    let attempts = 0;
-    const MAX_ATTEMPTS = 60; // 60 × 500ms = 30s
-    const interval = setInterval(() => {
-      if (gtfsParser.isLoaded) {
-        setGtfsLoaded(true);
-        clearInterval(interval);
-      } else if (++attempts >= MAX_ATTEMPTS) {
-        clearInterval(interval);
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
+    return gtfsParser.onLoaded(() => setGtfsLoaded(true));
   }, [gtfsLoaded]);
 
   // Compute visible shapes for the current bounds

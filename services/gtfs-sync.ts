@@ -398,12 +398,13 @@ export async function loadCachedGTFS(): Promise<boolean> {
 
     await yieldToUI();
 
-    // Read remaining core files in parallel (shapes deferred to after splash)
-    const [stopTimes, trips, calendar, calendarDates] = await Promise.all([
+    // Read all files including shapes in parallel
+    const [stopTimes, trips, calendar, calendarDates, shapes] = await Promise.all([
       readCompressedJSON<Record<string, StopTime[]>>(CACHE_FILES.stopTimes),
       readCompressedJSON<Trip[]>(CACHE_FILES.trips),
       readCompressedJSON<CalendarEntry[]>(CACHE_FILES.calendar),
       readCompressedJSON<CalendarDateException[]>(CACHE_FILES.calendarDates),
+      readCompressedJSON<Record<string, Shape[]>>(CACHE_FILES.shapes),
     ]);
     if (!stopTimes) {
       logger.info('[GTFS] No cached data found');
@@ -412,9 +413,11 @@ export async function loadCachedGTFS(): Promise<boolean> {
 
     const agencyTimezone = CACHE_FILES.agencyTimezone.exists ? CACHE_FILES.agencyTimezone.textSync() || null : null;
 
-    // Load core data without shapes — shapes loaded after splash hides
-    gtfsParser.overrideData(routes, stops, stopTimes, {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
-    logger.info('[GTFS] Loaded cached core data on startup (shapes deferred)');
+    gtfsParser.overrideData(routes, stops, stopTimes, shapes || {}, trips || [], calendar || [], calendarDates || [], agencyTimezone);
+    if (shapes) {
+      shapeLoader.initialize(shapes);
+    }
+    logger.info('[GTFS] Loaded all cached data on startup');
     return true;
   } catch (error) {
     logger.error('[GTFS] Failed to load cached data:', error);

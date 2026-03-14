@@ -497,9 +497,11 @@ export class TrainAPIService {
   private static async enrichWithRealtimeData(train: Train): Promise<void> {
     try {
       const tripKey = train.trainNumber || train.tripId || '';
-      const position = await RealtimeService.getPositionForTrip(tripKey);
-      const delay = await RealtimeService.getDelayForStop(tripKey, train.fromCode);
-      const arrivalDelay = await RealtimeService.getArrivalDelayForStop(tripKey, train.toCode);
+      const [position, delay, arrivalDelay] = await Promise.all([
+        RealtimeService.getPositionForTrip(tripKey),
+        RealtimeService.getDelayForStop(tripKey, train.fromCode),
+        RealtimeService.getArrivalDelayForStop(tripKey, train.toCode),
+      ]);
 
       train.realtime = {
         position: position ? { lat: position.latitude, lon: position.longitude } : undefined,

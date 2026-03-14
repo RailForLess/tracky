@@ -9,22 +9,10 @@ export function useStations(bounds?: ViewportBounds) {
   const [gtfsLoaded, setGtfsLoaded] = useState(gtfsParser.isLoaded);
   const [initialized, setInitialized] = useState(false);
 
-  // Poll for GTFS loaded state (max 30s)
+  // Subscribe to GTFS loaded event — no polling
   useEffect(() => {
     if (gtfsLoaded) return;
-
-    let attempts = 0;
-    const MAX_ATTEMPTS = 60; // 60 × 500ms = 30s
-    const interval = setInterval(() => {
-      if (gtfsParser.isLoaded) {
-        setGtfsLoaded(true);
-        clearInterval(interval);
-      } else if (++attempts >= MAX_ATTEMPTS) {
-        clearInterval(interval);
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
+    return gtfsParser.onLoaded(() => setGtfsLoaded(true));
   }, [gtfsLoaded]);
 
   // Initialize station loader once GTFS is loaded

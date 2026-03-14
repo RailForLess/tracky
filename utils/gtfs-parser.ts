@@ -19,6 +19,7 @@ export class GTFSParser {
   private hasCalendarData: boolean = false;
   private _isLoaded: boolean = false;
   private _agencyTimezone: string | null = null;
+  private _onLoadedListeners: Array<() => void> = [];
 
   constructor() {
     // Parser starts empty - data is loaded dynamically via overrideData()
@@ -26,6 +27,18 @@ export class GTFSParser {
 
   get isLoaded(): boolean {
     return this._isLoaded;
+  }
+
+  /** Subscribe to be notified when GTFS data finishes loading. Fires immediately if already loaded. */
+  onLoaded(listener: () => void): () => void {
+    if (this._isLoaded) {
+      listener();
+      return () => {};
+    }
+    this._onLoadedListeners.push(listener);
+    return () => {
+      this._onLoadedListeners = this._onLoadedListeners.filter(l => l !== listener);
+    };
   }
 
   /** IANA timezone for GTFS schedule times (from agency.txt agency_timezone).
@@ -106,6 +119,14 @@ export class GTFSParser {
     }
     if (!this._isLoaded) {
       warn('[GTFSParser] Data loaded but parser reports not ready - routes or stops may be empty');
+    }
+
+    // Notify listeners
+    if (this._isLoaded) {
+      for (const listener of this._onLoadedListeners) {
+        listener();
+      }
+      this._onLoadedListeners = [];
     }
   }
 

@@ -720,22 +720,15 @@ function MapScreenInner() {
     })();
   }, [setInitialRegion]);
 
-  // Track when GTFS data is loaded
+  // Track when GTFS data is loaded — event-based, no polling
   const [gtfsLoaded, setGtfsLoaded] = React.useState(gtfsParser.isLoaded);
 
-  // Poll for GTFS loaded state — clear interval as soon as loaded
   React.useEffect(() => {
     if (gtfsLoaded) return;
-
-    const interval = setInterval(() => {
-      if (gtfsParser.isLoaded) {
-        clearInterval(interval);
-        logger.info('[MapScreen] GTFS data ready');
-        setGtfsLoaded(true);
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
+    return gtfsParser.onLoaded(() => {
+      logger.info('[MapScreen] GTFS data ready');
+      setGtfsLoaded(true);
+    });
   }, [gtfsLoaded]);
 
   // Load saved trains after GTFS is ready
