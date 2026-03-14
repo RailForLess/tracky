@@ -4,7 +4,7 @@ import type { ExpoConfig } from "expo/config";
 const config: ExpoConfig = {
   name: "Tracky",
   slug: "tracky",
-  version: "2.0.0",
+  version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/tracky-logo.png",
   scheme: "tracky",
