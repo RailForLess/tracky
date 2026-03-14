@@ -665,7 +665,7 @@ export default function DepartureBoardModal({
                 <MaterialCommunityIcons
                   name="arrow-top-right"
                   size={18}
-                  color={colors.primary}
+                  color={filterMode === 'departing' ? colors.background.primary : colors.primary}
                 />
               </TouchableOpacity>
               <TouchableOpacity
@@ -680,7 +680,7 @@ export default function DepartureBoardModal({
                 <MaterialCommunityIcons
                   name="arrow-bottom-left"
                   size={18}
-                  color={colors.primary}
+                  color={filterMode === 'arriving' ? colors.background.primary : colors.primary}
                 />
               </TouchableOpacity>
             </View>
@@ -852,7 +852,7 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create(withTextShadow(
     borderBottomRightRadius: 18,
   },
   filterButtonActive: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: colors.primary,
     borderRadius: 18,
   },
   filterText: {
@@ -861,7 +861,7 @@ const createStyles = (colors: ColorPalette) => StyleSheet.create(withTextShadow(
     color: colors.tertiary,
   },
   filterTextActive: {
-    color: colors.primary,
+    color: colors.background.primary,
   },
   dateArrow: {
     width: 36,

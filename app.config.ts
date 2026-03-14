@@ -12,7 +12,7 @@ const config: ExpoConfig = {
   platforms: ["ios", "android"],
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.tracky.app",
+    bundleIdentifier: "com.trackytrains.app",
     infoPlist: {
       NSSupportsLiveActivities: true,
       ITSAppUsesNonExemptEncryption: false,
@@ -44,7 +44,7 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     predictiveBackGestureEnabled: false,
-    package: "com.tracky.app",
+    package: "com.trackytrains.app",
     permissions: [
       "android.permission.READ_CALENDAR",
       "android.permission.WRITE_CALENDAR",
@@ -91,8 +91,8 @@ const config: ExpoConfig = {
     [
       "expo-widgets",
       {
-        bundleIdentifier: "com.tracky.app.widgets",
-        groupIdentifier: "group.com.tracky.app",
+        bundleIdentifier: "com.trackytrains.app.widgets",
+        groupIdentifier: "group.com.trackytrains.app",
         widgets: [
           {
             name: "NextTrainWidget",

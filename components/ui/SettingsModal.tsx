@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,8 +18,10 @@ import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handl
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { type ColorPalette, BorderRadius, Spacing, getCloseButtonStyle, withTextShadow } from '../../constants/theme';
+import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
 import { useHaptics } from '../../context/HapticsContext';
 import { type ThemeMode, useTheme } from '../../context/ThemeContext';
+import { useTrainContext } from '../../context/TrainContext';
 import { type DistanceUnit, type TempUnit, useUnits } from '../../context/UnitsContext';
 import {
   type DeviceCalendar,
@@ -27,17 +30,14 @@ import {
   requestCalendarPermission,
   syncPastTrips,
 } from '../../services/calendar-sync';
-import * as Notifications from 'expo-notifications';
-import { requestPermissions, getPermissionStatus } from '../../services/notifications';
+import { getPermissionStatus, requestPermissions } from '../../services/notifications';
 import { type NotificationPrefs, DEFAULT_NOTIFICATION_PREFS, TrainStorageService } from '../../services/storage';
 import { TrainActivityManager } from '../../services/train-activity-manager';
-import { useTrainContext } from '../../context/TrainContext';
 import { light as hapticLight, selection as hapticSelection } from '../../utils/haptics';
 import { type LogEntry, LogLevel, logger, openReportBugEmail } from '../../utils/logger';
-import { useGTFSRefresh } from '../../context/GTFSRefreshContext';
+import { pluralCount } from '../../utils/train-display';
 import { PlaceholderBlurb } from '../PlaceholderBlurb';
 import { SlideUpModalContext } from './slide-up-modal';
-import { pluralCount } from '../../utils/train-display';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -114,7 +114,9 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   const slideX = useSharedValue(0); // 0 = main, 1 = subpage
 
   const openSubpage = useCallback(
-    (page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications' | 'haptics' | 'appearance') => {
+    (
+      page: 'calendar' | 'units' | 'about' | 'dataProviders' | 'debugLog' | 'notifications' | 'haptics' | 'appearance'
+    ) => {
       hapticLight();
       setCurrentPage(page);
       slideX.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
@@ -270,9 +272,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         title = 'Sync Complete';
         const indexed = result.totalCalendarEvents ?? 0;
         const lines: string[] = [];
-        lines.push(
-          `Scanned ${pluralCount(indexed, 'event')}, found ${pluralCount(result.matched, 'trip')}.`
-        );
+        lines.push(`Scanned ${pluralCount(indexed, 'event')}, found ${pluralCount(result.matched, 'trip')}.`);
         lines.push(`${result.added} added to history.`);
         if (result.skipped > 0) {
           lines.push(`${result.skipped} already existed.`);
@@ -313,9 +313,14 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             await AsyncStorage.removeItem('GTFS_LAST_FETCH');
             // Remove legacy AsyncStorage keys (if any remain)
             const legacyKeys = [
-              'GTFS_ROUTES_JSON', 'GTFS_STOPS_JSON', 'GTFS_STOP_TIMES_JSON',
-              'GTFS_SHAPES_JSON', 'GTFS_TRIPS_JSON', 'GTFS_CALENDAR_JSON',
-              'GTFS_CALENDAR_DATES_JSON', 'GTFS_AGENCY_TIMEZONE',
+              'GTFS_ROUTES_JSON',
+              'GTFS_STOPS_JSON',
+              'GTFS_STOP_TIMES_JSON',
+              'GTFS_SHAPES_JSON',
+              'GTFS_TRIPS_JSON',
+              'GTFS_CALENDAR_JSON',
+              'GTFS_CALENDAR_DATES_JSON',
+              'GTFS_AGENCY_TIMEZONE',
             ];
             await AsyncStorage.multiRemove(legacyKeys).catch(() => {});
             // Remove filesystem cache directory
@@ -323,7 +328,9 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               const { Directory, Paths } = require('expo-file-system');
               const cacheDir = new Directory(Paths.document, 'gtfs-cache');
               if (cacheDir.exists) cacheDir.delete();
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
             Alert.alert('Done', 'GTFS data deleted.');
           },
         },
@@ -409,7 +416,9 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
       const updated = { ...notifPrefs, [key]: value };
       setNotifPrefs(updated);
       hapticSelection();
-      TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(e => logger.warn('TrainActivityManager.onPrefsChanged failed', e));
+      TrainActivityManager.onPrefsChanged(updated, savedTrains).catch(e =>
+        logger.warn('TrainActivityManager.onPrefsChanged failed', e)
+      );
     },
     [notifPrefs, savedTrains]
   );
@@ -486,17 +495,23 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
         // End any existing test activity first so the new state is visible
         await LiveActivityService.endAll();
         const scenarios: Record<string, object> = {
-          ontime_long:   { ...baseTrain, departTime: '9:25 AM',  arriveTime: '6:45 PM',  realtime: { delay: 0  } },
-          ontime_short:  { ...baseTrain, departTime: '2:30 PM',  arriveTime: '3:05 PM',  realtime: { delay: 0  } },
-          delayed:       { ...baseTrain, departTime: '2:30 PM',  arriveTime: '6:45 PM',  realtime: { delay: 18 } },
-          arrived:       { ...baseTrain, departTime: '8:00 AM',  arriveTime: '8:01 AM',  realtime: { delay: 0  } },
+          ontime_long: { ...baseTrain, departTime: '9:25 AM', arriveTime: '6:45 PM', realtime: { delay: 0 } },
+          ontime_short: { ...baseTrain, departTime: '2:30 PM', arriveTime: '3:05 PM', realtime: { delay: 0 } },
+          delayed: { ...baseTrain, departTime: '2:30 PM', arriveTime: '6:45 PM', realtime: { delay: 18 } },
+          arrived: { ...baseTrain, departTime: '8:00 AM', arriveTime: '8:01 AM', realtime: { delay: 0 } },
         };
         const train = scenarios[action];
         const started = await LiveActivityService.startForTrain(train);
         if (started) {
-          Alert.alert('Live Activity Started', 'Check the Dynamic Island or Lock Screen.\n\nLong-press the Dynamic Island pill to see the expanded view.');
+          Alert.alert(
+            'Live Activity Started',
+            'Check the Dynamic Island or Lock Screen.\n\nLong-press the Dynamic Island pill to see the expanded view.'
+          );
         } else {
-          Alert.alert('Not Available', 'Make sure you are running a development build and Live Activities are enabled in Settings > Tracky.');
+          Alert.alert(
+            'Not Available',
+            'Make sure you are running a development build and Live Activities are enabled in Settings > Tracky.'
+          );
         }
       } catch (e) {
         logger.error('[Debug] Live Activity test failed:', e);
@@ -505,11 +520,11 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     };
 
     Alert.alert('Test Live Activity', 'Pick a scenario to preview all Dynamic Island + Lock Screen states:', [
-      { text: '🟢 On Time — Long journey (9h)',  onPress: () => runAction('ontime_long')  },
-      { text: '🟢 On Time — Short trip (35m)',   onPress: () => runAction('ontime_short') },
-      { text: '🔴 Delayed 18m',                  onPress: () => runAction('delayed')      },
-      { text: '⬛ Arrived',                       onPress: () => runAction('arrived')      },
-      { text: 'End All',                          onPress: () => runAction('end')          },
+      { text: '🟢 On Time — Long journey (9h)', onPress: () => runAction('ontime_long') },
+      { text: '🟢 On Time — Short trip (35m)', onPress: () => runAction('ontime_short') },
+      { text: '🔴 Delayed 18m', onPress: () => runAction('delayed') },
+      { text: '⬛ Arrived', onPress: () => runAction('arrived') },
+      { text: 'End All', onPress: () => runAction('end') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, []);
@@ -600,19 +615,13 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
     <>
       <Text style={styles.sectionHeader}>GENERAL</Text>
       <View style={styles.settingsList}>
-        <TouchableOpacity
-          style={styles.settingsItem}
-          activeOpacity={0.7}
-          onPress={() => openSubpage('appearance')}
-        >
+        <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSubpage('appearance')}>
           <View style={styles.itemIconContainer}>
             <Ionicons name="color-palette-outline" size={22} color={colors.primary} />
           </View>
           <View style={styles.itemContent}>
             <Text style={styles.itemTitle}>Appearance</Text>
-            <Text style={styles.itemSubtitle}>
-              {THEME_OPTIONS.find(o => o.value === themeMode)?.label}
-            </Text>
+            <Text style={styles.itemSubtitle}>{THEME_OPTIONS.find(o => o.value === themeMode)?.label}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.secondary} />
         </TouchableOpacity>
@@ -673,11 +682,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
 
       <Text style={styles.sectionHeader}>AUTOMATIONS</Text>
       <View style={styles.settingsList}>
-        <TouchableOpacity
-          style={styles.settingsItem}
-          activeOpacity={0.7}
-          onPress={() => openSubpage('calendar')}
-        >
+        <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7} onPress={() => openSubpage('calendar')}>
           <View style={styles.itemIconContainer}>
             <Ionicons name="calendar-outline" size={22} color={colors.primary} />
           </View>
@@ -1109,7 +1114,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
               <Ionicons name="globe-outline" size={22} color={colors.primary} />
             </View>
             <View style={styles.itemContent}>
-              <Text style={styles.itemTitle}>Tracky Website</Text>
+              <Text style={styles.itemTitle}>Website</Text>
               <Text style={styles.itemSubtitle}>trytracky.com</Text>
             </View>
             <Ionicons name="open-outline" size={18} color={colors.secondary} />
@@ -1543,144 +1548,166 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
   );
 }
 
-const createStyles = (colors: ColorPalette) => StyleSheet.create(withTextShadow({
-  modalContent: { flex: 1, marginHorizontal: -Spacing.xl, minHeight: '100%', overflow: 'hidden' },
-  pageContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  subpageContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  fixedHeader: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.sm,
-  },
-  divider: { height: 1, backgroundColor: colors.border.primary, marginVertical: Spacing.md },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing.xs },
-  subpageHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: Spacing.xs },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    position: 'absolute' as const,
-    right: 0,
-    top: Spacing.xs,
-  },
-  title: { fontSize: 34, fontWeight: 'bold', color: colors.primary },
-  closeButton: {
-    ...getCloseButtonStyle(colors),
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -Spacing.sm,
-  },
-  scrollView: { flex: 1 },
-  sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.secondary,
-    letterSpacing: 0.5,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
-  },
-  settingsList: { borderRadius: BorderRadius.md, overflow: 'hidden' },
-  settingsItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
-  },
-  settingsItemLast: { borderBottomWidth: 0 },
-  itemIconContainer: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: Spacing.md },
-  itemContent: { flex: 1 },
-  itemTitle: { fontSize: 17, color: colors.primary },
-  itemSubtitle: { fontSize: 13, color: colors.secondary, marginTop: 2 },
-  panelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  panelLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  toggleAllText: { fontSize: 15, fontWeight: '600', color: colors.primary },
-  calendarDot: { alignItems: 'center', justifyContent: 'center' },
-  syncButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-  },
-  syncButtonText: { fontSize: 17, fontWeight: '600', color: colors.background.primary },
-  syncingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md },
-  syncingText: { fontSize: 15, color: colors.secondary, marginLeft: Spacing.md },
-  pillRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
-  pillOption: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border.primary,
-  },
-  pillOptionActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillOptionText: { fontSize: 15, fontWeight: '600', color: colors.primary },
-  pillOptionTextActive: { color: colors.background.primary },
-  aboutText: { fontSize: 15, color: colors.secondary, lineHeight: 22, marginBottom: Spacing.sm },
-  logHeaderButton: {
-    ...getCloseButtonStyle(colors),
-  },
-  logFilterPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.border.primary,
-  },
-  logFilterPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  logFilterPillText: { fontSize: 11, fontWeight: '700', color: colors.secondary, letterSpacing: 0.5 },
-  logFilterPillTextActive: { color: colors.background.primary },
-  logCount: { fontSize: 12, color: colors.secondary, marginBottom: Spacing.sm },
-  logContainer: { gap: 1 },
-  logEntry: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
-  },
-  logEntryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  logLevel: {
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
-    letterSpacing: 0.5,
-  },
-  logTimestamp: {
-    fontSize: 10,
-    color: colors.tertiary,
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
-  },
-  logMessage: {
-    fontSize: 12,
-    color: colors.primary,
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
-    lineHeight: 17,
-  },
-  logData: {
-    fontSize: 10,
-    color: colors.secondary,
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
-    marginTop: 2,
-    lineHeight: 14,
-  },
-}, colors.textShadow));
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create(
+    withTextShadow(
+      {
+        modalContent: { flex: 1, marginHorizontal: -Spacing.xl, minHeight: '100%', overflow: 'hidden' },
+        pageContainer: {
+          ...StyleSheet.absoluteFillObject,
+        },
+        subpageContainer: {
+          ...StyleSheet.absoluteFillObject,
+        },
+        fixedHeader: {
+          paddingHorizontal: Spacing.xl,
+          paddingBottom: Spacing.sm,
+        },
+        divider: { height: 1, backgroundColor: colors.border.primary, marginVertical: Spacing.md },
+        header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing.xs },
+        subpageHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: Spacing.xs },
+        headerActions: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: Spacing.md,
+          position: 'absolute' as const,
+          right: 0,
+          top: Spacing.xs,
+        },
+        title: { fontSize: 34, fontWeight: 'bold', color: colors.primary },
+        closeButton: {
+          ...getCloseButtonStyle(colors),
+        },
+        backButton: {
+          width: 44,
+          height: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginLeft: -Spacing.sm,
+        },
+        scrollView: { flex: 1 },
+        sectionHeader: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.secondary,
+          letterSpacing: 0.5,
+          marginTop: Spacing.lg,
+          marginBottom: Spacing.md,
+        },
+        settingsList: { borderRadius: BorderRadius.md, overflow: 'hidden' },
+        settingsItem: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: Spacing.lg,
+          paddingHorizontal: Spacing.md,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border.primary,
+        },
+        settingsItemLast: { borderBottomWidth: 0 },
+        itemIconContainer: {
+          width: 40,
+          height: 40,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: Spacing.md,
+        },
+        itemContent: { flex: 1 },
+        itemTitle: { fontSize: 17, color: colors.primary },
+        itemSubtitle: { fontSize: 13, color: colors.secondary, marginTop: 2 },
+        panelHeader: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: Spacing.md,
+        },
+        panelLabel: {
+          fontSize: 11,
+          fontWeight: '600',
+          color: colors.secondary,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        },
+        toggleAllText: { fontSize: 15, fontWeight: '600', color: colors.primary },
+        calendarDot: { alignItems: 'center', justifyContent: 'center' },
+        syncButton: {
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.primary,
+          borderRadius: BorderRadius.md,
+          paddingVertical: Spacing.md,
+        },
+        syncButtonText: { fontSize: 17, fontWeight: '600', color: colors.background.primary },
+        syncingRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: Spacing.md,
+        },
+        syncingText: { fontSize: 15, color: colors.secondary, marginLeft: Spacing.md },
+        pillRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
+        pillOption: {
+          paddingHorizontal: Spacing.lg,
+          paddingVertical: Spacing.md,
+          borderRadius: BorderRadius.md,
+          borderWidth: 1,
+          borderColor: colors.border.primary,
+        },
+        pillOptionActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+        pillOptionText: { fontSize: 15, fontWeight: '600', color: colors.primary },
+        pillOptionTextActive: { color: colors.background.primary },
+        aboutText: { fontSize: 15, color: colors.secondary, lineHeight: 22, marginBottom: Spacing.sm },
+        logHeaderButton: {
+          ...getCloseButtonStyle(colors),
+        },
+        logFilterPill: {
+          paddingHorizontal: Spacing.md,
+          paddingVertical: Spacing.xs + 2,
+          borderRadius: BorderRadius.sm,
+          borderWidth: 1,
+          borderColor: colors.border.primary,
+        },
+        logFilterPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+        logFilterPillText: { fontSize: 11, fontWeight: '700', color: colors.secondary, letterSpacing: 0.5 },
+        logFilterPillTextActive: { color: colors.background.primary },
+        logCount: { fontSize: 12, color: colors.secondary, marginBottom: Spacing.sm },
+        logContainer: { gap: 1 },
+        logEntry: {
+          paddingHorizontal: Spacing.md,
+          paddingVertical: Spacing.sm + 2,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border.primary,
+        },
+        logEntryHeader: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 2,
+        },
+        logLevel: {
+          fontSize: 10,
+          fontWeight: '700',
+          fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+          letterSpacing: 0.5,
+        },
+        logTimestamp: {
+          fontSize: 10,
+          color: colors.tertiary,
+          fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+        },
+        logMessage: {
+          fontSize: 12,
+          color: colors.primary,
+          fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+          lineHeight: 17,
+        },
+        logData: {
+          fontSize: 10,
+          color: colors.secondary,
+          fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+          marginTop: 2,
+          lineHeight: 14,
+        },
+      },
+      colors.textShadow
+    )
+  );
