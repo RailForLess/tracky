@@ -70,7 +70,7 @@ Tracky/
 ├── apps/
 │   ├── mobile/    Expo app (iOS + Android)
 │   ├── web/       Next.js landing page
-│   └── backend/   Go API services
+│   └── api/       Go API services
 └── packages/      Shared code (reserved)
 ```
 
@@ -125,7 +125,7 @@ pnpm dev
 ### Run the backend
 
 ```bash
-cd apps/backend
+cd apps/api
 go run ./cmd/api
 ```
 
@@ -161,7 +161,7 @@ pnpm test:coverage     # Coverage report
 pnpm validate          # Run all checks (type-check + format + lint + test)
 ```
 
-Backend scripts run from `apps/backend/`:
+Backend scripts run from `apps/api/`:
 
 ```bash
 go run ./cmd/api       # Start the API server
@@ -200,7 +200,7 @@ apps/mobile/
 ├── assets/                 # Static assets and cached GTFS data
 └── constants/              # Theme and configuration
 
-apps/backend/
+apps/api/
 ├── cmd/api/                # Entry point
 └── internal/               # Handlers, middleware
 

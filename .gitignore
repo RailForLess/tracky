@@ -58,7 +58,7 @@ apps/web/.next/
 apps/web/out/
 
 # Go backend
-apps/backend/bin/
+apps/api/bin/
 
 # bun (not used, but just in case)
 bun.lockb
