@@ -70,8 +70,10 @@ Tracky/
 ├── apps/
 │   ├── mobile/    Expo app (iOS + Android)
 │   ├── web/       Next.js landing page
-│   └── api/       Go API services
-└── packages/      Shared code (reserved)
+│   └── api/       Go API server
+├── packages/      Shared code (reserved, not yet populated)
+├── package.json   Root workspace scripts
+└── pnpm-workspace.yaml
 ```
 
 ## Getting Started
@@ -79,7 +81,7 @@ Tracky/
 ### Prerequisites
 
 - [pnpm](https://pnpm.io) — `npm install -g pnpm`
-- [Go](https://go.dev) 1.22+ — `brew install go`
+- [Go](https://go.dev) 1.26+ — `brew install go`
 - iOS Simulator (Mac) or Android Emulator
 
 ### Install all dependencies
@@ -106,6 +108,19 @@ You can get a Google Maps API key from the [Google Cloud Console](https://consol
 
 > **Note:** `.env` files are gitignored. Never commit your API keys.
 
+### Root-level scripts
+
+The root `package.json` provides convenience scripts that use pnpm workspace filtering:
+
+```bash
+pnpm dev:web           # Start Next.js dev server (apps/web)
+pnpm dev:mobile        # Start Expo dev server (apps/mobile)
+pnpm build:web         # Build the landing page
+pnpm test:mobile       # Run mobile tests
+pnpm lint              # Lint all packages
+pnpm type-check        # Type-check all packages
+```
+
 ### Run the mobile app
 
 ```bash
@@ -128,6 +143,8 @@ pnpm dev
 cd apps/api
 go run ./cmd/api
 ```
+
+The API server starts on port 8080 by default (configurable via `PORT` env var).
 
 ### EAS builds
 
@@ -159,6 +176,15 @@ pnpm test:watch        # Watch mode
 pnpm test:coverage     # Coverage report
 
 pnpm validate          # Run all checks (type-check + format + lint + test)
+```
+
+Web scripts run from `apps/web/`:
+
+```bash
+pnpm dev               # Start Next.js dev server
+pnpm build             # Production build
+pnpm start             # Start production server
+pnpm lint              # ESLint
 ```
 
 Backend scripts run from `apps/api/`:
@@ -201,11 +227,15 @@ apps/mobile/
 └── constants/              # Theme and configuration
 
 apps/api/
-├── cmd/api/                # Entry point
-└── internal/               # Handlers, middleware
+└── cmd/api/                # Entry point (main.go)
 
 apps/web/
-└── app/                    # Next.js app directory
+├── app/
+│   ├── components/         # Hero, Header, Footer, LiveMap, DepartureBoard, etc.
+│   ├── hooks/              # useReveal, useTypewriter
+│   ├── page.tsx            # Landing page
+│   └── layout.tsx          # Root layout
+└── public/                 # Static assets (logo, icons)
 ```
 
 ### State Management
@@ -342,6 +372,8 @@ const updated = await TrainAPIService.refreshRealtimeData(existingSavedTrain);
 - **gtfs-realtime-bindings** for protobuf parsing
 - **AsyncStorage** for local persistence
 - **expo-widgets** for iOS Live Activity and Dynamic Island
+- **Next.js** 16 / **Tailwind CSS** 4 for the landing page
+- **Go** 1.26 for the API server
 - **Jest** 29 / **ESLint** 9 / **Prettier** 3.8
 
 ## Contributing
