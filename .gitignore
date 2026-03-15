@@ -26,6 +26,9 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# IDE
+.vscode/
+
 # macOS
 .DS_Store
 *.pem
@@ -45,9 +48,24 @@ desktop.ini
 
 app-example
 
-# generated native folders
-/ios
-/android
+# generated native folders (monorepo paths)
+apps/mobile/ios/
+apps/mobile/android/
+
+# Expo (monorepo paths)
+apps/mobile/.expo/
+apps/mobile/expo-env.d.ts
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+
+# Go backend
+apps/api/bin/
+
+# bun (not used, but just in case)
+bun.lockb
+bun.lock
 
 # build artifacts
 *.apk
