@@ -63,29 +63,40 @@ The app is designed around a single map screen with a stack of gesture-driven bo
 - Debug log viewer with filtering by severity level
 - About page with contributors and version info
 
+## Monorepo Structure
+
+```
+Tracky/
+├── apps/
+│   ├── mobile/    Expo app (iOS + Android)
+│   ├── web/       Next.js landing page
+│   └── backend/   Go API services
+└── packages/      Shared code (reserved)
+```
+
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- Expo CLI
+- [pnpm](https://pnpm.io) — `npm install -g pnpm`
+- [Go](https://go.dev) 1.22+ — `brew install go`
 - iOS Simulator (Mac) or Android Emulator
 
-### Installation
+### Install all dependencies
+
+From the repo root:
 
 ```bash
-npm install --legacy-peer-deps
+pnpm install
 ```
 
 ### Environment Setup
 
-Copy the example environment file and add your own API keys:
-
 ```bash
-cp .env.example .env
+cp apps/mobile/.env.example apps/mobile/.env
 ```
 
-Then edit `.env` and set your Google Maps API key:
+Edit `apps/mobile/.env` and set your Google Maps API key:
 
 ```
 GOOGLE_MAPS_API_KEY=your_key_here
@@ -93,45 +104,69 @@ GOOGLE_MAPS_API_KEY=your_key_here
 
 You can get a Google Maps API key from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Make sure to enable **Maps SDK for Android**.
 
-> **Note:** The `.env` file is gitignored. Never commit your API keys.
+> **Note:** `.env` files are gitignored. Never commit your API keys.
 
-### Run the App
+### Run the mobile app
 
 ```bash
-npx expo start
+cd apps/mobile
+pnpm start
 ```
 
 Then press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with Expo Go on a physical device.
 
-### Landing Page
-
-The `tracky-web/` directory contains a Next.js landing page showcasing Tracky's features through an interactive, scroll-driven journey narrative.
+### Run the landing page
 
 ```bash
-cd tracky-web
-npm install
-npm run dev
+cd apps/web
+pnpm dev
+```
+
+### Run the backend
+
+```bash
+cd apps/backend
+go run ./cmd/api
+```
+
+### EAS builds
+
+Always run EAS commands from `apps/mobile/`:
+
+```bash
+cd apps/mobile
+pnpm exec eas build --platform ios
 ```
 
 ## Development
 
 ### Scripts
 
+All mobile scripts run from `apps/mobile/`:
+
 ```bash
-npm start              # Start Expo dev server
-npm run ios            # Launch on iOS Simulator
-npm run android        # Launch on Android Emulator
+pnpm start             # Start Expo dev server
+pnpm ios               # Launch on iOS Simulator
+pnpm android           # Launch on Android Emulator
 
-npm run type-check     # TypeScript type checking
-npm run lint           # ESLint
-npm run format         # Prettier formatting
-npm run format:check   # Check formatting without writing
+pnpm type-check        # TypeScript type checking
+pnpm lint              # ESLint
+pnpm format            # Prettier formatting
+pnpm format:check      # Check formatting without writing
 
-npm test               # Run all tests
-npm run test:watch     # Watch mode
-npm run test:coverage  # Coverage report
+pnpm test              # Run all tests
+pnpm test:watch        # Watch mode
+pnpm test:coverage     # Coverage report
 
-npm run validate       # Run all checks (type-check + format + lint + test)
+pnpm validate          # Run all checks (type-check + format + lint + test)
+```
+
+Backend scripts run from `apps/backend/`:
+
+```bash
+go run ./cmd/api       # Start the API server
+go test ./...          # Run all tests
+go build -o bin/api ./cmd/api  # Build binary
 ```
 
 ### Code Quality
@@ -140,19 +175,18 @@ npm run validate       # Run all checks (type-check + format + lint + test)
 - **ESLint** with Expo preset
 - **Prettier** (120-char lines, single quotes)
 - **Jest** with React Native Testing Library (40% coverage threshold)
-- Run `npm run validate` before committing to catch all issues
+- Run `pnpm validate` before committing to catch all issues
 
 ### Pre-commit
 
-Run `npm run validate` before committing to ensure TypeScript compiles, formatting is correct, lint rules pass, and all tests pass.
+Run `pnpm validate` (from `apps/mobile/`) before committing to ensure TypeScript compiles, formatting is correct, lint rules pass, and all tests pass.
 
 ## Architecture
 
 ### Project Structure
 
 ```
-tracky/
-├── app/                    # Expo Router entry points
+apps/mobile/
 ├── screens/                # MapScreen (primary screen)
 ├── components/
 │   ├── map/                # Map markers, routes, overlays
@@ -165,6 +199,13 @@ tracky/
 ├── widgets/                # iOS Live Activity and widget implementations
 ├── assets/                 # Static assets and cached GTFS data
 └── constants/              # Theme and configuration
+
+apps/backend/
+├── cmd/api/                # Entry point
+└── internal/               # Handlers, middleware
+
+apps/web/
+└── app/                    # Next.js app directory
 ```
 
 ### State Management
@@ -307,7 +348,7 @@ const updated = await TrainAPIService.refreshRealtimeData(existingSavedTrain);
 
 1. Create a feature branch from `main`
 2. Write tests for new features or bug fixes
-3. Run `npm run validate` to pass all checks
+3. Run `pnpm validate` (from `apps/mobile/`) to pass all checks
 4. Open a pull request
 
 ## License
