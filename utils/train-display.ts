@@ -28,13 +28,11 @@ export function getCountdownForTrain(train: Train): {
   const past = deltaSec < 0;
   const absSec = Math.abs(deltaSec);
 
-  let hours = Math.round(absSec / 3600);
+  let hours = Math.floor(absSec / 3600);
   if (hours >= 1) return { value: hours, unit: hours === 1 ? 'HOUR' : 'HOURS', past };
-  let minutes = Math.round(absSec / 60);
-  if (minutes >= 60) return { value: 1, unit: 'HOUR', past };
+  let minutes = Math.floor(absSec / 60);
   if (minutes >= 1) return { value: minutes, unit: minutes === 1 ? 'MINUTE' : 'MINUTES', past };
   let seconds = Math.round(absSec);
-  if (seconds >= 60) return { value: 1, unit: 'MINUTE', past };
   return { value: seconds, unit: seconds === 1 ? 'SECOND' : 'SECONDS', past };
 }
 
