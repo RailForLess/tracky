@@ -1,6 +1,6 @@
 {
   "name": "@tracky/mobile",
-  "main": "expo/AppEntry",
+  "main": "./index.js",
   "version": "2.0.0",
   "scripts": {
     "start": "expo start",
