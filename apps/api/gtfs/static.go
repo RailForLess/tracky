@@ -15,11 +15,11 @@ import (
 )
 
 // FetchAndParseStatic downloads a GTFS zip from url, parses it, and returns
-// slices of spec types stamped with agencyID.
+// slices of spec types stamped with providerID.
 func FetchAndParseStatic(
 	ctx context.Context,
 	url string,
-	agencyID string,
+	providerID string,
 ) (
 	agencies []spec.Agency,
 	routes []spec.Route,
@@ -43,35 +43,35 @@ func FetchAndParseStatic(
 	files := indexZip(zr)
 
 	if f, ok := files["agency.txt"]; ok {
-		agencies, err = parseAgency(f, agencyID)
+		agencies, err = parseAgency(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["routes.txt"]; ok {
-		routes, err = parseRoutes(f, agencyID)
+		routes, err = parseRoutes(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["stops.txt"]; ok {
-		stops, err = parseStops(f, agencyID)
+		stops, err = parseStops(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["trips.txt"]; ok {
-		trips, err = parseTrips(f, agencyID)
+		trips, err = parseTrips(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["stop_times.txt"]; ok {
-		stopTimes, err = parseStopTimes(f, agencyID)
+		stopTimes, err = parseStopTimes(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
@@ -79,14 +79,14 @@ func FetchAndParseStatic(
 
 	// calendar.txt is optional — some feeds use only calendar_dates.txt
 	if f, ok := files["calendar.txt"]; ok {
-		calendars, err = parseCalendar(f, agencyID)
+		calendars, err = parseCalendar(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["calendar_dates.txt"]; ok {
-		exceptions, err = parseCalendarDates(f, agencyID)
+		exceptions, err = parseCalendarDates(f, providerID)
 		if err != nil {
 			return nil, nil, nil, nil, nil, nil, nil, err
 		}
@@ -197,7 +197,7 @@ func optInt(m map[string]string, key string) *int {
 	return &i
 }
 
-func parseAgency(f *zip.File, agencyID string) ([]spec.Agency, error) {
+func parseAgency(f *zip.File, providerID string) ([]spec.Agency, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -205,18 +205,19 @@ func parseAgency(f *zip.File, agencyID string) ([]spec.Agency, error) {
 	out := make([]spec.Agency, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Agency{
-			AgencyID: agencyID,
-			Name:     r["agency_name"],
-			URL:      r["agency_url"],
-			Timezone: r["agency_timezone"],
-			Lang:     optStr(r, "agency_lang"),
-			Phone:    optStr(r, "agency_phone"),
+			ProviderID:     providerID,
+			GtfsAgencyID: r["agency_id"],
+			Name:         r["agency_name"],
+			URL:          r["agency_url"],
+			Timezone:     r["agency_timezone"],
+			Lang:         optStr(r, "agency_lang"),
+			Phone:        optStr(r, "agency_phone"),
 		})
 	}
 	return out, nil
 }
 
-func parseRoutes(f *zip.File, agencyID string) ([]spec.Route, error) {
+func parseRoutes(f *zip.File, providerID string) ([]spec.Route, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -224,8 +225,8 @@ func parseRoutes(f *zip.File, agencyID string) ([]spec.Route, error) {
 	out := make([]spec.Route, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Route{
-			AgencyID:  agencyID,
-			RouteID:   agencyID + ":" + r["route_id"],
+			ProviderID:  providerID,
+			RouteID:   providerID + ":" + r["route_id"],
 			ShortName: r["route_short_name"],
 			LongName:  r["route_long_name"],
 			Color:     r["route_color"],
@@ -236,7 +237,7 @@ func parseRoutes(f *zip.File, agencyID string) ([]spec.Route, error) {
 	return out, nil
 }
 
-func parseStops(f *zip.File, agencyID string) ([]spec.Stop, error) {
+func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -246,8 +247,8 @@ func parseStops(f *zip.File, agencyID string) ([]spec.Stop, error) {
 		lat, _ := strconv.ParseFloat(r["stop_lat"], 64)
 		lon, _ := strconv.ParseFloat(r["stop_lon"], 64)
 		out = append(out, spec.Stop{
-			AgencyID:           agencyID,
-			StopID:             agencyID + ":" + r["stop_id"],
+			ProviderID:           providerID,
+			StopID:             providerID + ":" + r["stop_id"],
 			Code:               r["stop_code"],
 			Name:               r["stop_name"],
 			Lat:                lat,
@@ -259,7 +260,7 @@ func parseStops(f *zip.File, agencyID string) ([]spec.Stop, error) {
 	return out, nil
 }
 
-func parseTrips(f *zip.File, agencyID string) ([]spec.Trip, error) {
+func parseTrips(f *zip.File, providerID string) ([]spec.Trip, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -267,9 +268,9 @@ func parseTrips(f *zip.File, agencyID string) ([]spec.Trip, error) {
 	out := make([]spec.Trip, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Trip{
-			AgencyID:    agencyID,
-			TripID:      agencyID + ":" + r["trip_id"],
-			RouteID:     agencyID + ":" + r["route_id"],
+			ProviderID:    providerID,
+			TripID:      providerID + ":" + r["trip_id"],
+			RouteID:     providerID + ":" + r["route_id"],
 			ServiceID:   r["service_id"],
 			Headsign:    r["trip_headsign"],
 			ShapeID:     optStr(r, "shape_id"),
@@ -279,7 +280,7 @@ func parseTrips(f *zip.File, agencyID string) ([]spec.Trip, error) {
 	return out, nil
 }
 
-func parseStopTimes(f *zip.File, agencyID string) ([]spec.ScheduledStopTime, error) {
+func parseStopTimes(f *zip.File, providerID string) ([]spec.ScheduledStopTime, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -288,9 +289,9 @@ func parseStopTimes(f *zip.File, agencyID string) ([]spec.ScheduledStopTime, err
 	for _, r := range rows {
 		seq, _ := strconv.Atoi(r["stop_sequence"])
 		out = append(out, spec.ScheduledStopTime{
-			AgencyID:      agencyID,
-			TripID:        agencyID + ":" + r["trip_id"],
-			StopID:        agencyID + ":" + r["stop_id"],
+			ProviderID:      providerID,
+			TripID:        providerID + ":" + r["trip_id"],
+			StopID:        providerID + ":" + r["stop_id"],
 			StopSequence:  seq,
 			ArrivalTime:   optStr(r, "arrival_time"),
 			DepartureTime: optStr(r, "departure_time"),
@@ -302,7 +303,7 @@ func parseStopTimes(f *zip.File, agencyID string) ([]spec.ScheduledStopTime, err
 	return out, nil
 }
 
-func parseCalendar(f *zip.File, agencyID string) ([]spec.ServiceCalendar, error) {
+func parseCalendar(f *zip.File, providerID string) ([]spec.ServiceCalendar, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -312,7 +313,7 @@ func parseCalendar(f *zip.File, agencyID string) ([]spec.ServiceCalendar, error)
 		start, _ := time.Parse("20060102", r["start_date"])
 		end, _ := time.Parse("20060102", r["end_date"])
 		out = append(out, spec.ServiceCalendar{
-			AgencyID:  agencyID,
+			ProviderID:  providerID,
 			ServiceID: r["service_id"],
 			Monday:    r["monday"] == "1",
 			Tuesday:   r["tuesday"] == "1",
@@ -328,7 +329,7 @@ func parseCalendar(f *zip.File, agencyID string) ([]spec.ServiceCalendar, error)
 	return out, nil
 }
 
-func parseCalendarDates(f *zip.File, agencyID string) ([]spec.ServiceException, error) {
+func parseCalendarDates(f *zip.File, providerID string) ([]spec.ServiceException, error) {
 	rows, err := readCSV(f)
 	if err != nil {
 		return nil, err
@@ -338,7 +339,7 @@ func parseCalendarDates(f *zip.File, agencyID string) ([]spec.ServiceException, 
 		date, _ := time.Parse("20060102", r["date"])
 		exType, _ := strconv.Atoi(r["exception_type"])
 		out = append(out, spec.ServiceException{
-			AgencyID:      agencyID,
+			ProviderID:      providerID,
 			ServiceID:     r["service_id"],
 			Date:          date,
 			ExceptionType: exType,

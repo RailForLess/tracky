@@ -6,19 +6,20 @@ import "time"
 // Maps to GTFS agency.txt. Root of the namespace for all entities.
 // Replaces the custom Provider concept — agency_id is the canonical identifier.
 type Agency struct {
-	AgencyID string  `db:"agency_id" json:"agencyId"` // namespaced: 'amtrak', 'via', 'brightline'
-	Name     string  `db:"name"      json:"name"`     // 'National Railroad Passenger Corporation'
-	URL      string  `db:"url"       json:"url"`      // 'https://www.amtrak.com'
-	Timezone string  `db:"timezone"  json:"timezone"` // 'America/New_York'
-	Lang     *string `db:"lang"      json:"lang"`     // 'en'
-	Phone    *string `db:"phone"     json:"phone"`
-	Country  string  `db:"country"   json:"country"` // 'US', 'CA' — extension, not in GTFS spec
+	ProviderID     string  `db:"provider_id"      json:"providerId"`     // provider namespace: 'amtrak', 'brightline'
+	GtfsAgencyID string  `db:"gtfs_agency_id" json:"gtfsAgencyId"` // native GTFS agency_id from feed
+	Name         string  `db:"name"           json:"name"`         // 'National Railroad Passenger Corporation'
+	URL          string  `db:"url"            json:"url"`          // 'https://www.amtrak.com'
+	Timezone     string  `db:"timezone"       json:"timezone"`     // 'America/New_York'
+	Lang         *string `db:"lang"           json:"lang"`         // 'en'
+	Phone        *string `db:"phone"          json:"phone"`
+	Country      string  `db:"country"        json:"country"`      // 'US', 'CA' — extension, not in GTFS spec
 }
 
 // Route represents a named service operated by an agency.
 // Maps to GTFS routes.txt.
 type Route struct {
-	AgencyID  string  `db:"agency_id"  json:"agencyId"`  // 'amtrak'
+	ProviderID  string  `db:"provider_id"  json:"providerId"`  // 'amtrak'
 	RouteID   string  `db:"route_id"   json:"routeId"`   // namespaced: 'amtrak:coast-starlight'
 	ShortName string  `db:"short_name" json:"shortName"` // '14'
 	LongName  string  `db:"long_name"  json:"longName"`  // 'Coast Starlight'
@@ -30,7 +31,7 @@ type Route struct {
 // Stop represents a physical station or stop.
 // Maps to GTFS stops.txt.
 type Stop struct {
-	AgencyID           string  `db:"agency_id"           json:"agencyId"`           // 'amtrak'
+	ProviderID           string  `db:"provider_id"           json:"providerId"`           // 'amtrak'
 	StopID             string  `db:"stop_id"             json:"stopId"`             // namespaced: 'amtrak:LAX'
 	Code               string  `db:"code"                json:"code"`               // native code: 'LAX'
 	Name               string  `db:"name"                json:"name"`               // 'Los Angeles'
@@ -44,7 +45,7 @@ type Stop struct {
 // Maps to GTFS trips.txt — one row per trip_id in the feed.
 // Note: a Trip is the template; a run is Trip + RunDate.
 type Trip struct {
-	AgencyID    string  `db:"agency_id"    json:"agencyId"`    // 'amtrak'
+	ProviderID    string  `db:"provider_id"    json:"providerId"`    // 'amtrak'
 	TripID      string  `db:"trip_id"      json:"tripId"`      // namespaced: 'amtrak:5'
 	RouteID     string  `db:"route_id"     json:"routeId"`     // 'amtrak:coast-starlight'
 	ServiceID   string  `db:"service_id"   json:"serviceId"`   // links to ServiceCalendar
@@ -57,7 +58,7 @@ type Trip struct {
 // Maps to GTFS stop_times.txt. Static timetable only — never updated.
 // Actual and estimated times live in TrainStopTime (realtime model).
 type ScheduledStopTime struct {
-	AgencyID      string  `db:"agency_id"      json:"agencyId"`
+	ProviderID      string  `db:"provider_id"      json:"providerId"`
 	TripID        string  `db:"trip_id"        json:"tripId"`
 	StopID        string  `db:"stop_id"        json:"stopId"`
 	StopSequence  int     `db:"stop_sequence"  json:"stopSequence"`
@@ -71,7 +72,7 @@ type ScheduledStopTime struct {
 // ServiceCalendar represents which days of the week a service_id runs.
 // Maps to GTFS calendar.txt.
 type ServiceCalendar struct {
-	AgencyID  string    `db:"agency_id"  json:"agencyId"`
+	ProviderID  string    `db:"provider_id"  json:"providerId"`
 	ServiceID string    `db:"service_id" json:"serviceId"`
 	Monday    bool      `db:"monday"     json:"monday"`
 	Tuesday   bool      `db:"tuesday"    json:"tuesday"`
@@ -88,7 +89,7 @@ type ServiceCalendar struct {
 // Maps to GTFS calendar_dates.txt.
 // Note: calendar.txt is optional if calendar_dates.txt covers all service dates.
 type ServiceException struct {
-	AgencyID      string    `db:"agency_id"      json:"agencyId"`
+	ProviderID      string    `db:"provider_id"      json:"providerId"`
 	ServiceID     string    `db:"service_id"     json:"serviceId"`
 	Date          time.Time `db:"date"           json:"date"`
 	ExceptionType int       `db:"exception_type" json:"exceptionType"` // 1=service added, 2=service removed

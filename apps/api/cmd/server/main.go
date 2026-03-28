@@ -7,6 +7,7 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
+	"github.com/Tracky-Trains/tracky/api/db"
 	"github.com/Tracky-Trains/tracky/api/providers"
 	"github.com/Tracky-Trains/tracky/api/providers/amtrak"
 	"github.com/Tracky-Trains/tracky/api/providers/brightline"
@@ -22,6 +23,17 @@ func main() {
 		port = "8080"
 	}
 
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		dbPath = "tracky.db"
+	}
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer database.Close()
+
 	registry := providers.NewRegistry()
 	registry.Register(amtrak.New())
 	registry.Register(brightline.New())
@@ -35,7 +47,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	routes.Setup(mux, registry)
+	routes.Setup(mux, registry, database)
 
 	log.Printf("starting server on :%s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
