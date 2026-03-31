@@ -6,7 +6,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/Tracky-Trains/tracky/api/spec"
+	"github.com/RailForLess/tracky/api/spec"
 )
 
 // maxGapDeg is the maximum gap in degrees between consecutive shape

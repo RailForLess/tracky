@@ -3,7 +3,7 @@ package metra
 import (
 	"os"
 
-	"github.com/Tracky-Trains/tracky/api/providers/base"
+	"github.com/RailForLess/tracky/api/providers/base"
 )
 
 const (

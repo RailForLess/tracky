@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tracky-Trains/tracky/api/gtfs"
-	"github.com/Tracky-Trains/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/gtfs"
+	"github.com/RailForLess/tracky/api/providers"
 )
 
 // Config holds the configuration for a standard GTFS provider.

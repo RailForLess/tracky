@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Tracky-Trains/tracky/api/spec"
+	"github.com/RailForLess/tracky/api/spec"
 )
 
 // Provider is the interface every transit data provider must implement.

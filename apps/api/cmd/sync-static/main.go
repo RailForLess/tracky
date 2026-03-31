@@ -10,15 +10,15 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
-	"github.com/Tracky-Trains/tracky/api/db"
-	"github.com/Tracky-Trains/tracky/api/providers"
-	"github.com/Tracky-Trains/tracky/api/providers/amtrak"
-	"github.com/Tracky-Trains/tracky/api/providers/brightline"
-	"github.com/Tracky-Trains/tracky/api/providers/cta"
-	"github.com/Tracky-Trains/tracky/api/providers/metra"
-	"github.com/Tracky-Trains/tracky/api/providers/metrotransit"
-	"github.com/Tracky-Trains/tracky/api/providers/trirail"
-	"github.com/Tracky-Trains/tracky/api/tiles"
+	"github.com/RailForLess/tracky/api/db"
+	"github.com/RailForLess/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/providers/amtrak"
+	"github.com/RailForLess/tracky/api/providers/brightline"
+	"github.com/RailForLess/tracky/api/providers/cta"
+	"github.com/RailForLess/tracky/api/providers/metra"
+	"github.com/RailForLess/tracky/api/providers/metrotransit"
+	"github.com/RailForLess/tracky/api/providers/trirail"
+	"github.com/RailForLess/tracky/api/tiles"
 )
 
 func main() {

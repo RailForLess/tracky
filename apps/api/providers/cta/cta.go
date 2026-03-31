@@ -1,7 +1,7 @@
 package cta
 
 import (
-	"github.com/Tracky-Trains/tracky/api/providers/base"
+	"github.com/RailForLess/tracky/api/providers/base"
 )
 
 const (

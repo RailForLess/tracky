@@ -1,4 +1,4 @@
-module github.com/Tracky-Trains/tracky/api
+module github.com/RailForLess/tracky/api
 
 go 1.26
 

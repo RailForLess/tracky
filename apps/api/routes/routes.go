@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tracky-Trains/tracky/api/db"
-	"github.com/Tracky-Trains/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/db"
+	"github.com/RailForLess/tracky/api/providers"
 )
 
 // Setup registers all routes onto mux.
@@ -29,7 +29,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func handleListProviders(registry *providers.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type entry struct {
-			ID       string `json:"id"`
+			ID               string `json:"id"`
 			StaticEndpoint   string `json:"static_endpoint"`
 			RealtimeEndpoint string `json:"realtime_endpoint"`
 		}

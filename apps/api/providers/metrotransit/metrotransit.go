@@ -1,7 +1,7 @@
 package metrotransit
 
 import (
-	"github.com/Tracky-Trains/tracky/api/providers/base"
+	"github.com/RailForLess/tracky/api/providers/base"
 )
 
 // see https://svc.metrotransit.org/

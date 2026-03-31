@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tracky-Trains/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/providers"
 )
 
 // SyncCounts holds the number of rows inserted per entity type.

@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tracky-Trains/tracky/api/spec"
+	"github.com/RailForLess/tracky/api/spec"
 )
 
 // FetchAndParseStatic downloads a GTFS zip from url, parses it, and returns
@@ -228,7 +228,7 @@ func parseAgency(f *zip.File, providerID string) ([]spec.Agency, error) {
 	out := make([]spec.Agency, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Agency{
-			ProviderID:     providerID,
+			ProviderID:   providerID,
 			GtfsAgencyID: r["agency_id"],
 			Name:         r["agency_name"],
 			URL:          r["agency_url"],
@@ -248,13 +248,13 @@ func parseRoutes(f *zip.File, providerID string) ([]spec.Route, error) {
 	out := make([]spec.Route, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Route{
-			ProviderID:  providerID,
-			RouteID:   providerID + ":" + r["route_id"],
-			ShortName: r["route_short_name"],
-			LongName:  r["route_long_name"],
-			Color:     r["route_color"],
-			TextColor: r["route_text_color"],
-			ShapeID:   optStr(r, "shape_id"),
+			ProviderID: providerID,
+			RouteID:    providerID + ":" + r["route_id"],
+			ShortName:  r["route_short_name"],
+			LongName:   r["route_long_name"],
+			Color:      r["route_color"],
+			TextColor:  r["route_text_color"],
+			ShapeID:    optStr(r, "shape_id"),
 		})
 	}
 	return out, nil
@@ -270,7 +270,7 @@ func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 		lat, _ := strconv.ParseFloat(r["stop_lat"], 64)
 		lon, _ := strconv.ParseFloat(r["stop_lon"], 64)
 		out = append(out, spec.Stop{
-			ProviderID:           providerID,
+			ProviderID:         providerID,
 			StopID:             providerID + ":" + r["stop_id"],
 			Code:               r["stop_code"],
 			Name:               r["stop_name"],
@@ -291,7 +291,7 @@ func parseTrips(f *zip.File, providerID string) ([]spec.Trip, error) {
 	out := make([]spec.Trip, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, spec.Trip{
-			ProviderID:    providerID,
+			ProviderID:  providerID,
 			TripID:      providerID + ":" + r["trip_id"],
 			RouteID:     providerID + ":" + r["route_id"],
 			ServiceID:   r["service_id"],
@@ -336,17 +336,17 @@ func parseCalendar(f *zip.File, providerID string) ([]spec.ServiceCalendar, erro
 		start, _ := time.Parse("20060102", r["start_date"])
 		end, _ := time.Parse("20060102", r["end_date"])
 		out = append(out, spec.ServiceCalendar{
-			ProviderID:  providerID,
-			ServiceID: r["service_id"],
-			Monday:    r["monday"] == "1",
-			Tuesday:   r["tuesday"] == "1",
-			Wednesday: r["wednesday"] == "1",
-			Thursday:  r["thursday"] == "1",
-			Friday:    r["friday"] == "1",
-			Saturday:  r["saturday"] == "1",
-			Sunday:    r["sunday"] == "1",
-			StartDate: start,
-			EndDate:   end,
+			ProviderID: providerID,
+			ServiceID:  r["service_id"],
+			Monday:     r["monday"] == "1",
+			Tuesday:    r["tuesday"] == "1",
+			Wednesday:  r["wednesday"] == "1",
+			Thursday:   r["thursday"] == "1",
+			Friday:     r["friday"] == "1",
+			Saturday:   r["saturday"] == "1",
+			Sunday:     r["sunday"] == "1",
+			StartDate:  start,
+			EndDate:    end,
 		})
 	}
 	return out, nil

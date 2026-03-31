@@ -13,7 +13,7 @@ import (
 	gtfsrt "github.com/MobilityData/gtfs-realtime-bindings/golang/gtfs"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/Tracky-Trains/tracky/api/spec"
+	"github.com/RailForLess/tracky/api/spec"
 )
 
 // FetchAndParsePositions downloads a GTFS-RT vehicle positions feed and returns

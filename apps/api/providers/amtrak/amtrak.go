@@ -19,9 +19,9 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
-	"github.com/Tracky-Trains/tracky/api/providers"
-	"github.com/Tracky-Trains/tracky/api/providers/base"
-	"github.com/Tracky-Trains/tracky/api/spec"
+	"github.com/RailForLess/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/providers/base"
+	"github.com/RailForLess/tracky/api/spec"
 )
 
 const (
