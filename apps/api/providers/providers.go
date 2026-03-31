@@ -17,13 +17,14 @@ type Provider interface {
 
 // StaticFeed holds all data parsed from a GTFS static zip.
 type StaticFeed struct {
-	Agencies   []spec.Agency              `json:"agencies"`
-	Routes     []spec.Route               `json:"routes"`
-	Stops      []spec.Stop                `json:"stops"`
-	Trips      []spec.Trip                `json:"trips"`
-	StopTimes  []spec.ScheduledStopTime   `json:"stopTimes"`
-	Calendars  []spec.ServiceCalendar     `json:"calendars"`
-	Exceptions []spec.ServiceException    `json:"exceptions"`
+	Agencies   []spec.Agency            `json:"agencies"`
+	Routes     []spec.Route             `json:"routes"`
+	Stops      []spec.Stop              `json:"stops"`
+	Trips      []spec.Trip              `json:"trips"`
+	StopTimes  []spec.ScheduledStopTime `json:"stopTimes"`
+	Calendars  []spec.ServiceCalendar   `json:"calendars"`
+	Exceptions []spec.ServiceException  `json:"exceptions"`
+	Shapes     []spec.ShapePoint        `json:"shapes"`
 }
 
 // RealtimeFeed holds all data parsed from a GTFS-RT protobuf feed.

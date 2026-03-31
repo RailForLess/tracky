@@ -89,8 +89,20 @@ type ServiceCalendar struct {
 // Maps to GTFS calendar_dates.txt.
 // Note: calendar.txt is optional if calendar_dates.txt covers all service dates.
 type ServiceException struct {
-	ProviderID      string    `db:"provider_id"      json:"providerId"`
+	ProviderID    string    `db:"provider_id"      json:"providerId"`
 	ServiceID     string    `db:"service_id"     json:"serviceId"`
 	Date          time.Time `db:"date"           json:"date"`
 	ExceptionType int       `db:"exception_type" json:"exceptionType"` // 1=service added, 2=service removed
+}
+
+// ShapePoint represents a single point in a shape's geometry.
+// Maps to a single row in GTFS shapes.txt.
+// Not stored in SQLite — consumed exclusively by the tile generation pipeline.
+type ShapePoint struct {
+	ProviderID   string   `json:"providerId"`
+	ShapeID      string   `json:"shapeId"`
+	Lat          float64  `json:"lat"`
+	Lon          float64  `json:"lon"`
+	Sequence     int      `json:"sequence"`
+	DistTraveled *float64 `json:"distTraveled,omitempty"`
 }

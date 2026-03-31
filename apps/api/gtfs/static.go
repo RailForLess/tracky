@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,16 +29,19 @@ func FetchAndParseStatic(
 	stopTimes []spec.ScheduledStopTime,
 	calendars []spec.ServiceCalendar,
 	exceptions []spec.ServiceException,
+	shapes []spec.ShapePoint,
 	err error,
 ) {
+	log.Printf("gtfs [%s]: downloading %s", providerID, url)
 	data, err := fetchStaticBytes(ctx, url)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("gtfs: fetch %s: %w", url, err)
+		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("gtfs: fetch %s: %w", url, err)
 	}
+	log.Printf("gtfs [%s]: downloaded %.1f MB", providerID, float64(len(data))/(1024*1024))
 
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("gtfs: open zip: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("gtfs: open zip: %w", err)
 	}
 
 	files := indexZip(zr)
@@ -45,51 +49,70 @@ func FetchAndParseStatic(
 	if f, ok := files["agency.txt"]; ok {
 		agencies, err = parseAgency(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["routes.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing routes.txt", providerID)
 		routes, err = parseRoutes(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["stops.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing stops.txt", providerID)
 		stops, err = parseStops(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
+		log.Printf("gtfs [%s]: %d stops", providerID, len(stops))
 	}
 
 	if f, ok := files["trips.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing trips.txt", providerID)
 		trips, err = parseTrips(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
+		log.Printf("gtfs [%s]: %d trips", providerID, len(trips))
 	}
 
 	if f, ok := files["stop_times.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing stop_times.txt", providerID)
 		stopTimes, err = parseStopTimes(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
+		log.Printf("gtfs [%s]: %d stop_times", providerID, len(stopTimes))
 	}
 
 	// calendar.txt is optional — some feeds use only calendar_dates.txt
 	if f, ok := files["calendar.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing calendar.txt", providerID)
 		calendars, err = parseCalendar(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
 	}
 
 	if f, ok := files["calendar_dates.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing calendar_dates.txt", providerID)
 		exceptions, err = parseCalendarDates(f, providerID)
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
+	}
+
+	// shapes.txt is optional — not all feeds include shape geometry.
+	if f, ok := files["shapes.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing shapes.txt", providerID)
+		shapes, err = parseShapes(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		log.Printf("gtfs [%s]: %d shapes", providerID, len(shapes))
 	}
 
 	return
@@ -289,7 +312,7 @@ func parseStopTimes(f *zip.File, providerID string) ([]spec.ScheduledStopTime, e
 	for _, r := range rows {
 		seq, _ := strconv.Atoi(r["stop_sequence"])
 		out = append(out, spec.ScheduledStopTime{
-			ProviderID:      providerID,
+			ProviderID:    providerID,
 			TripID:        providerID + ":" + r["trip_id"],
 			StopID:        providerID + ":" + r["stop_id"],
 			StopSequence:  seq,
@@ -339,11 +362,38 @@ func parseCalendarDates(f *zip.File, providerID string) ([]spec.ServiceException
 		date, _ := time.Parse("20060102", r["date"])
 		exType, _ := strconv.Atoi(r["exception_type"])
 		out = append(out, spec.ServiceException{
-			ProviderID:      providerID,
+			ProviderID:    providerID,
 			ServiceID:     r["service_id"],
 			Date:          date,
 			ExceptionType: exType,
 		})
+	}
+	return out, nil
+}
+
+func parseShapes(f *zip.File, providerID string) ([]spec.ShapePoint, error) {
+	rows, err := readCSV(f)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]spec.ShapePoint, 0, len(rows))
+	for _, r := range rows {
+		lat, _ := strconv.ParseFloat(r["shape_pt_lat"], 64)
+		lon, _ := strconv.ParseFloat(r["shape_pt_lon"], 64)
+		seq, _ := strconv.Atoi(r["shape_pt_sequence"])
+		sp := spec.ShapePoint{
+			ProviderID: providerID,
+			ShapeID:    r["shape_id"],
+			Lat:        lat,
+			Lon:        lon,
+			Sequence:   seq,
+		}
+		if v, ok := r["shape_dist_traveled"]; ok && v != "" {
+			if d, err := strconv.ParseFloat(v, 64); err == nil {
+				sp.DistTraveled = &d
+			}
+		}
+		out = append(out, sp)
 	}
 	return out, nil
 }

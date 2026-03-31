@@ -37,7 +37,7 @@ func (p *Provider) ID() string {
 
 // FetchStatic downloads and parses the GTFS static zip, returning a StaticFeed.
 func (p *Provider) FetchStatic(ctx context.Context) (*providers.StaticFeed, error) {
-	agencies, routes, stops, trips, stopTimes, calendars, exceptions, err :=
+	agencies, routes, stops, trips, stopTimes, calendars, exceptions, shapes, err :=
 		gtfs.FetchAndParseStatic(ctx, p.cfg.StaticURL, p.cfg.ProviderID)
 	if err != nil {
 		return nil, fmt.Errorf("%s: FetchStatic: %w", p.cfg.ProviderID, err)
@@ -50,6 +50,7 @@ func (p *Provider) FetchStatic(ctx context.Context) (*providers.StaticFeed, erro
 		StopTimes:  stopTimes,
 		Calendars:  calendars,
 		Exceptions: exceptions,
+		Shapes:     shapes,
 	}, nil
 }
 
