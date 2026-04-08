@@ -1,0 +1,31 @@
+# Build artifacts
+bin/
+server
+sync-static
+sync-realtime
+
+# Local databases (tracky.db is ~800 MB!)
+*.db
+*.db-shm
+*.db-wal
+
+# Generated tile output
+*.pmtiles
+*.geojson
+
+# Debug dumps
+debug_*
+cmd/server/debug_*.json
+
+# Local env (also caught by gitignore but be explicit for build context)
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.DS_Store
+.vscode/
+
+# Dockerfiles themselves don't need to be in the image
+Dockerfile*
+.dockerignore

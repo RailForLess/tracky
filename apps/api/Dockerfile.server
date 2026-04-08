@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1.7
+
+# ── Build stage ──────────────────────────────────────────────────────────────
+FROM golang:1.26-bookworm AS build
+WORKDIR /src
+
+# Cache module downloads as a separate layer.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+
+# CGO disabled because modernc.org/sqlite is pure Go.
+# Strip symbols and DWARF for a smaller binary.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux \
+    go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+
+# ── Runtime stage ────────────────────────────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+COPY --from=build /out/server /app/server
+
+# HTTP + WebSocket. The server reads PORT from env (defaults to 8080).
+EXPOSE 8080
+
+ENTRYPOINT ["/app/server"]
