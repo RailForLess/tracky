@@ -8,13 +8,14 @@ import (
 
 	"github.com/RailForLess/tracky/api/db"
 	"github.com/RailForLess/tracky/api/providers"
+	"github.com/RailForLess/tracky/api/ws"
 )
 
 // Setup registers all routes onto mux.
-func Setup(mux *http.ServeMux, registry *providers.Registry, database *db.DB) {
+func Setup(mux *http.ServeMux, registry *providers.Registry, database *db.DB, hub *ws.Hub) {
 	mux.HandleFunc("GET /debug/providers", handleListProviders(registry))
 	mux.HandleFunc("GET /debug/providers/{id}/static", handleSyncStatic(registry))
-	mux.HandleFunc("GET /debug/providers/{id}/realtime", handleSyncRealtime(registry))
+	mux.HandleFunc("GET /debug/providers/{id}/realtime", handleSyncRealtime(registry, hub))
 
 	mux.HandleFunc("POST /sync/static", handleSyncAllStatic(registry, database))
 }
@@ -151,33 +152,25 @@ func handleSyncAllStatic(registry *providers.Registry, database *db.DB) http.Han
 	}
 }
 
-// handleSyncRealtime triggers a GTFS-RT fetch for the given provider.
-func handleSyncRealtime(registry *providers.Registry) http.HandlerFunc {
+// handleSyncRealtime returns the cached realtime snapshot for a provider.
+func handleSyncRealtime(registry *providers.Registry, hub *ws.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		p, ok := registry.Get(id)
-		if !ok {
+		if _, ok := registry.Get(id); !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
 			return
 		}
 
-		start := time.Now()
-		feed, err := p.FetchRealtime(r.Context())
-		elapsed := time.Since(start).Milliseconds()
-
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{
-				"provider":   id,
-				"error":      err.Error(),
-				"elapsed_ms": elapsed,
+		snapshot, ok := hub.Snapshot(id)
+		if !ok {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "no realtime data yet — poller has not completed a cycle",
 			})
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
-			"provider":   id,
-			"elapsed_ms": elapsed,
-			"data":       feed,
-		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(snapshot)
 	}
 }
