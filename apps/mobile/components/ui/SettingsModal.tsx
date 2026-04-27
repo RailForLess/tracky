@@ -1141,7 +1141,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             activeOpacity={0.7}
             onPress={() => {
               hapticLight();
-              Linking.openURL('https://github.com/Mootbing/Tracky');
+              Linking.openURL('https://github.com/RailForLess/tracky');
             }}
           >
             <View style={styles.itemIconContainer}>
@@ -1165,7 +1165,7 @@ export default function SettingsModal({ onClose, onRefreshGTFS }: SettingsModalP
             activeOpacity={0.7}
             onPress={() => {
               hapticLight();
-              Linking.openURL('https://github.com/Mootbing/Tracky/compare');
+              Linking.openURL('https://github.com/RailForLess/tracky/compare');
             }}
           >
             <View style={styles.itemIconContainer}>
