@@ -70,8 +70,8 @@ func FetchAndParsePositions(
 			pos.Lon = &lon
 
 			if p.Bearing != nil {
-				h := fmt.Sprintf("%.0f", float64(p.GetBearing()))
-				pos.Heading = &h
+				deg := float64(p.GetBearing())
+				pos.Heading = &deg
 			}
 
 			if p.Speed != nil {
@@ -84,6 +84,13 @@ func FetchAndParsePositions(
 		if vp.StopId != nil {
 			stopID := providerID + ":" + vp.GetStopId()
 			pos.CurrentStopCode = &stopID
+		}
+
+		if vp.CurrentStatus != nil {
+			if idx := int(vp.GetCurrentStatus()); idx >= 0 && idx < len(spec.VehicleStopStatusByGTFSIndex) {
+				status := spec.VehicleStopStatusByGTFSIndex[idx]
+				pos.CurrentStatus = &status
+			}
 		}
 
 		if vp.Timestamp != nil {

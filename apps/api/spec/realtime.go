@@ -2,21 +2,41 @@ package spec
 
 import "time"
 
+// VehicleStopStatus mirrors the GTFS-RT VehiclePosition.VehicleStopStatus enum.
+// It describes the train's relationship to the stop identified by CurrentStopCode.
+type VehicleStopStatus string
+
+const (
+	VehicleStatusIncomingAt  VehicleStopStatus = "INCOMING_AT"   // approaching the stop
+	VehicleStatusStoppedAt   VehicleStopStatus = "STOPPED_AT"    // currently at the stop
+	VehicleStatusInTransitTo VehicleStopStatus = "IN_TRANSIT_TO" // in transit to the stop
+)
+
+// VehicleStopStatusByGTFSIndex is indexed by the raw GTFS-RT VehicleStopStatus
+// enum value (INCOMING_AT=0, STOPPED_AT=1, IN_TRANSIT_TO=2), so callers parsing
+// a GTFS-RT feed can do a direct lookup without a switch.
+var VehicleStopStatusByGTFSIndex = [...]VehicleStopStatus{
+	VehicleStatusIncomingAt,
+	VehicleStatusStoppedAt,
+	VehicleStatusInTransitTo,
+}
+
 // TrainPosition represents the current live position of an active train run.
 // One row per (provider, trip_id, run_date). Upserted on every poll.
 type TrainPosition struct {
-	Provider        string    `db:"provider"          json:"provider"`
-	TripID          string    `db:"trip_id"           json:"tripId"`
-	RunDate         time.Time `db:"run_date"          json:"runDate"`
-	TrainNumber     string    `db:"train_number"      json:"trainNumber"`
-	RouteID         string    `db:"route_id"          json:"routeId"`
-	VehicleID       string    `db:"vehicle_id"        json:"vehicleId"`
-	Lat             *float64  `db:"lat"               json:"lat"`
-	Lon             *float64  `db:"lon"               json:"lon"`
-	Heading         *string   `db:"heading"           json:"heading"`
-	SpeedMPH        *float64  `db:"speed_mph"         json:"speedMph"`
-	CurrentStopCode *string   `db:"current_stop_code" json:"currentStopCode"`
-	LastUpdated     time.Time `db:"last_updated"      json:"lastUpdated"`
+	Provider        string             `db:"provider"          json:"provider"`
+	TripID          string             `db:"trip_id"           json:"tripId"`
+	RunDate         time.Time          `db:"run_date"          json:"runDate"`
+	TrainNumber     string             `db:"train_number"      json:"trainNumber"`
+	RouteID         string             `db:"route_id"          json:"routeId"`
+	VehicleID       string             `db:"vehicle_id"        json:"vehicleId"`
+	Lat             *float64           `db:"lat"               json:"lat"`
+	Lon             *float64           `db:"lon"               json:"lon"`
+	Heading         *float64           `db:"heading"           json:"heading"`
+	SpeedMPH        *float64           `db:"speed_mph"         json:"speedMph"`
+	CurrentStopCode *string            `db:"current_stop_code" json:"currentStopCode"`
+	CurrentStatus   *VehicleStopStatus `db:"current_status"    json:"currentStatus"`
+	LastUpdated     time.Time          `db:"last_updated"      json:"lastUpdated"`
 }
 
 // TrainStopTime represents a single stop within a single run of a trip.

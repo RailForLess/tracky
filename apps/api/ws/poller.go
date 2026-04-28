@@ -108,7 +108,8 @@ func positionsEqual(a, b spec.TrainPosition) bool {
 		ptrEq(a.Lon, b.Lon) &&
 		ptrEq(a.SpeedMPH, b.SpeedMPH) &&
 		ptrEq(a.Heading, b.Heading) &&
-		ptrEq(a.CurrentStopCode, b.CurrentStopCode)
+		ptrEq(a.CurrentStopCode, b.CurrentStopCode) &&
+		ptrEq(a.CurrentStatus, b.CurrentStatus)
 }
 
 func ptrEq[T comparable](a, b *T) bool {

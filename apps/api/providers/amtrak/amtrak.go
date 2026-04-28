@@ -42,6 +42,12 @@ var amtrakTZ = map[string]string{
 	"E": "America/New_York",
 }
 
+// amtrakBearing maps cardinal heading strings emitted by Amtrak's API to degrees.
+var amtrakBearing = map[string]float64{
+	"N": 0, "NE": 45, "E": 90, "SE": 135,
+	"S": 180, "SW": 225, "W": 270, "NW": 315,
+}
+
 // Provider wraps the base provider and overrides realtime fetching.
 // Amtrak does not publish a standard GTFS-RT feed; realtime data comes
 // from their encrypted map API.
@@ -143,9 +149,8 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 			LastUpdated: now,
 		}
 
-		if props.Heading != "" {
-			h := props.Heading
-			pos.Heading = &h
+		if deg, ok := amtrakBearing[strings.ToUpper(strings.TrimSpace(props.Heading))]; ok {
+			pos.Heading = &deg
 		}
 
 		if mph, err := strconv.ParseFloat(props.Velocity, 64); err == nil {
@@ -153,8 +158,12 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 		}
 
 		if props.EventCode != "" {
-			code := "amtrak:" + props.EventCode
+			stopCode, status := deriveStopAndStatus(props.EventCode, props.Stations)
+			code := "amtrak:" + stopCode
 			pos.CurrentStopCode = &code
+			if status != "" {
+				pos.CurrentStatus = &status
+			}
 		}
 
 		if t := parseAmtrakTime(props.UpdatedAt, ""); t != nil {
@@ -195,6 +204,43 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 		Positions: positions,
 		StopTimes: stopTimes,
 	}, nil
+}
+
+// deriveStopAndStatus returns the stop code and VehicleStopStatus for the train,
+// using EventCode (the Amtrak-reported reference station) and the parsed station list.
+//
+// Mapping:
+//   - eventCode station has postarr but no postdep → STOPPED_AT eventCode
+//   - eventCode station has both postarr and postdep → IN_TRANSIT_TO (next station in sequence)
+//   - eventCode station has neither → INCOMING_AT eventCode
+//
+// If eventCode isn't found in the station list, the raw eventCode is returned
+// with no status (caller will skip the status field).
+func deriveStopAndStatus(eventCode string, stations []stationEntry) (string, spec.VehicleStopStatus) {
+	idx := -1
+	for i, s := range stations {
+		if s.Code == eventCode {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return eventCode, ""
+	}
+	cur := stations[idx]
+	switch {
+	case cur.PostArr != "" && cur.PostDep == "":
+		return eventCode, spec.VehicleStatusStoppedAt
+	case cur.PostArr != "" && cur.PostDep != "":
+		// Departed — point at the next station if there is one.
+		if idx+1 < len(stations) {
+			return stations[idx+1].Code, spec.VehicleStatusInTransitTo
+		}
+		// No next station: the train has finished its run; report STOPPED_AT.
+		return eventCode, spec.VehicleStatusStoppedAt
+	default:
+		return eventCode, spec.VehicleStatusIncomingAt
+	}
 }
 
 // parseAmtrakTime parses an Amtrak datetime string in the format "01/02/2006 15:04:05".
