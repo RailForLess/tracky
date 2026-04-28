@@ -49,7 +49,7 @@ function ErrorFallback({
           <Text style={[errorStyles.reportButtonText, { color: colors.secondary }]}>Report Issue</Text>
         </TouchableOpacity>
       </View>
-      <Text style={[errorStyles.copyright, { color: colors.secondary }]}>Tracky - Made with &lt;3 by Jason</Text>
+      <Text style={[errorStyles.copyright, { color: colors.secondary }]}>Tracky - Made with &lt;3 by RailForLess</Text>
     </View>
   );
 }
