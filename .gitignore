@@ -62,6 +62,14 @@ apps/web/out/
 
 # Go backend
 apps/api/bin/
+apps/api/server
+apps/api/sync-realtime
+apps/api/sync-static
+*.db
+*.db-shm
+*.db-wal
+*.pmtiles
+apps/api/debug_*
 
 # bun (not used, but just in case)
 bun.lockb
