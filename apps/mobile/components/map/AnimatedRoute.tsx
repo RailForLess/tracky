@@ -1,5 +1,5 @@
 import React from 'react';
-import { Polyline } from 'react-native-maps';
+import { GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 
 interface Coordinate {
   latitude: number;
@@ -15,15 +15,27 @@ interface AnimatedRouteProps {
 }
 
 export const AnimatedRoute = React.memo(function AnimatedRoute({ id, coordinates, strokeColor, strokeWidth }: AnimatedRouteProps) {
+  const geoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
+    type: 'Feature',
+    geometry: {
+      type: 'LineString',
+      coordinates: coordinates.map(c => [c.longitude, c.latitude]),
+    },
+    properties: {},
+  };
+
   return (
-    <Polyline
-      key={id}
-      coordinates={coordinates}
-      strokeColor={strokeColor}
-      strokeWidth={strokeWidth}
-      lineCap="round"
-      lineJoin="round"
-      geodesic={true}
-    />
+    <GeoJSONSource id={`route-src-${id}`} data={geoJSON}>
+      <Layer
+        id={`route-line-${id}`}
+        type="line"
+        style={{
+          lineColor: strokeColor,
+          lineWidth: strokeWidth,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+      />
+    </GeoJSONSource>
   );
 });

@@ -2,3 +2,5 @@ packages:
   - "apps/mobile"
   - "apps/web"
   - "packages/*"
+patchedDependencies:
+  expo-widgets@55.0.4: patches/expo-widgets@55.0.4.patch

@@ -49,5 +49,21 @@ export const ANDROID_STAGGER_DELAY = 100;
 /** Loading overlay fade duration (ms) */
 export const LOADING_FADE_DURATION = 400;
 
+/** Default zoom level when focusing on a train or station (MapLibre) */
+export const FOCUS_ZOOM_LEVEL = 12;
+
+/** Initial zoom level (MapLibre) */
+export const INITIAL_ZOOM_LEVEL = 11;
+
+/** Convert latitudeDelta to MapLibre zoom level */
+export function latDeltaToZoom(latitudeDelta: number): number {
+  return Math.log2(360 / latitudeDelta) - 1;
+}
+
+/** Convert MapLibre zoom level to approximate latitudeDelta */
+export function zoomToLatDelta(zoom: number): number {
+  return 360 / Math.pow(2, zoom + 1);
+}
+
 /** Quick swipe velocity threshold for snap detection */
 export const QUICK_SWIPE_VELOCITY = 1000;

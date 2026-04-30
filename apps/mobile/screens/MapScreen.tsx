@@ -1,8 +1,8 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Alert, Animated, NativeSyntheticEvent, Platform, StyleSheet, Text, View } from 'react-native';
+import { Camera, CameraRef, GeoJSONSource, Layer, Map, Marker, UserLocation, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -17,16 +17,17 @@ import { TrainSpeedPill } from '../components/ui/TrainSpeedPill';
 import SettingsModal from '../components/ui/SettingsModal';
 import SlideUpModal from '../components/ui/SlideUpModal';
 import TrainDetailModal from '../components/ui/TrainDetailModal';
-import { darkMapStyle } from '../constants/map-styles';
+import { MAP_STYLE } from '../constants/map-styles';
 import {
   ANDROID_STAGGER_DELAY,
   FIT_TO_COORDINATES_PADDING,
   FOCUS_LATITUDE_DELTA,
-  FOCUS_LONGITUDE_DELTA,
   LOADING_FADE_DURATION,
   MAP_ANIMATION_DURATION,
   MODAL_OFFSET,
   VIEWPORT_DEBOUNCE_MS,
+  FOCUS_ZOOM_LEVEL,
+  latDeltaToZoom,
 } from '../constants/map';
 import { type ColorPalette, withTextShadow } from '../constants/theme';
 import { useColors, useTheme } from '../context/ThemeContext';
@@ -43,7 +44,6 @@ import { useTravelOverlay } from '../hooks/useTravelOverlay';
 import { TrainAPIService } from '../services/api';
 import { requestPermissions as requestNotificationPermissions } from '../services/notifications';
 import { TrainStorageService } from '../services/storage';
-import type { StationCluster, TrainCluster } from '../types/cluster';
 import type { SavedTrainRef, Stop, Train, ViewportBounds } from '../types/train';
 import { ClusteringConfig } from '../utils/clustering-config';
 import { gtfsParser } from '../utils/gtfs-parser';
@@ -51,7 +51,7 @@ import { light as hapticLight } from '../utils/haptics';
 import { logger } from '../utils/logger';
 import { getRouteColor, getStrokeWidthForZoom } from '../utils/route-colors';
 import { clusterStations, getStationAbbreviation } from '../utils/station-clustering';
-import { clusterTrains } from '../utils/train-clustering';
+import { clusterTrains, type TrainCluster } from '../utils/train-clustering';
 import { ModalContent, ModalContentHandle } from './ModalContent';
 import { createStyles } from './styles';
 
@@ -142,7 +142,7 @@ function LoadingOverlay({ visible }: { visible: boolean }) {
 function MapScreenInner() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const modalContentRef = useRef<ModalContentHandle>(null);
   const { triggerRefresh, isLoadingCache } = useGTFSRefresh();
 
@@ -228,10 +228,16 @@ function MapScreenInner() {
 
     const coords = travelStations.map(s => ({ latitude: s.latitude, longitude: s.longitude }));
     const timer = setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coords, {
-        edgePadding: FIT_TO_COORDINATES_PADDING.travel,
-        animated: true,
-      });
+      const lats = coords.map(c => c.latitude);
+      const lons = coords.map(c => c.longitude);
+      const p = FIT_TO_COORDINATES_PADDING.travel;
+      cameraRef.current?.fitBounds(
+        [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)],
+        {
+          padding: { top: p.top, right: p.right, bottom: p.bottom, left: p.left },
+          duration: MAP_ANIMATION_DURATION,
+        },
+      );
     }, MAP_ANIMATION_DURATION);
 
     return () => clearTimeout(timer);
@@ -303,15 +309,11 @@ function MapScreenInner() {
       const fromMarker = !!train.realtime?.position;
       if (train.realtime?.position) {
         const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-        mapRef.current?.animateToRegion(
-          {
-            latitude: train.realtime.position.lat - latitudeOffset,
-            longitude: train.realtime.position.lon,
-            latitudeDelta: FOCUS_LATITUDE_DELTA,
-            longitudeDelta: FOCUS_LONGITUDE_DELTA,
-          },
-          MAP_ANIMATION_DURATION
-        );
+        cameraRef.current?.easeTo({
+          center: [train.realtime.position.lon, train.realtime.position.lat - latitudeOffset],
+          zoom: FOCUS_ZOOM_LEVEL,
+          duration: MAP_ANIMATION_DURATION,
+        });
       }
 
       navigateToTrain(train, { fromMarker });
@@ -324,15 +326,11 @@ function MapScreenInner() {
     (train: Train, lat: number, lon: number) => {
       hapticLight();
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-      mapRef.current?.animateToRegion(
-        {
-          latitude: lat - latitudeOffset,
-          longitude: lon,
-          latitudeDelta: FOCUS_LATITUDE_DELTA,
-          longitudeDelta: FOCUS_LONGITUDE_DELTA,
-        },
-        MAP_ANIMATION_DURATION
-      );
+      cameraRef.current?.easeTo({
+        center: [lon, lat - latitudeOffset],
+        zoom: FOCUS_ZOOM_LEVEL,
+        duration: MAP_ANIMATION_DURATION,
+      });
 
       setSelectedTrain(train);
       navigateToTrain(train, { fromMarker: true });
@@ -348,15 +346,11 @@ function MapScreenInner() {
     (tripId: string, trainNumber: string, lat: number, lon: number, routeName?: string) => {
       hapticLight();
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-      mapRef.current?.animateToRegion(
-        {
-          latitude: lat - latitudeOffset,
-          longitude: lon,
-          latitudeDelta: FOCUS_LATITUDE_DELTA,
-          longitudeDelta: FOCUS_LONGITUDE_DELTA,
-        },
-        MAP_ANIMATION_DURATION
-      );
+      cameraRef.current?.easeTo({
+        center: [lon, lat - latitudeOffset],
+        zoom: FOCUS_ZOOM_LEVEL,
+        duration: MAP_ANIMATION_DURATION,
+      });
 
       // Create placeholder train with available data — modal opens instantly with skeleton
       const placeholder: Train = {
@@ -403,10 +397,17 @@ function MapScreenInner() {
 
   // Zoom map to fit all given coordinates in the viewport
   const fitMapToCoordinates = useCallback((coords: { latitude: number; longitude: number }[]) => {
-    mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: FIT_TO_COORDINATES_PADDING.standard,
-      animated: true,
-    });
+    if (coords.length === 0) return;
+    const lats = coords.map(c => c.latitude);
+    const lons = coords.map(c => c.longitude);
+    const p = FIT_TO_COORDINATES_PADDING.standard;
+    cameraRef.current?.fitBounds(
+      [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)],
+      {
+        padding: { top: p.top, right: p.right, bottom: p.bottom, left: p.left },
+        duration: MAP_ANIMATION_DURATION,
+      },
+    );
   }, []);
 
   // Handle station pin press - show departure board
@@ -438,15 +439,11 @@ function MapScreenInner() {
       };
 
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-      mapRef.current?.animateToRegion(
-        {
-          latitude: stationData.lat - latitudeOffset,
-          longitude: stationData.lon,
-          latitudeDelta: FOCUS_LATITUDE_DELTA,
-          longitudeDelta: FOCUS_LONGITUDE_DELTA,
-        },
-        MAP_ANIMATION_DURATION
-      );
+      cameraRef.current?.easeTo({
+        center: [stationData.lon, stationData.lat - latitudeOffset],
+        zoom: FOCUS_ZOOM_LEVEL,
+        duration: MAP_ANIMATION_DURATION,
+      });
 
       navigateToStation(stop);
     },
@@ -506,15 +503,11 @@ function MapScreenInner() {
 
       if (hasPosition) {
         const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-        mapRef.current?.animateToRegion(
-          {
-            latitude: train.realtime!.position!.lat - latitudeOffset,
-            longitude: train.realtime!.position!.lon,
-            latitudeDelta: FOCUS_LATITUDE_DELTA,
-            longitudeDelta: FOCUS_LONGITUDE_DELTA,
-          },
-          MAP_ANIMATION_DURATION
-        );
+        cameraRef.current?.easeTo({
+          center: [train.realtime!.position!.lon, train.realtime!.position!.lat - latitudeOffset],
+          zoom: FOCUS_ZOOM_LEVEL,
+          duration: MAP_ANIMATION_DURATION,
+        });
       }
 
       navigateToTrain(train, { fromMarker: hasPosition, returnTo: 'departureBoard' });
@@ -568,15 +561,11 @@ function MapScreenInner() {
   const handleStationSelectFromDetail = useCallback(
     (stationCode: string, lat: number, lon: number) => {
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
-      mapRef.current?.animateToRegion(
-        {
-          latitude: lat - latitudeOffset,
-          longitude: lon,
-          latitudeDelta: FOCUS_LATITUDE_DELTA,
-          longitudeDelta: FOCUS_LONGITUDE_DELTA,
-        },
-        MAP_ANIMATION_DURATION
-      );
+      cameraRef.current?.easeTo({
+        center: [lon, lat - latitudeOffset],
+        zoom: FOCUS_ZOOM_LEVEL,
+        duration: MAP_ANIMATION_DURATION,
+      });
 
       // Create a Stop object and navigate
       const stop: Stop = {
@@ -646,7 +635,15 @@ function MapScreenInner() {
 
   // Handle region changes — region ref is updated immediately (no re-render),
   // viewport state is debounced to batch downstream recomputations.
-  const handleRegionChangeComplete = useCallback((newRegion: MapRegion) => {
+  const handleRegionDidChange = useCallback((event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+    const viewState = event.nativeEvent;
+    const [west, south, east, north] = viewState.bounds;
+    const newRegion: MapRegion = {
+      latitude: viewState.center[1],
+      longitude: viewState.center[0],
+      latitudeDelta: north - south,
+      longitudeDelta: east - west,
+    };
     regionRef.current = newRegion;
 
     // Debounce viewport bounds + latDelta together — single setState, single re-render
@@ -693,15 +690,11 @@ function MapScreenInner() {
         });
       }
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, getCurrentSnap());
-      mapRef.current?.animateToRegion(
-        {
-          latitude: location.coords.latitude - latitudeOffset,
-          longitude: location.coords.longitude,
-          latitudeDelta: FOCUS_LATITUDE_DELTA,
-          longitudeDelta: FOCUS_LONGITUDE_DELTA,
-        },
-        MAP_ANIMATION_DURATION
-      );
+      cameraRef.current?.easeTo({
+        center: [location.coords.longitude, location.coords.latitude - latitudeOffset],
+        zoom: FOCUS_ZOOM_LEVEL,
+        duration: MAP_ANIMATION_DURATION,
+      });
     } catch (error) {
       logger.error('Error getting location:', error);
     }
@@ -734,21 +727,22 @@ function MapScreenInner() {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
+      <Map
         style={styles.map}
-        mapType={mapType}
-        initialRegion={regionRef.current!}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-        showsTraffic={false}
-        showsIndoors={true}
-        userLocationAnnotationTitle="Your Location"
-        provider={PROVIDER_DEFAULT}
-        customMapStyle={isDark ? darkMapStyle : []}
-        userInterfaceStyle={isDark ? 'dark' : 'light'}
-        onRegionChangeComplete={handleRegionChangeComplete}
+        mapStyle={mapType === 'satellite' ? MAP_STYLE.satellite : isDark ? MAP_STYLE.dark : MAP_STYLE.standard}
+        onRegionDidChange={handleRegionDidChange}
+        attribution={false}
+        logo={false}
       >
+        <Camera
+          ref={cameraRef}
+          initialViewState={regionRef.current ? {
+            center: [regionRef.current.longitude, regionRef.current.latitude],
+            zoom: latDeltaToZoom(regionRef.current.latitudeDelta),
+          } : undefined}
+        />
+        <UserLocation heading accuracy />
+
         {showNormalMapContent &&
           shouldRenderRoutes &&
           visibleShapes.map(shape => {
@@ -828,16 +822,31 @@ function MapScreenInner() {
         {/* Travel history overlay when profile is open */}
         {showProfileMapContent &&
           travelLines.map(line => (
-            <Polyline
+            <GeoJSONSource
               key={line.key}
-              coordinates={[line.from, line.to]}
-              strokeColor={colors.accentBlue}
-              strokeWidth={2}
-            />
+              id={`travel-line-src-${line.key}`}
+              data={{
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: [
+                    [line.from.longitude, line.from.latitude],
+                    [line.to.longitude, line.to.latitude],
+                  ],
+                },
+                properties: {},
+              }}
+            >
+              <Layer
+                id={`travel-line-layer-${line.key}`}
+                type="line"
+                style={{ lineColor: colors.accentBlue, lineWidth: 2 }}
+              />
+            </GeoJSONSource>
           ))}
         {showProfileMapContent &&
           travelStations.map(station => (
-            <Marker key={station.id} coordinate={station} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+            <Marker key={station.id} id={station.id} lngLat={[station.longitude, station.latitude]}>
               <View
                 style={{
                   width: 8,
@@ -848,7 +857,7 @@ function MapScreenInner() {
               />
             </Marker>
           ))}
-      </MapView>
+      </Map>
 
       <RefreshBubble />
       <TrainSpeedPill
@@ -903,7 +912,7 @@ function MapScreenInner() {
         {showTrainDetailContent && (
           <ErrorBoundary onDismiss={handleDetailModalClose}>
             <TrainDetailModal
-              train={selectedTrain || modalData.train}
+              train={selectedTrain ?? modalData.train ?? undefined}
               onClose={handleDetailModalClose}
               onStationSelect={handleStationSelectFromDetail}
               onTrainSelect={handleTrainToTrainNavigation}
