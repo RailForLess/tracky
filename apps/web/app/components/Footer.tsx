@@ -38,8 +38,8 @@ export function Footer({ footerRef }: { footerRef: RefObject<HTMLElement | null>
             <p className="text-xs font-semibold uppercase tracking-wider text-black/30 mb-3">Resources</p>
             <ul className="space-y-2 text-sm text-black/50">
               <li><a href="#" className="hover:text-black transition-colors">About</a></li>
-              <li><a href="#" className="hover:text-black transition-colors">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-black transition-colors">Terms of Service</a></li>
+              <li><a href="/privacy-policy" className="hover:text-black transition-colors">Privacy Policy</a></li>
+              <li><a href="/terms-of-service" className="hover:text-black transition-colors">Terms of Service</a></li>
               <li><a href="#" className="hover:text-black transition-colors">Contact</a></li>
             </ul>
           </div>
