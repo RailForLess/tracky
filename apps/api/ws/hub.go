@@ -22,13 +22,37 @@ func (c *Client) subscribedTo(topic string) bool {
 	return ok
 }
 
-func (c *Client) setTopics(providers []string) {
+// addTopics unions providers into the client's subscription set and returns
+// the topics that were not already subscribed (caller uses this to send the
+// cached snapshot only for newly added topics).
+func (c *Client) addTopics(providers []string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.topics = make(map[string]struct{}, len(providers))
+	var added []string
 	for _, p := range providers {
-		c.topics[p] = struct{}{}
+		if _, ok := c.topics[p]; !ok {
+			c.topics[p] = struct{}{}
+			added = append(added, p)
+		}
 	}
+	return added
+}
+
+// removeTopics drops the given providers from the subscription set. Topics
+// that aren't currently subscribed are silently ignored.
+func (c *Client) removeTopics(providers []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, p := range providers {
+		delete(c.topics, p)
+	}
+}
+
+// clearTopics removes all subscriptions.
+func (c *Client) clearTopics() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.topics = make(map[string]struct{})
 }
 
 type topicMsg struct {

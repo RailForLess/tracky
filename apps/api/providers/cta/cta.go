@@ -1,6 +1,8 @@
 package cta
 
 import (
+	"os"
+
 	"github.com/RailForLess/tracky/api/providers/base"
 )
 
@@ -19,6 +21,6 @@ func New() *base.Provider {
 		StaticURL:      staticURL,
 		PositionsURL:   positionsURL,
 		TripUpdatesURL: tripUpdatesURL,
-		//RealtimeAPIKey: os.Getenv("CTA_API_KEY"),
+		RealtimeAPIKey: os.Getenv("CTA_API_KEY"),
 	})
 }

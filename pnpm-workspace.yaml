@@ -1,4 +1,12 @@
 packages:
   - "apps/mobile"
   - "apps/web"
+  - "apps/collector"
   - "packages/*"
+allowBuilds:
+  dtrace-provider: true
+  esbuild: true
+  protobufjs: true
+  sharp: true
+  unrs-resolver: true
+  workerd: true

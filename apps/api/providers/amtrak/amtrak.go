@@ -10,9 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -109,12 +107,6 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 	plaintext, err := getDecryptedData(raw)
 	if err != nil {
 		return nil, fmt.Errorf("amtrak: decrypt: %w", err)
-	}
-
-	if err := os.WriteFile("debug_amtrak.json", plaintext, 0644); err != nil {
-		log.Printf("[DEBUG] failed to write debug_amtrak.json: %v", err)
-	} else {
-		log.Printf("[DEBUG] amtrak realtime data saved to debug_amtrak.json")
 	}
 
 	var data trainData

@@ -2,12 +2,9 @@ package gtfs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"time"
 
 	gtfsrt "github.com/MobilityData/gtfs-realtime-bindings/golang/gtfs"
@@ -31,15 +28,6 @@ func FetchAndParsePositions(
 
 	now := time.Now()
 	var positions []spec.TrainPosition
-
-	if b, err := json.MarshalIndent(feed.Entity, "", "  "); err == nil {
-		filename := fmt.Sprintf("debug_%s_positions.json", providerID)
-		if err := os.WriteFile(filename, b, 0644); err != nil {
-			log.Printf("[DEBUG] failed to write %s: %v", filename, err)
-		} else {
-			log.Printf("[DEBUG] %s realtime positions (%d) saved to %s", providerID, len(feed.Entity), filename)
-		}
-	}
 
 	for _, entity := range feed.Entity {
 		vp := entity.Vehicle
@@ -118,15 +106,6 @@ func FetchAndParseTripUpdates(
 
 	now := time.Now()
 	var stopTimes []spec.TrainStopTime
-
-	if b, err := json.MarshalIndent(feed.Entity, "", "  "); err == nil {
-		filename := fmt.Sprintf("debug_%s_stoptimes.json", providerID)
-		if err := os.WriteFile(filename, b, 0644); err != nil {
-			log.Printf("[DEBUG] failed to write %s: %v", filename, err)
-		} else {
-			log.Printf("[DEBUG] %s trip updates (%d entities) saved to %s", providerID, len(feed.Entity), filename)
-		}
-	}
 
 	for _, entity := range feed.Entity {
 		tu := entity.TripUpdate

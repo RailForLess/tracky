@@ -14,7 +14,6 @@ import (
 	"github.com/RailForLess/tracky/api/providers"
 	"github.com/RailForLess/tracky/api/providers/amtrak"
 	"github.com/RailForLess/tracky/api/providers/brightline"
-	"github.com/RailForLess/tracky/api/providers/cta"
 	"github.com/RailForLess/tracky/api/providers/metra"
 	"github.com/RailForLess/tracky/api/providers/metrotransit"
 	"github.com/RailForLess/tracky/api/providers/trirail"
@@ -37,7 +36,7 @@ func main() {
 	registry := providers.NewRegistry()
 	registry.Register(amtrak.New())
 	registry.Register(brightline.New())
-	registry.Register(cta.New())
+	//registry.Register(cta.New())
 	registry.Register(metra.New())
 	registry.Register(metrotransit.New())
 	registry.Register(trirail.New())

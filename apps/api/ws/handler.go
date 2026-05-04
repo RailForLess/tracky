@@ -104,9 +104,11 @@ func readPump(hub *Hub, c *Client) {
 
 		switch msg.Action {
 		case "subscribe":
-			c.setTopics(msg.Providers)
-			// Send cached snapshots immediately so the client doesn't wait for the next poll.
-			for _, p := range msg.Providers {
+			// Additive: add to the existing subscription set instead of replacing it.
+			// Send cached snapshots only for newly added topics so a client that
+			// re-subscribes to something it already had doesn't get a duplicate.
+			added := c.addTopics(msg.Providers)
+			for _, p := range added {
 				if snapshot, ok := hub.Snapshot(p); ok {
 					select {
 					case c.send <- snapshot:
@@ -115,7 +117,14 @@ func readPump(hub *Hub, c *Client) {
 				}
 			}
 		case "unsubscribe":
-			c.setTopics(nil)
+			// Targeted: remove only the listed providers. An empty/missing list
+			// clears all subscriptions (preserves the original "unsubscribe = stop
+			// everything" shortcut).
+			if len(msg.Providers) == 0 {
+				c.clearTopics()
+			} else {
+				c.removeTopics(msg.Providers)
+			}
 		}
 	}
 }

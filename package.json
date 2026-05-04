@@ -4,6 +4,9 @@
   "scripts": {
     "dev:web": "pnpm --filter @tracky/web run dev",
     "dev:mobile": "pnpm --filter @tracky/mobile run start",
+    "dev:collector": "pnpm --filter @tracky/collector run dev",
+    "dev:collector:go": "cd apps/api && go run ./cmd/collector",
+    "dev:server": "cd apps/api && go run ./cmd/server",
     "build:web": "pnpm --filter @tracky/web run build",
     "test:mobile": "pnpm --filter @tracky/mobile run test",
     "lint": "pnpm -r run lint",

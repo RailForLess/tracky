@@ -70,7 +70,8 @@ Tracky/
 ├── apps/
 │   ├── mobile/    Expo app (iOS + Android)
 │   ├── web/       Next.js landing page
-│   └── api/       Go API server
+│   ├── api/       Go API server + edge collector
+│   └── collector/ Cloudflare Worker hosting the collector container
 ├── packages/      Shared code (reserved, not yet populated)
 ├── package.json   Root workspace scripts
 └── pnpm-workspace.yaml
@@ -139,12 +140,34 @@ pnpm dev
 
 ### Run the backend
 
+The backend is split into two Go binaries plus a thin Cloudflare Worker that hosts the collector container.
+
+**On-prem server** ([apps/api/cmd/server](apps/api/cmd/server)) — accepts collector ingest, drains R2 backlog on outage recovery, serves WebSocket clients:
+
 ```bash
 cd apps/api
-go run ./cmd/api
+INGEST_SECRET=dev go run ./cmd/server
 ```
 
-The API server starts on port 8080 by default (configurable via `PORT` env var).
+Listens on `:8080` (override with `PORT`). Set the four `R2_*` vars in `cmd/server/.env.example` to enable the drainer.
+
+**Edge collector** ([apps/api/cmd/collector](apps/api/cmd/collector)) — polls every provider and ships per-tick snapshots:
+
+```bash
+cd apps/api
+# Mock mode (default): logs snapshots to stderr, no network destination.
+go run ./cmd/collector
+
+# Talk to a local server:
+INGEST_URL=http://localhost:8080 INGEST_SECRET=dev go run ./cmd/collector
+```
+
+**Collector Worker** ([apps/collector](apps/collector)) — only needed when validating the container/R2 path:
+
+```bash
+cd apps/collector
+npx wrangler dev
+```
 
 ### EAS builds
 
@@ -190,10 +213,42 @@ pnpm lint              # ESLint
 Backend scripts run from `apps/api/`:
 
 ```bash
-go run ./cmd/api       # Start the API server
-go test ./...          # Run all tests
-go build -o bin/api ./cmd/api  # Build binary
+go run ./cmd/server                   # Start the on-prem ingest + WS server
+go run ./cmd/collector                # Start the edge collector (mock emitter by default)
+go run ./cmd/sync-static              # One-shot static GTFS sync to the DB
+
+go test ./...                         # Run all Go tests
+go test ./drainer/... -v              # Pure-logic drainer replay tests
+go test ./collector/... -v            # Emitter chain + poller tests
+go test ./routes/... -v               # /ingest handler tests
+
+go build -o bin/server ./cmd/server   # Build the server binary
+go build -o bin/collector ./cmd/collector
 ```
+
+Collector Worker scripts run from `apps/collector/`:
+
+```bash
+npx wrangler dev                      # Local Worker dev server (incl. R2 emulation)
+npx wrangler types                    # Regenerate Env types after wrangler.jsonc edits
+npx vitest run                        # Worker tests (runs on the real workerd runtime)
+```
+
+#### Local end-to-end smoke
+
+In two terminals (no Cloudflare deps required):
+
+```bash
+# 1. Server
+cd apps/api && INGEST_SECRET=dev go run ./cmd/server
+
+# 2. Collector → server (per-tick snapshots over HTTP)
+cd apps/api && INGEST_URL=http://localhost:8080 INGEST_SECRET=dev go run ./cmd/collector
+```
+
+Then connect a WebSocket client to `ws://localhost:8080/ws/realtime` and send `{"action":"subscribe","providers":["amtrak"]}` — you should see `realtime_update` messages within ~30 s.
+
+To exercise the R2 backlog path, kill the server while the collector is running with `BACKLOG_URL` set, then restart the server with the four `R2_*` env vars to watch the drainer replay backlogged snapshots.
 
 ### Code Quality
 
@@ -227,7 +282,24 @@ apps/mobile/
 └── constants/              # Theme and configuration
 
 apps/api/
-└── cmd/api/                # Entry point (main.go)
+├── cmd/server/             # On-prem ingest + WebSocket server
+├── cmd/collector/          # Edge collector (runs in Cloudflare container)
+├── cmd/sync-static/        # CLI for static GTFS sync + tile generation
+├── collector/              # Snapshot, Emitter chain (HTTP + Storage + Fallback)
+├── drainer/                # R2 backlog replay (pure Replay logic + S3 glue)
+├── realtime/               # Processor (single ingest sink → ws.Hub, TODO timescale)
+├── routes/                 # HTTP handlers incl. POST /ingest
+├── providers/              # Per-operator GTFS-RT parsers
+├── gtfs/                   # Shared GTFS static + realtime parsing
+├── ws/                     # Hub + WebSocket client handlers
+└── spec/                   # TrainPosition, TrainStopTime, etc.
+
+apps/collector/
+├── src/
+│   ├── index.ts            # Worker entry (just /health)
+│   └── collector-container.ts  # CollectorContainer DO + outbound() R2 proxy
+├── container/Dockerfile    # Multi-stage Go build for the collector
+└── wrangler.jsonc          # Container + R2 + DO bindings
 
 apps/web/
 ├── app/
