@@ -11,6 +11,7 @@ import (
 // Provider is the interface every transit data provider must implement.
 type Provider interface {
 	ID() string
+	StaticURL() string
 	FetchStatic(ctx context.Context) (*StaticFeed, error)
 	FetchRealtime(ctx context.Context) (*RealtimeFeed, error)
 }

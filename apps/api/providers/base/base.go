@@ -35,6 +35,11 @@ func (p *Provider) ID() string {
 	return p.cfg.ProviderID
 }
 
+// StaticURL returns the configured GTFS static feed URL.
+func (p *Provider) StaticURL() string {
+	return p.cfg.StaticURL
+}
+
 // FetchStatic downloads and parses the GTFS static zip, returning a StaticFeed.
 func (p *Provider) FetchStatic(ctx context.Context) (*providers.StaticFeed, error) {
 	agencies, routes, stops, trips, stopTimes, calendars, exceptions, shapes, err :=

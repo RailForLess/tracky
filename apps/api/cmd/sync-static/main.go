@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -11,6 +13,7 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/RailForLess/tracky/api/db"
+	"github.com/RailForLess/tracky/api/gtfs"
 	"github.com/RailForLess/tracky/api/providers"
 	"github.com/RailForLess/tracky/api/providers/amtrak"
 	"github.com/RailForLess/tracky/api/providers/brightline"
@@ -21,22 +24,19 @@ import (
 )
 
 func main() {
-	dbPath := flag.String("db", "tracky.db", "SQLite database path")
 	skipDB := flag.Bool("skip-db", false, "skip writing to the database")
 	skipTiles := flag.Bool("skip-tiles", false, "skip tile generation")
 	tilesDir := flag.String("tiles-dir", ".", "output directory for PMTiles files")
 	upload := flag.Bool("upload", false, "upload artifacts to S3 after generation")
 	providerFilter := flag.String("provider", "", "restrict to a single provider ID")
+	force := flag.Bool("force", false, "ignore freshness checks and re-sync every provider")
 	flag.Parse()
 
 	ctx := context.Background()
 
-	// ── Provider registry ───────────────────────────────────────────────
-
 	registry := providers.NewRegistry()
 	registry.Register(amtrak.New())
 	registry.Register(brightline.New())
-	//registry.Register(cta.New())
 	registry.Register(metra.New())
 	registry.Register(metrotransit.New())
 	registry.Register(trirail.New())
@@ -52,50 +52,119 @@ func main() {
 		selected = registry.All()
 	}
 
-	// ── Open database ───────────────────────────────────────────────────
-
 	var database *db.DB
 	if !*skipDB {
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			log.Fatalf("DATABASE_URL is required (set --skip-db to skip database writes)")
+		}
 		var err error
-		database, err = db.Open(*dbPath)
+		database, err = db.Open(ctx, dsn)
 		if err != nil {
 			log.Fatalf("open database: %v", err)
 		}
 		defer database.Close()
-		log.Printf("opened database: %s", *dbPath)
+		log.Printf("connected to database")
 	}
-
-	// ── Process each provider sequentially ──────────────────────────────
 
 	for _, p := range selected {
 		log.Printf("processing %s...", p.ID())
 
-		feed, err := p.FetchStatic(ctx)
+		// ── Freshness check ─────────────────────────────────────────────
+		var prevETag, prevLastMod string
+		if database != nil && !*force {
+			latest, err := database.LatestApplied(ctx, p.ID())
+			if err != nil {
+				log.Printf("warning: %s lookup latest version: %v", p.ID(), err)
+			} else if latest != nil {
+				prevETag = latest.ETag
+				prevLastMod = latest.LastModified
+			}
+		}
+
+		// ── Conditional fetch ───────────────────────────────────────────
+		url := p.StaticURL()
+		log.Printf("gtfs [%s]: GET %s", p.ID(), url)
+		res, err := gtfs.FetchStaticConditional(ctx, url, prevETag, prevLastMod)
 		if err != nil {
 			log.Printf("warning: %s fetch failed: %v", p.ID(), err)
 			continue
 		}
-		log.Printf("fetched %s: %d routes, %d stops, %d trips, %d stop_times, %d shapes",
-			p.ID(), len(feed.Routes), len(feed.Stops), len(feed.Trips),
-			len(feed.StopTimes), len(feed.Shapes))
+		if res.NotModified {
+			log.Printf("gtfs [%s]: 304 not modified — skipping", p.ID())
+			continue
+		}
 
-		// Write to database.
+		sha := sha256Hex(res.Body)
+		log.Printf("gtfs [%s]: downloaded %.1f MB (sha256=%s)",
+			p.ID(), float64(len(res.Body))/(1024*1024), sha[:12])
+
+		// ── Hash check ──────────────────────────────────────────────────
+		var versionID int64
+		if database != nil && !*force {
+			seen, err := database.HasAppliedHash(ctx, p.ID(), sha)
+			if err != nil {
+				log.Printf("warning: %s hash lookup: %v", p.ID(), err)
+			} else if seen {
+				log.Printf("gtfs [%s]: identical content already applied — skipping", p.ID())
+				continue
+			}
+		}
+		if database != nil {
+			id, err := database.RecordFetch(ctx, p.ID(), url, sha, res.ETag, res.LastModified, int64(len(res.Body)))
+			if err != nil {
+				log.Printf("warning: %s record fetch: %v", p.ID(), err)
+			}
+			versionID = id
+		}
+
+		// ── Parse ───────────────────────────────────────────────────────
+		agencies, routes, stops, trips, stopTimes, calendars, exceptions, shapes, err :=
+			gtfs.ParseStaticBytes(p.ID(), res.Body)
+		if err != nil {
+			log.Printf("warning: %s parse failed: %v", p.ID(), err)
+			continue
+		}
+		feed := &providers.StaticFeed{
+			Agencies:   agencies,
+			Routes:     routes,
+			Stops:      stops,
+			Trips:      trips,
+			StopTimes:  stopTimes,
+			Calendars:  calendars,
+			Exceptions: exceptions,
+			Shapes:     shapes,
+		}
+		log.Printf("parsed %s: %d routes, %d stops, %d trips, %d stop_times, %d shapes",
+			p.ID(), len(routes), len(stops), len(trips), len(stopTimes), len(shapes))
+
+		// ── Save ────────────────────────────────────────────────────────
 		if database != nil {
 			counts, err := database.SaveStaticFeed(ctx, p.ID(), feed)
 			if err != nil {
 				log.Printf("warning: %s db write failed: %v", p.ID(), err)
 			} else {
 				log.Printf("saved %s to db: %+v", p.ID(), counts)
+				if versionID > 0 {
+					if err := database.MarkApplied(ctx, versionID, counts); err != nil {
+						log.Printf("warning: %s mark applied: %v", p.ID(), err)
+					}
+				}
 			}
 		}
 
-		// Generate tiles.
+		// ── Tiles ───────────────────────────────────────────────────────
 		if !*skipTiles {
 			buildTiles(ctx, p.ID(), feed, *tilesDir, *upload)
 		}
 	}
 
 	log.Printf("done")
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // buildTiles generates a PMTiles file for a single provider and optionally uploads it.

@@ -4,14 +4,20 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/RailForLess/tracky/api/db"
 	"github.com/RailForLess/tracky/api/realtime"
 	"github.com/RailForLess/tracky/api/ws"
 )
 
-// Setup registers all routes onto mux.
-func Setup(mux *http.ServeMux, hub *ws.Hub, processor *realtime.Processor, ingestSecret string) {
+// Setup registers all routes onto mux. database may be nil; when nil, the
+// /v1/* read endpoints are not registered.
+func Setup(mux *http.ServeMux, hub *ws.Hub, processor *realtime.Processor, database *db.DB, ingestSecret string) {
 	mux.HandleFunc("POST /ingest", HandleIngest(processor, ingestSecret))
 	mux.HandleFunc("GET /debug/providers/{id}/realtime", handleSyncRealtime(hub))
+
+	if database != nil {
+		registerStatic(mux, database)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

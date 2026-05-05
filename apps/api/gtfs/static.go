@@ -135,6 +135,139 @@ func fetchStaticBytes(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// FetchResult is the outcome of FetchStaticConditional.
+// When NotModified is true, Body/ETag/LastModified are zero.
+type FetchResult struct {
+	NotModified  bool
+	Body         []byte
+	ETag         string
+	LastModified string
+}
+
+// FetchStaticConditional GETs url with conditional request headers
+// (If-None-Match, If-Modified-Since). On 304 it returns NotModified=true with
+// no body. On 200 it returns the full body and the response's ETag /
+// Last-Modified for the caller to persist.
+func FetchStaticConditional(ctx context.Context, url, prevETag, prevLastMod string) (*FetchResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if prevETag != "" {
+		req.Header.Set("If-None-Match", prevETag)
+	}
+	if prevLastMod != "" {
+		req.Header.Set("If-Modified-Since", prevLastMod)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotModified {
+		return &FetchResult{NotModified: true}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &FetchResult{
+		Body:         body,
+		ETag:         resp.Header.Get("ETag"),
+		LastModified: resp.Header.Get("Last-Modified"),
+	}, nil
+}
+
+// ParseStaticBytes parses a GTFS zip from in-memory bytes and returns slices
+// of spec types stamped with providerID.
+func ParseStaticBytes(
+	providerID string,
+	data []byte,
+) (
+	agencies []spec.Agency,
+	routes []spec.Route,
+	stops []spec.Stop,
+	trips []spec.Trip,
+	stopTimes []spec.ScheduledStopTime,
+	calendars []spec.ServiceCalendar,
+	exceptions []spec.ServiceException,
+	shapes []spec.ShapePoint,
+	err error,
+) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("gtfs: open zip: %w", err)
+	}
+
+	files := indexZip(zr)
+
+	if f, ok := files["agency.txt"]; ok {
+		agencies, err = parseAgency(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+	}
+	if f, ok := files["routes.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing routes.txt", providerID)
+		routes, err = parseRoutes(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+	}
+	if f, ok := files["stops.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing stops.txt", providerID)
+		stops, err = parseStops(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		log.Printf("gtfs [%s]: %d stops", providerID, len(stops))
+	}
+	if f, ok := files["trips.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing trips.txt", providerID)
+		trips, err = parseTrips(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		log.Printf("gtfs [%s]: %d trips", providerID, len(trips))
+	}
+	if f, ok := files["stop_times.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing stop_times.txt", providerID)
+		stopTimes, err = parseStopTimes(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		log.Printf("gtfs [%s]: %d stop_times", providerID, len(stopTimes))
+	}
+	// calendar.txt is optional — some feeds use only calendar_dates.txt
+	if f, ok := files["calendar.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing calendar.txt", providerID)
+		calendars, err = parseCalendar(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+	}
+	if f, ok := files["calendar_dates.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing calendar_dates.txt", providerID)
+		exceptions, err = parseCalendarDates(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+	}
+	// shapes.txt is optional — not all feeds include shape geometry.
+	if f, ok := files["shapes.txt"]; ok {
+		log.Printf("gtfs [%s]: parsing shapes.txt", providerID)
+		shapes, err = parseShapes(f, providerID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
+		}
+		log.Printf("gtfs [%s]: %d shapes", providerID, len(shapes))
+	}
+	return
+}
+
 // indexZip returns a map of filename → *zip.File for the archive.
 func indexZip(zr *zip.Reader) map[string]*zip.File {
 	m := make(map[string]*zip.File, len(zr.File))
@@ -269,10 +402,16 @@ func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 	for _, r := range rows {
 		lat, _ := strconv.ParseFloat(r["stop_lat"], 64)
 		lon, _ := strconv.ParseFloat(r["stop_lon"], 64)
+		// Fall back to stop_id when stop_code is empty: Amtrak (and others)
+		// encode the public station code in stop_id and leave stop_code blank.
+		code := r["stop_code"]
+		if code == "" {
+			code = r["stop_id"]
+		}
 		out = append(out, spec.Stop{
 			ProviderID:         providerID,
 			StopID:             providerID + ":" + r["stop_id"],
-			Code:               r["stop_code"],
+			Code:               code,
 			Name:               r["stop_name"],
 			Lat:                lat,
 			Lon:                lon,
@@ -295,6 +434,7 @@ func parseTrips(f *zip.File, providerID string) ([]spec.Trip, error) {
 			TripID:      providerID + ":" + r["trip_id"],
 			RouteID:     providerID + ":" + r["route_id"],
 			ServiceID:   r["service_id"],
+			ShortName:   r["trip_short_name"],
 			Headsign:    r["trip_headsign"],
 			ShapeID:     optStr(r, "shape_id"),
 			DirectionID: optInt(r, "direction_id"),

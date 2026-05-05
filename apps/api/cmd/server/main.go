@@ -14,7 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/RailForLess/tracky/api/config"
+	"github.com/RailForLess/tracky/api/db"
 	"github.com/RailForLess/tracky/api/drainer"
+	"github.com/RailForLess/tracky/api/middleware"
 	"github.com/RailForLess/tracky/api/realtime"
 	"github.com/RailForLess/tracky/api/routes"
 	"github.com/RailForLess/tracky/api/ws"
@@ -42,6 +44,19 @@ func main() {
 		log.Printf("WARNING: INGEST_SECRET unset — /ingest is open. Set it for any non-local deploy.")
 	}
 
+	var database *db.DB
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+		var err error
+		database, err = db.Open(ctx, dsn)
+		if err != nil {
+			log.Fatalf("db: %v", err)
+		}
+		defer database.Close()
+		log.Printf("db: connected; /v1/* read endpoints enabled")
+	} else {
+		log.Printf("db: DATABASE_URL unset; /v1/* read endpoints disabled")
+	}
+
 	if client, bucket := buildR2Client(ctx); client != nil {
 		d := &drainer.Drainer{Client: client, Bucket: bucket, Processor: processor, Interval: drainInterval}
 		go d.Run(ctx)
@@ -56,10 +71,13 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	routes.Setup(mux, hub, processor, ingestSecret)
+	routes.Setup(mux, hub, processor, database, ingestSecret)
 	mux.HandleFunc("GET /ws/realtime", ws.Handler(hub))
 
-	srv := &http.Server{Addr: ":" + port, Handler: mux}
+	// 30 req/s per IP, burst 60. Tweak via env if/when needed.
+	handler := middleware.RateLimit(30, 60)(mux)
+
+	srv := &http.Server{Addr: ":" + port, Handler: handler}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

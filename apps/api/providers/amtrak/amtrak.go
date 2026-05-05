@@ -70,6 +70,11 @@ func (p *Provider) ID() string {
 	return p.base.ID()
 }
 
+// StaticURL returns Amtrak's GTFS static feed URL.
+func (p *Provider) StaticURL() string {
+	return p.base.StaticURL()
+}
+
 // FetchStatic delegates to the base provider — Amtrak's GTFS zip is standard.
 func (p *Provider) FetchStatic(ctx context.Context) (*providers.StaticFeed, error) {
 	return p.base.FetchStatic(ctx)
