@@ -20,6 +20,12 @@ const config: ExpoConfig = {
         "Tracky uses your location to show nearby stations and your position on the map.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "Tracky uses your location to show nearby stations and your position on the map.",
+      UIAppFonts: [
+        "Ionicons.ttf",
+        "MaterialCommunityIcons.ttf",
+        "MaterialIcons.ttf",
+        "FontAwesome6_Solid.ttf",
+      ],
     },
     privacyManifests: {
       NSPrivacyAccessedAPITypes: [
