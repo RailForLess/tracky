@@ -57,6 +57,7 @@ export const INITIAL_ZOOM_LEVEL = 11;
 
 /** Convert latitudeDelta to MapLibre zoom level */
 export function latDeltaToZoom(latitudeDelta: number): number {
+  if (latitudeDelta <= 0) return 20; // Max zoom as fallback
   return Math.log2(360 / latitudeDelta) - 1;
 }
 
