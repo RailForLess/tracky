@@ -20,6 +20,12 @@ const config: ExpoConfig = {
         "Tracky uses your location to show nearby stations and your position on the map.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "Tracky uses your location to show nearby stations and your position on the map.",
+      UIAppFonts: [
+        "Ionicons.ttf",
+        "MaterialCommunityIcons.ttf",
+        "MaterialIcons.ttf",
+        "FontAwesome6_Solid.ttf",
+      ],
     },
     privacyManifests: {
       NSPrivacyAccessedAPITypes: [
@@ -53,12 +59,6 @@ const config: ExpoConfig = {
   },
   plugins: [
     [
-      "react-native-maps",
-      {
-        androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
-      },
-    ],
-    [
       "expo-splash-screen",
       {
         image: "./assets/images/tracky-logo.png",
@@ -88,6 +88,7 @@ const config: ExpoConfig = {
     ["expo-background-fetch"],
     "expo-font",
     "expo-web-browser",
+    "@maplibre/maplibre-react-native",
     [
       "expo-widgets",
       {

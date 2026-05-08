@@ -4,8 +4,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
-import { AnimatedRegion, Marker } from 'react-native-maps';
+import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { Marker } from '@maplibre/maplibre-react-native';
 import { TrainIcon } from '../TrainIcon';
 
 interface LiveTrainMarkerProps {
@@ -68,17 +68,8 @@ export const LiveTrainMarker = React.memo(function LiveTrainMarker({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
-  const animatedCoordinate = useRef(new AnimatedRegion({
-    latitude: coordinate.latitude,
-    longitude: coordinate.longitude,
-    latitudeDelta: 0,
-    longitudeDelta: 0,
-  })).current;
-  const isFirstRender = useRef(true);
-
   const [currentLabel, setCurrentLabel] = useState(isCluster ? `${clusterCount}+` : trainNumber);
   const [currentIsCluster, setCurrentIsCluster] = useState(isCluster);
-  const [tracksChanges, setTracksChanges] = useState(true);
 
   const iconColor = color;
 
@@ -95,30 +86,12 @@ export const LiveTrainMarker = React.memo(function LiveTrainMarker({
         tension: 100,
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      setTracksChanges(false);
-    });
+    ]).start();
   }, []);
-
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    (animatedCoordinate.timing as any)({
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-      latitudeDelta: 0,
-      longitudeDelta: 0,
-      duration: 1000,
-      useNativeDriver: false,
-    }).start();
-  }, [coordinate.latitude, coordinate.longitude]);
 
   const newLabel = isCluster ? `${clusterCount}+` : trainNumber;
   useEffect(() => {
     if (newLabel !== currentLabel || isCluster !== currentIsCluster) {
-      setTracksChanges(true);
       Animated.sequence([
         Animated.parallel([
           Animated.timing(fadeAnim, {
@@ -148,15 +121,14 @@ export const LiveTrainMarker = React.memo(function LiveTrainMarker({
             tension: 100,
             useNativeDriver: true,
           }),
-        ]).start(() => {
-          setTracksChanges(false);
-        });
+        ]).start();
       });
     }
   }, [newLabel, isCluster, currentLabel, currentIsCluster]);
 
   return (
-    <Marker.Animated coordinate={animatedCoordinate as any} onPress={onPress} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={tracksChanges}>
+    <Marker lngLat={[coordinate.longitude, coordinate.latitude]}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
       <Animated.View
         style={[
           markerStyles.container,
@@ -167,7 +139,7 @@ export const LiveTrainMarker = React.memo(function LiveTrainMarker({
         ]}
       >
         <TrainIcon
-          name={routeName}
+          name={routeName ?? undefined}
           size={24}
           color={iconColor}
         />
@@ -181,6 +153,7 @@ export const LiveTrainMarker = React.memo(function LiveTrainMarker({
           {currentLabel}
         </Text>
       </Animated.View>
-    </Marker.Animated>
+      </TouchableOpacity>
+    </Marker>
   );
 }, arePropsEqual);

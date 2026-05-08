@@ -35,18 +35,19 @@ jest.mock('expo-haptics', () => ({
   },
 }));
 
-// Mock react-native-maps
-jest.mock('react-native-maps', () => {
+// Mock MapLibre
+jest.mock('@maplibre/maplibre-react-native', () => {
   const React = require('react');
   const { View } = require('react-native');
 
   return {
     __esModule: true,
-    default: props => React.createElement(View, props),
+    Map: props => React.createElement(View, props),
+    Camera: props => React.createElement(View, props),
+    UserLocation: props => React.createElement(View, props),
+    GeoJSONSource: props => React.createElement(View, props),
+    Layer: props => React.createElement(View, props),
     Marker: props => React.createElement(View, props),
-    Polyline: props => React.createElement(View, props),
-    PROVIDER_DEFAULT: 'default',
-    PROVIDER_GOOGLE: 'google',
   };
 });
 

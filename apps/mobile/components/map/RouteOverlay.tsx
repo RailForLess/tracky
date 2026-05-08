@@ -6,7 +6,6 @@
 
 import React, { useMemo } from 'react';
 import Svg, { Path } from 'react-native-svg';
-import type { LatLng, MapView as MapViewType } from 'react-native-maps';
 
 export interface RouteShape {
   id: string;
@@ -15,7 +14,6 @@ export interface RouteShape {
 
 export interface RouteOverlayProps {
   routes: RouteShape[];
-  mapRef: React.RefObject<MapViewType>;
   viewport: {
     latitude: number;
     longitude: number;
