@@ -27,6 +27,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	go runHealthServer(ctx)
+
 	emitter := buildEmitter()
 
 	registry := providers.NewRegistry()
@@ -56,6 +58,35 @@ func main() {
 
 	<-ctx.Done()
 	log.Printf("collector: shutting down")
+}
+
+func runHealthServer(ctx context.Context) {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok from collector container"))
+	})
+
+	srv := &http.Server{Addr: ":" + port, Handler: mux}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("collector: health server shutdown: %v", err)
+		}
+	}()
+
+	log.Printf("collector: health server listening on :%s", port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("collector: health server error: %v", err)
+	}
 }
 
 // buildEmitter wires the chain based on env vars:
