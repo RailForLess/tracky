@@ -6,9 +6,8 @@ import { Camera, CameraRef, GeoJSONSource, Layer, Map, Marker, UserLocation, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { AnimatedRoute } from '../components/map/AnimatedRoute';
-import { AnimatedStationMarker } from '../components/map/AnimatedStationMarker';
 import { LiveTrainMarker } from '../components/map/LiveTrainMarker';
+import { ProviderTiles, type StationTapPayload } from '../components/map/ProviderTiles';
 import MapSettingsPill, { MapType, RouteMode, StationMode, TrainMode } from '../components/map/MapSettingsPill';
 import DepartureBoardModal from '../components/ui/DepartureBoardModal';
 import ProfileModal from '../components/ui/ProfileModal';
@@ -38,19 +37,15 @@ import { UnitsProvider } from '../context/UnitsContext';
 import { useLiveTrains } from '../hooks/useLiveTrains';
 import { useMapLocation } from '../hooks/useMapLocation';
 import { useRealtime } from '../hooks/useRealtime';
-import { useShapes } from '../hooks/useShapes';
-import { useStations } from '../hooks/useStations';
 import { useTravelOverlay } from '../hooks/useTravelOverlay';
+import { PROVIDERS } from '../constants/providers';
 import { TrainAPIService } from '../services/api';
 import { requestPermissions as requestNotificationPermissions } from '../services/notifications';
 import { TrainStorageService } from '../services/storage';
 import type { SavedTrainRef, Stop, Train, ViewportBounds } from '../types/train';
-import { ClusteringConfig } from '../utils/clustering-config';
 import { gtfsParser } from '../utils/gtfs-parser';
 import { light as hapticLight } from '../utils/haptics';
 import { logger } from '../utils/logger';
-import { getRouteColor, getStrokeWidthForZoom } from '../utils/route-colors';
-import { clusterStations, getStationAbbreviation } from '../utils/station-clustering';
 import { clusterTrains, type TrainCluster } from '../utils/train-clustering';
 import { ModalContent, ModalContentHandle } from './ModalContent';
 import { createStyles } from './styles';
@@ -242,10 +237,6 @@ function MapScreenInner() {
 
     return () => clearTimeout(timer);
   }, [isOverlayMode, travelStations]);
-
-  // Use lazy-loaded stations and shapes based on viewport
-  const stations = useStations(viewportBounds ?? undefined);
-  const { visibleShapes } = useShapes(viewportBounds ?? undefined);
 
   // Fetch all live trains from GTFS-RT (only when trainMode is 'all')
   const { liveTrains } = useLiveTrains(15000, trainMode === 'all');
@@ -450,17 +441,6 @@ function MapScreenInner() {
     [navigateToStation, fitMapToCoordinates]
   );
 
-  // Stable callback for station marker presses — receives cluster from child
-  const handleStationMarkerPress = useCallback((cluster: {
-    id: string;
-    lat: number;
-    lon: number;
-    isCluster: boolean;
-    stations: Array<{ id: string; name: string; lat: number; lon: number }>;
-  }) => {
-    handleStationPress(cluster);
-  }, [handleStationPress]);
-
   // Stable callback for saved train cluster presses
   const handleSavedTrainClusterPress = useCallback((cluster: TrainCluster) => {
     if (cluster.isCluster) {
@@ -658,15 +638,23 @@ function MapScreenInner() {
     }, VIEWPORT_DEBOUNCE_MS);
   }, []);
 
-  // Initialize viewport bounds when map first becomes ready
+  // When location resolves AFTER the map mounts, the Camera's initialViewState
+  // (read once at mount) leaves the camera at world view. Jump it into place.
+  const initialCameraSet = useRef(false);
   React.useEffect(() => {
-    if (mapReady && regionRef.current && !viewportBounds) {
+    if (mapReady && regionRef.current && !initialCameraSet.current) {
+      initialCameraSet.current = true;
+      const r = regionRef.current;
+      cameraRef.current?.jumpTo({
+        center: [r.longitude, r.latitude],
+        zoom: latDeltaToZoom(r.latitudeDelta),
+      });
       setViewportState({
-        bounds: regionToViewportBounds(regionRef.current),
-        latDelta: regionRef.current.latitudeDelta,
+        bounds: regionToViewportBounds(r),
+        latDelta: r.latitudeDelta,
       });
     }
-  }, [mapReady, viewportBounds]);
+  }, [mapReady]);
 
   // Cleanup timers on unmount
   React.useEffect(() => {
@@ -700,30 +688,22 @@ function MapScreenInner() {
     }
   }, [getCurrentSnap]);
 
-  // Calculate dynamic stroke width based on zoom level
-  const baseStrokeWidth = useMemo(() => {
-    return getStrokeWidthForZoom(debouncedLatDelta);
-  }, [debouncedLatDelta]);
-
-  // Routes are always visible (no zoom-based fading)
   const shouldRenderRoutes = routeMode !== 'hidden';
+  const shouldRenderStations = stationMode !== 'hidden';
 
-  // Cluster stations based on zoom level and station mode
-  const stationClusters = useMemo(() => {
-    if (stationMode === 'hidden') return [];
-    if (stationMode === 'all') {
-      // Return all stations without clustering
-      return stations.map(s => ({
-        id: s.id,
-        lat: s.lat,
-        lon: s.lon,
+  // Adapter: convert PMTiles station tap → existing handleStationPress contract
+  const handleProviderTileStationPress = useCallback(
+    (payload: StationTapPayload) => {
+      handleStationPress({
+        id: payload.stopId,
+        lat: payload.lat,
+        lon: payload.lon,
         isCluster: false,
-        stations: [s],
-      }));
-    }
-    // 'auto' mode - use clustering
-    return clusterStations(stations, debouncedLatDelta);
-  }, [stations, debouncedLatDelta, stationMode]);
+        stations: [{ id: payload.stopCode, name: payload.name, lat: payload.lat, lon: payload.lon }],
+      });
+    },
+    [handleStationPress],
+  );
 
   return (
     <View style={styles.container}>
@@ -744,40 +724,18 @@ function MapScreenInner() {
         <UserLocation heading accuracy />
 
         {showNormalMapContent &&
-          shouldRenderRoutes &&
-          visibleShapes.map(shape => {
-            const colorScheme = getRouteColor(shape.id, colors.accentBlue);
-            return (
-              <AnimatedRoute
-                key={shape.id}
-                id={shape.id}
-                coordinates={shape.coordinates}
-                strokeColor={colorScheme.stroke}
-                strokeWidth={Math.max(2, baseStrokeWidth)}
-              />
-            );
-          })}
-
-        {showNormalMapContent &&
-          stationClusters.map(cluster => {
-            // Show full name when zoomed in enough
-            const showFullName = !cluster.isCluster && debouncedLatDelta < ClusteringConfig.fullNameThreshold;
-            const displayName = cluster.isCluster
-              ? `${cluster.stations.length}+`
-              : showFullName
-                ? cluster.stations[0].name
-                : getStationAbbreviation(cluster.stations[0].id, cluster.stations[0].name);
-            return (
-              <AnimatedStationMarker
-                key={cluster.id}
-                cluster={cluster}
-                showFullName={showFullName}
-                displayName={displayName}
-                color={colors.accentBlue}
-                onPress={handleStationMarkerPress}
-              />
-            );
-          })}
+          (shouldRenderRoutes || shouldRenderStations) &&
+          PROVIDERS.map(provider => (
+            <ProviderTiles
+              key={provider.id}
+              provider={provider}
+              stationColor={colors.accentBlue}
+              stationStrokeColor={colors.background.primary}
+              labelColor={colors.primary}
+              labelHaloColor={colors.background.primary}
+              onStationPress={shouldRenderStations ? handleProviderTileStationPress : undefined}
+            />
+          ))}
 
         {/* Render saved trains when mode is 'saved' */}
         {showNormalMapContent &&
@@ -1004,3 +962,5 @@ export default function MapScreen() {
     </UnitsProvider>
   );
 }
+
+

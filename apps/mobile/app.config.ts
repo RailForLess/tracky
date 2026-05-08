@@ -1,6 +1,8 @@
 import "dotenv/config";
 import type { ExpoConfig } from "expo/config";
 
+declare const process: { env: Record<string, string | undefined> };
+
 const config: ExpoConfig = {
   name: "Tracky",
   slug: "tracky",
@@ -124,6 +126,9 @@ const config: ExpoConfig = {
     eas: {
       "projectId": "f1a6b072-9cd4-4965-956c-8b60bdfba2e1"
     },
+    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "https://api.trackyapp.net",
+    wsUrl: process.env.EXPO_PUBLIC_WS_URL ?? "wss://api.trackyapp.net/ws/realtime",
+    tilesUrl: process.env.EXPO_PUBLIC_TILES_URL ?? "https://tiles.trytracky.com",
   },
   owner: "railforless",
 };
