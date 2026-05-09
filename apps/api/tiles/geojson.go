@@ -125,15 +125,23 @@ func BuildGeoJSON(
 
 		var geom json.RawMessage
 		if len(valid) == 1 {
-			geom, _ = json.Marshal(lineStringGeometry{
+			b, err := json.Marshal(lineStringGeometry{
 				Type:        "LineString",
 				Coordinates: valid[0],
 			})
+			if err != nil {
+				return nil, err
+			}
+			geom = b
 		} else {
-			geom, _ = json.Marshal(multiLineStringGeometry{
+			b, err := json.Marshal(multiLineStringGeometry{
 				Type:        "MultiLineString",
 				Coordinates: valid,
 			})
+			if err != nil {
+				return nil, err
+			}
+			geom = b
 		}
 
 		color := route.Color

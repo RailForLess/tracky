@@ -8,8 +8,8 @@ import (
 
 const (
 	staticURL      = "https://www.transitchicago.com/downloads/sch_data/google_transit.zip"
-	positionsURL   = "https://gtfspublic.metrarr.com/gtfs/public/positions"
-	tripUpdatesURL = "https://gtfspublic.metrarr.com/gtfs/public/tripupdates"
+	positionsURL   = ""
+	tripUpdatesURL = ""
 )
 
 // New returns a standard base provider configured for CTA.

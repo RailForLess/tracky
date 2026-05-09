@@ -10,7 +10,7 @@ import (
 // GenerateTiles shells out to tippecanoe to convert a GeoJSON file into PMTiles.
 func GenerateTiles(ctx context.Context, geojsonPath, outputPath string) error {
 	if _, err := exec.LookPath("tippecanoe"); err != nil {
-		return fmt.Errorf("tippecanoe not found on PATH; install via: brew install tippecanoe")
+		return fmt.Errorf("tippecanoe not found on PATH; please install tippecanoe (for example via your package manager, or on macOS with 'brew install tippecanoe') and ensure it is available on PATH")
 	}
 
 	args := []string{

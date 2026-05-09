@@ -58,7 +58,7 @@ func Upload(ctx context.Context, localPath, objectKey string) error {
 		return fmt.Errorf("tiles: stat %s: %w", localPath, err)
 	}
 
-	contentType := "application/x-protobuf"
+	contentType := "application/vnd.pmtiles"
 	cacheControl := "public, max-age=86400"
 
 	_, err = client.PutObject(ctx, &s3.PutObjectInput{
