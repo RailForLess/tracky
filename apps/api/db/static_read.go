@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/jackc/pgx/v5"
 
@@ -169,6 +170,130 @@ func (d *DB) GetTrip(ctx context.Context, tripID string) (*spec.Trip, error) {
 type BBox struct {
 	MinLon, MinLat, MaxLon, MaxLat float64
 	Set                            bool
+}
+
+// ListStopsNearby returns up to 100 stops within radiusM metres of (lat, lon),
+// ordered by distance ascending. provider is optional ("" = all providers).
+//
+// A simple lat/lon bounding box prefilters the search before the haversine
+// refine, so even without a spatial index we don't full-scan the table.
+func (d *DB) ListStopsNearby(ctx context.Context, lat, lon, radiusM float64, provider string) ([]spec.Stop, error) {
+	latDelta := radiusM / 111_000.0
+	cosLat := math.Cos(lat * math.Pi / 180.0)
+	if cosLat < 1e-6 {
+		cosLat = 1e-6 // avoid divide-by-zero at the poles
+	}
+	lonDelta := radiusM / (111_000.0 * cosLat)
+
+	args := []any{
+		lat - latDelta, lat + latDelta, // $1, $2
+		lon - lonDelta, lon + lonDelta, // $3, $4
+		lat, lon, // $5, $6
+		radiusM, // $7
+	}
+	where := "lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4"
+	if provider != "" {
+		args = append(args, provider) // $8
+		where += " AND provider_id = $8"
+	}
+
+	q := `
+		SELECT stop_id, provider_id, code, name, lat, lon, timezone, wheelchair_boarding
+		FROM stops
+		WHERE ` + where + `
+		  AND 111000.0 * 2 * asin(sqrt(
+		          power(sin(radians(lat - $5)/2), 2) +
+		          cos(radians($5)) * cos(radians(lat)) *
+		          power(sin(radians(lon - $6)/2), 2)
+		      )) <= $7
+		ORDER BY power(sin(radians(lat - $5)/2), 2) +
+		         cos(radians($5)) * cos(radians(lat)) *
+		         power(sin(radians(lon - $6)/2), 2)
+		LIMIT 100`
+
+	rows, err := d.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []spec.Stop
+	for rows.Next() {
+		var s spec.Stop
+		if err := rows.Scan(&s.StopID, &s.ProviderID, &s.Code, &s.Name, &s.Lat, &s.Lon, &s.Timezone, &s.WheelchairBoarding); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// GetRunStops returns the per-stop schedule + live state for one specific run
+// of a trip (provider, trip_id, run_date). The static scheduled_arr/dep are
+// resolved against the agency timezone via resolve_gtfs_time(); the live
+// estimated_*/actual_* fields come from train_stop_times via LEFT JOIN, so
+// stops that haven't been touched by realtime yet still appear with nil
+// estimates. Returns ErrNotFound if the trip has no scheduled stops at all.
+func (d *DB) GetRunStops(ctx context.Context, provider, tripID, runDate string) ([]spec.TrainStopTime, error) {
+	rows, err := d.pool.Query(ctx, `
+		WITH provider_tz AS (
+		    SELECT timezone
+		    FROM agencies
+		    WHERE provider_id = $1
+		    ORDER BY
+		        CASE
+		            WHEN replace(replace(lower(name), '-', ''), ' ', '') = $1 THEN 0
+		            WHEN lower(name) LIKE lower($1) || '%' THEN 1
+		            ELSE 2
+		        END,
+		        gtfs_agency_id
+		    LIMIT 1
+		)
+		SELECT
+		    sst.provider_id, sst.trip_id, $3::date,
+		    s.code, sst.stop_sequence,
+		    resolve_gtfs_time(sst.arrival_time,   $3::date, tz.timezone),
+		    resolve_gtfs_time(sst.departure_time, $3::date, tz.timezone),
+		    tst.estimated_arr, tst.estimated_dep,
+		    tst.actual_arr,    tst.actual_dep,
+		    COALESCE(tst.last_updated, now())
+		FROM scheduled_stop_times sst
+		JOIN stops s ON s.stop_id = sst.stop_id
+		LEFT JOIN provider_tz tz ON TRUE
+		LEFT JOIN train_stop_times tst
+		    ON tst.provider      = sst.provider_id
+		   AND tst.trip_id       = sst.trip_id
+		   AND tst.run_date      = $3::date
+		   AND tst.stop_sequence = sst.stop_sequence
+		WHERE sst.provider_id = $1 AND sst.trip_id = $2
+		ORDER BY sst.stop_sequence`, provider, tripID, runDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []spec.TrainStopTime
+	for rows.Next() {
+		var t spec.TrainStopTime
+		if err := rows.Scan(
+			&t.Provider, &t.TripID, &t.RunDate,
+			&t.StopCode, &t.StopSequence,
+			&t.ScheduledArr, &t.ScheduledDep,
+			&t.EstimatedArr, &t.EstimatedDep,
+			&t.ActualArr, &t.ActualDep,
+			&t.LastUpdated,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, ErrNotFound
+	}
+	return out, nil
 }
 
 // ListStops returns all stops for a provider, optionally bbox-filtered.

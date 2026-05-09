@@ -138,6 +138,50 @@ CREATE TABLE IF NOT EXISTS feed_versions (
 CREATE INDEX IF NOT EXISTS idx_feed_versions_applied
     ON feed_versions (provider_id, applied_at DESC NULLS LAST);
 
+-- ── train_stop_times ───────────────────────────────────────────────
+-- Per-stop realtime estimates and actuals for one run of a trip.
+-- Static scheduled_arr/dep are NOT stored here; readers JOIN
+-- scheduled_stop_times for those. estimated_* overwrites on every poll;
+-- actual_* writes once and is preserved via COALESCE on upsert.
+CREATE TABLE IF NOT EXISTS train_stop_times (
+    provider      TEXT        NOT NULL,
+    trip_id       TEXT        NOT NULL,
+    run_date      DATE        NOT NULL,
+    stop_sequence INTEGER     NOT NULL,
+    stop_code     TEXT        NOT NULL DEFAULT '',
+    estimated_arr TIMESTAMPTZ,
+    estimated_dep TIMESTAMPTZ,
+    actual_arr    TIMESTAMPTZ,
+    actual_dep    TIMESTAMPTZ,
+    last_updated  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (provider, trip_id, run_date, stop_sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_tst_run
+    ON train_stop_times (provider, trip_id, run_date);
+
+-- ── resolve_gtfs_time(text, date, tz) ──────────────────────────────
+-- Resolves a GTFS HH:MM:SS time string against run_date in agency tz to
+-- a TIMESTAMPTZ. GTFS allows hour >= 24 for overnight service ("25:30:00"
+-- on May 8 means 01:30 on May 9); we add the overflow days first then
+-- interpret the remaining HH:MM:SS in tz.
+CREATE OR REPLACE FUNCTION resolve_gtfs_time(t TEXT, run_date DATE, tz TEXT)
+RETURNS TIMESTAMPTZ AS $$
+DECLARE
+    h    INT;
+    days INT;
+    rest TEXT;
+BEGIN
+    IF t IS NULL OR t = '' THEN RETURN NULL; END IF;
+    h    := split_part(t, ':', 1)::INT;
+    days := h / 24;
+    rest := lpad((h % 24)::TEXT, 2, '0') || ':' ||
+            split_part(t, ':', 2) || ':' ||
+            split_part(t, ':', 3);
+    RETURN ((run_date + days)::TEXT || ' ' || rest)::TIMESTAMP
+           AT TIME ZONE COALESCE(NULLIF(tz, ''), 'UTC');
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 -- ── service_active(provider_id, service_id, date) ──────────────────
 -- Returns TRUE if the service runs on the given date.
 -- Checks calendar_dates.txt exception override first, then falls back

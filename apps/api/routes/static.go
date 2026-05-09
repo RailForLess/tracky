@@ -14,6 +14,7 @@ import (
 func registerStatic(mux *http.ServeMux, d *db.DB) {
 	mux.HandleFunc("GET /v1/providers/{provider}", handleGetProvider(d))
 
+	mux.HandleFunc("GET /v1/stops/nearby", handleNearbyStops(d))
 	mux.HandleFunc("GET /v1/stops/{provider}/{stopCode}", handleGetStop(d))
 	mux.HandleFunc("GET /v1/stops", handleListStops(d))
 
@@ -24,6 +25,8 @@ func registerStatic(mux *http.ServeMux, d *db.DB) {
 	mux.HandleFunc("GET /v1/trips/lookup", handleLookupTrips(d))
 	mux.HandleFunc("GET /v1/trips/{tripId}/stops", handleTripStops(d))
 	mux.HandleFunc("GET /v1/trips/{tripId}", handleGetTrip(d))
+
+	mux.HandleFunc("GET /v1/runs/{provider}/{tripId}/{runDate}/stops", handleRunStops(d))
 
 	mux.HandleFunc("GET /v1/departures", handleDepartures(d))
 	mux.HandleFunc("GET /v1/connections", handleConnections(d))
@@ -61,6 +64,17 @@ func parseDate(s string) (string, bool) {
 		return "", false
 	}
 	return s, true
+}
+
+func parseFloat(s string) (float64, bool) {
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // parseBBox accepts "minLon,minLat,maxLon,maxLat".
@@ -318,6 +332,60 @@ func handleTrainService(d *db.DB) http.HandlerFunc {
 		}
 		setCacheable(w)
 		writeJSON(w, http.StatusOK, info)
+	}
+}
+
+func handleRunStops(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		provider := r.PathValue("provider")
+		tripID := r.PathValue("tripId")
+		runDate, ok := parseDate(r.PathValue("runDate"))
+		if provider == "" || tripID == "" || !ok {
+			writeError(w, http.StatusBadRequest, "provider, tripId, and runDate (YYYY-MM-DD) required")
+			return
+		}
+		stops, err := d.GetRunStops(r.Context(), provider, tripID, runDate)
+		if errors.Is(err, db.ErrNotFound) {
+			notFound(w, "run not found")
+			return
+		}
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		// No setCacheable: this view changes with every realtime poll.
+		writeJSON(w, http.StatusOK, stops)
+	}
+}
+
+func handleNearbyStops(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		lat, latOK := parseFloat(q.Get("lat"))
+		lon, lonOK := parseFloat(q.Get("lon"))
+		if !latOK || !lonOK || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+			writeError(w, http.StatusBadRequest, "lat and lon are required (lat in [-90,90], lon in [-180,180])")
+			return
+		}
+		radius := 5000.0
+		if raw := q.Get("radius_m"); raw != "" {
+			v, ok := parseFloat(raw)
+			if !ok || v <= 0 {
+				writeError(w, http.StatusBadRequest, "radius_m must be a positive number")
+				return
+			}
+			radius = v
+		}
+		if radius > 50000 {
+			radius = 50000
+		}
+		stops, err := d.ListStopsNearby(r.Context(), lat, lon, radius, q.Get("provider"))
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		setCacheable(w)
+		writeJSON(w, http.StatusOK, stops)
 	}
 }
 

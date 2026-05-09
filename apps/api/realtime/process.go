@@ -1,29 +1,32 @@
 // Package realtime is the on-prem ingest pipeline. Both the live HTTP
 // /ingest handler and the Drainer (R2 backfill) call Processor.Process —
-// keeping a single sink in front of the WebSocket hub and (eventually)
-// TimescaleDB.
+// keeping a single sink in front of the WebSocket hub and TimescaleDB.
 package realtime
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/RailForLess/tracky/api/collector"
+	"github.com/RailForLess/tracky/api/db"
 	"github.com/RailForLess/tracky/api/ws"
 )
 
 // Processor receives a Snapshot and pushes it into the live broadcast hub
-// and (TODO) the TimescaleDB hypertables for historical queries.
+// and (when DB is configured) the train_stop_times table for historical
+// queries.
 type Processor struct {
 	Hub *ws.Hub
+	DB  *db.DB // optional; nil disables persistence
 }
 
-func NewProcessor(hub *ws.Hub) *Processor {
-	return &Processor{Hub: hub}
+func NewProcessor(hub *ws.Hub, d *db.DB) *Processor {
+	return &Processor{Hub: hub, DB: d}
 }
 
-func (p *Processor) Process(_ context.Context, snap *collector.Snapshot) error {
+func (p *Processor) Process(ctx context.Context, snap *collector.Snapshot) error {
 	if snap == nil || snap.Feed == nil {
 		return fmt.Errorf("realtime: nil snapshot or feed")
 	}
@@ -40,10 +43,16 @@ func (p *Processor) Process(_ context.Context, snap *collector.Snapshot) error {
 	}
 	p.Hub.Publish(snap.ProviderID, payload)
 
-	// TODO(timescale): persist snap.Feed.Positions and snap.Feed.StopTimes
-	// to vehicle_positions / trip_stop_times hypertables once the schema
-	// exists. Until then the Drainer's only effect is to replay onto the
-	// hub for any clients connected at replay time.
+	if p.DB != nil && len(snap.Feed.StopTimes) > 0 {
+		if err := p.DB.UpsertTrainStopTimes(ctx, snap.Feed.StopTimes); err != nil {
+			// Persistence failure must not block the WS broadcast.
+			log.Printf("realtime: persist stop_times for %s: %v", snap.ProviderID, err)
+		}
+	}
+
+	// TODO(timescale): persist snap.Feed.Positions to a train_positions
+	// hypertable so saved-train hydration can hit a single row instead of
+	// subscribing to the WS feed and filtering.
 
 	return nil
 }

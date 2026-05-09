@@ -38,7 +38,6 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run(ctx)
 
-	processor := realtime.NewProcessor(hub)
 	ingestSecret := os.Getenv("INGEST_SECRET")
 	if ingestSecret == "" {
 		log.Printf("WARNING: INGEST_SECRET unset — /ingest is open. Set it for any non-local deploy.")
@@ -56,6 +55,8 @@ func main() {
 	} else {
 		log.Printf("db: DATABASE_URL unset; /v1/* read endpoints disabled")
 	}
+
+	processor := realtime.NewProcessor(hub, database)
 
 	if client, bucket := buildR2Client(ctx); client != nil {
 		d := &drainer.Drainer{Client: client, Bucket: bucket, Processor: processor, Interval: drainInterval}
