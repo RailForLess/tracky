@@ -1,10 +1,16 @@
+/**
+ * Realtime enrichment for saved trains. Subscribes to the WebSocket via
+ * RealtimeContext and re-attaches latest position data to each saved train
+ * whenever the feed updates. No more polling.
+ */
+
 import { useEffect, useRef } from 'react';
+import { useRealtimePositions } from '../context/RealtimeContext';
 import { TrainAPIService } from '../services/api';
 import { TrainActivityManager } from '../services/train-activity-manager';
 import type { Train } from '../types/train';
 import { logger } from '../utils/logger';
 
-/** Compare realtime-changing fields to detect if a train actually changed */
 function hasRealtimeChanged(a: Train, b: Train): boolean {
   const ar = a.realtime;
   const br = b.realtime;
@@ -20,36 +26,41 @@ function hasRealtimeChanged(a: Train, b: Train): boolean {
   );
 }
 
-export function useRealtime(trains: Train[], setTrains: (t: Train[]) => void, intervalMs: number = 20000) {
-  // Use ref to avoid resetting interval when trains change
+/**
+ * @param trains - current saved trains
+ * @param setTrains - state setter for the saved trains list
+ * @param _intervalMs - retained for backwards compat; no-op now (WS-driven).
+ */
+export function useRealtime(
+  trains: Train[],
+  setTrains: (t: Train[]) => void,
+  _intervalMs: number = 20000,
+) {
+  const positions = useRealtimePositions();
   const trainsRef = useRef(trains);
   trainsRef.current = trains;
-
   const setTrainsRef = useRef(setTrains);
   setTrainsRef.current = setTrains;
 
   useEffect(() => {
-    let mounted = true;
+    const current = trainsRef.current;
+    if (current.length === 0) return;
+    let cancelled = false;
 
-    const refresh = async () => {
-      if (trainsRef.current.length === 0) return;
-      logger.debug(`[Realtime] Refreshing ${trainsRef.current.length} saved trains`);
-      const oldTrains = trainsRef.current;
-      const updated = await Promise.all(trainsRef.current.map(t => TrainAPIService.refreshRealtimeData(t)));
-      if (mounted) {
-        // Only trigger re-render if any train's realtime data actually changed
-        const anyChanged = updated.some((t, i) => hasRealtimeChanged(t, oldTrains[i]));
-        if (anyChanged) {
-          setTrainsRef.current(updated);
-        }
-        TrainActivityManager.onRealtimeUpdate(oldTrains, updated).catch(e => logger.warn('TrainActivityManager.onRealtimeUpdate failed', e));
+    (async () => {
+      const updated = await Promise.all(current.map(t => TrainAPIService.refreshRealtimeData(t)));
+      if (cancelled) return;
+      const anyChanged = updated.some((t, i) => hasRealtimeChanged(t, current[i]));
+      if (anyChanged) {
+        setTrainsRef.current(updated);
       }
-    };
+      TrainActivityManager.onRealtimeUpdate(current, updated).catch(e =>
+        logger.warn('TrainActivityManager.onRealtimeUpdate failed', e),
+      );
+    })();
 
-    const timer = setInterval(refresh, intervalMs);
     return () => {
-      mounted = false;
-      clearInterval(timer);
+      cancelled = true;
     };
-  }, [intervalMs]); // Only depend on intervalMs, not trains
+  }, [positions]);
 }

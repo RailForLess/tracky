@@ -30,8 +30,8 @@ import {
 } from '../constants/map';
 import { type ColorPalette, withTextShadow } from '../constants/theme';
 import { useColors, useTheme } from '../context/ThemeContext';
-import { GTFSRefreshProvider, useGTFSRefresh } from '../context/GTFSRefreshContext';
 import { ModalProvider, useModalActions, useModalState } from '../context/ModalContext';
+import { RealtimeProvider } from '../context/RealtimeContext';
 import { TrainProvider, useTrainContext } from '../context/TrainContext';
 import { UnitsProvider } from '../context/UnitsContext';
 import { useLiveTrains } from '../hooks/useLiveTrains';
@@ -139,7 +139,6 @@ function MapScreenInner() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const cameraRef = useRef<CameraRef>(null);
   const modalContentRef = useRef<ModalContentHandle>(null);
-  const { triggerRefresh, isLoadingCache } = useGTFSRefresh();
 
   // Split modal context — actions (stable) vs state (reactive)
   const {
@@ -547,10 +546,11 @@ function MapScreenInner() {
         duration: MAP_ANIMATION_DURATION,
       });
 
-      // Create a Stop object and navigate
+      // Synthesize a Stop and navigate. The DepartureBoardModal will fetch
+      // full detail from the API via the stationCode/lat/lon we already have.
       const stop: Stop = {
         stop_id: stationCode,
-        stop_name: gtfsParser.getStopName(stationCode),
+        stop_name: stationCode,
         stop_lat: lat,
         stop_lon: lon,
       };
@@ -564,28 +564,15 @@ function MapScreenInner() {
     requestNotificationPermissions();
   }, []);
 
-  // Track when GTFS data is loaded — event-based, no polling
-  const [gtfsLoaded, setGtfsLoaded] = React.useState(gtfsParser.isLoaded);
-
+  // Load saved trains on mount (was gated on GTFS cache load — now API-backed)
   React.useEffect(() => {
-    if (gtfsLoaded) return;
-    return gtfsParser.onLoaded(() => {
-      logger.info('[MapScreen] GTFS data ready');
-      setGtfsLoaded(true);
-    });
-  }, [gtfsLoaded]);
-
-  // Load saved trains after GTFS is ready
-  React.useEffect(() => {
-    if (!gtfsLoaded) return;
-
     (async () => {
       const trains = await TrainStorageService.getSavedTrains();
       logger.debug(`[MapScreen] Loading ${trains.length} saved trains with realtime data`);
       const trainsWithRealtime = await Promise.all(trains.map(train => TrainAPIService.refreshRealtimeData(train)));
       setSavedTrains(trainsWithRealtime);
     })();
-  }, [setSavedTrains, gtfsLoaded]);
+  }, [setSavedTrains]);
 
   useRealtime(savedTrains, setSavedTrains, 20000);
 
@@ -931,18 +918,10 @@ function MapScreenInner() {
       >
         {showSettingsContent && (
           <ErrorBoundary onDismiss={() => goBack()}>
-            <SettingsModal
-              onClose={() => goBack()}
-              onRefreshGTFS={() => {
-                triggerRefresh();
-              }}
-            />
+            <SettingsModal onClose={() => goBack()} onRefreshGTFS={() => {}} />
           </ErrorBoundary>
         )}
       </SlideUpModal>
-
-      {/* Full-page loading overlay while GTFS cache loads */}
-      <LoadingOverlay visible={isLoadingCache} />
     </View>
   );
 }
@@ -950,15 +929,15 @@ function MapScreenInner() {
 export default function MapScreen() {
   return (
     <UnitsProvider>
-      <TrainProvider>
-        <GTFSRefreshProvider>
+      <RealtimeProvider>
+        <TrainProvider>
           <ModalProvider>
             <ErrorBoundary>
               <MapScreenInner />
             </ErrorBoundary>
           </ModalProvider>
-        </GTFSRefreshProvider>
-      </TrainProvider>
+        </TrainProvider>
+      </RealtimeProvider>
     </UnitsProvider>
   );
 }

@@ -1,12 +1,12 @@
 /**
- * Hook for fetching all live trains from GTFS-RT feed
- * Returns an array of all currently active trains with their positions
+ * Live trains feed for the map. Consumes the realtime WebSocket via
+ * RealtimeContext and adapts ApiTrainPosition into the LiveTrain shape
+ * that LiveTrainMarker expects.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { RealtimeService } from '../services/realtime';
+import { useMemo } from 'react';
+import { useRealtimePositions } from '../context/RealtimeContext';
 import { getTrainDisplayName } from '../services/api';
-import { logger } from '../utils/logger';
 
 export interface LiveTrain {
   trainNumber: string;
@@ -22,68 +22,41 @@ export interface LiveTrain {
 }
 
 /**
- * Fetch all live trains from the GTFS-RT feed
- * @param intervalMs - Refresh interval in milliseconds (default: 15000ms)
- * @param enabled - Whether to enable polling (default: true)
+ * @param _intervalMs - kept for backwards compat; no-op now (WS-driven).
+ * @param enabled    - when false, hide trains without unsubscribing.
  */
-export function useLiveTrains(intervalMs: number = 15000, enabled: boolean = true) {
-  const [liveTrains, setLiveTrains] = useState<LiveTrain[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+export function useLiveTrains(_intervalMs: number = 15000, enabled: boolean = true) {
+  const positions = useRealtimePositions();
 
-  const fetchLiveTrains = useCallback(async () => {
-    try {
-      const activeTrains = await RealtimeService.getAllActiveTrains();
-
-      const trains: LiveTrain[] = activeTrains.map(({ trainNumber, position }) => {
-        const { routeName } = getTrainDisplayName(position.trip_id, trainNumber);
-        return {
-          trainNumber,
-          tripId: position.trip_id,
-          position: {
-            lat: position.latitude,
-            lon: position.longitude,
-            bearing: position.bearing,
-            speed: position.speed,
-          },
-          routeName,
-          timestamp: position.timestamp,
-        };
+  const liveTrains = useMemo<LiveTrain[]>(() => {
+    if (!enabled) return [];
+    const out: LiveTrain[] = [];
+    for (const p of positions) {
+      if (p.lat == null || p.lon == null) continue;
+      const { routeName } = getTrainDisplayName(p.tripId, p.trainNumber, p.routeId);
+      const ts = Date.parse(p.lastUpdated);
+      out.push({
+        trainNumber: p.trainNumber,
+        tripId: p.tripId,
+        position: {
+          lat: p.lat,
+          lon: p.lon,
+          bearing: p.heading ?? undefined,
+          speed: p.speedMph ?? undefined,
+        },
+        routeName,
+        timestamp: Number.isFinite(ts) ? ts : Date.now(),
       });
-
-      setLiveTrains(trains);
-      setLastUpdated(Date.now());
-      setError(null);
-      logger.debug(`[LiveTrains] Updated ${trains.length} active trains`);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch live trains'));
-      logger.error('Error fetching live trains:', err);
-    } finally {
-      setLoading(false);
     }
-  }, []);
-
-  // Initial fetch + periodic refresh (single effect)
-  useEffect(() => {
-    if (!enabled) return;
-    fetchLiveTrains();
-    const interval = setInterval(fetchLiveTrains, intervalMs);
-    return () => clearInterval(interval);
-  }, [fetchLiveTrains, intervalMs, enabled]);
-
-  // Manual refresh function
-  const refresh = useCallback(() => {
-    RealtimeService.clearCache();
-    return fetchLiveTrains();
-  }, [fetchLiveTrains]);
+    return out;
+  }, [positions, enabled]);
 
   return {
     liveTrains,
-    loading,
-    error,
-    lastUpdated,
-    refresh,
+    loading: liveTrains.length === 0,
+    error: null as Error | null,
+    lastUpdated: liveTrains.length > 0 ? Date.now() : null,
+    refresh: () => Promise.resolve(),
     trainCount: liveTrains.length,
   };
 }

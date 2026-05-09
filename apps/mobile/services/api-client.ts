@@ -272,3 +272,29 @@ export function getRunPosition(_params: {
 export function clearApiCache(): void {
   cache.clear();
 }
+
+/**
+ * Synchronously read a previously-fetched route from the in-memory cache.
+ * Returns undefined if the route hasn't been requested via getRoute() yet
+ * or its TTL has expired. Useful for render-time lookups where firing an
+ * async fetch would cause a flicker.
+ */
+export function getCachedRoute(routeId: string): ApiRoute | undefined {
+  return getCached<ApiRoute>(`route:${routeId}`);
+}
+
+/**
+ * Fire-and-forget prefetch of route metadata. Safe to call repeatedly; the
+ * result lands in the same cache that getCachedRoute reads from.
+ */
+export function prefetchRoute(routeId: string): void {
+  if (getCached<ApiRoute>(`route:${routeId}`) !== undefined) return;
+  const sep = routeId.indexOf(':');
+  if (sep <= 0) return;
+  const provider = routeId.slice(0, sep);
+  const code = routeId.slice(sep + 1);
+  // Swallow errors — prefetching is best-effort.
+  getRoute(provider, code).catch(() => {
+    /* leave it un-cached so a later attempt can retry */
+  });
+}

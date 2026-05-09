@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
-import { TrainAPIService } from '../services/api';
-import { debug, error as logError } from '../utils/logger';
+import { useState } from 'react';
 
 export interface FrequentlyUsedItem {
   id: string;
@@ -10,39 +8,20 @@ export interface FrequentlyUsedItem {
   type: 'train' | 'station';
 }
 
+const DEFAULTS: FrequentlyUsedItem[] = [
+  { id: 'freq-train-acela', type: 'train', name: 'Acela', code: '2151', subtitle: 'Northeast Corridor' },
+  { id: 'freq-train-ner', type: 'train', name: 'Northeast Regional', code: '171', subtitle: 'Northeast Corridor' },
+  { id: 'freq-train-cz', type: 'train', name: 'California Zephyr', code: '5', subtitle: 'Chicago → Emeryville' },
+  { id: 'freq-stop-nyp', type: 'station', name: 'New York Penn', code: 'NYP', subtitle: 'NYP' },
+  { id: 'freq-stop-chi', type: 'station', name: 'Chicago Union', code: 'CHI', subtitle: 'CHI' },
+];
+
+/**
+ * Frequently-used items shown in the empty search state. Backed by a static
+ * default set for now — the previous bulk-load of all routes/stops is gone
+ * with the GTFS parser; a real "popular" list will come from the backend.
+ */
 export function useFrequentlyUsed() {
-  const [items, setItems] = useState<FrequentlyUsedItem[]>([]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const routes = await TrainAPIService.getRoutes();
-      const stops = await TrainAPIService.getStops();
-      const loaded = [
-        ...routes.slice(0, 3).map((route, index) => ({
-          id: `freq-route-${index}`,
-          name: route.route_long_name,
-          code: route.route_short_name || route.route_id.substring(0, 3),
-          subtitle: `AMT${route.route_id}`,
-          type: 'train' as const,
-        })),
-        ...stops.slice(0, 2).map((stop, index) => ({
-          id: `freq-stop-${index}`,
-          name: stop.stop_name,
-          code: stop.stop_id,
-          subtitle: stop.stop_id,
-          type: 'station' as const,
-        })),
-      ];
-      debug(`[useFrequentlyUsed] Loaded ${loaded.length} items`);
-      setItems(loaded);
-    } catch (err) {
-      logError('[useFrequentlyUsed] Failed to load frequently used items:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { items, refresh };
+  const [items] = useState<FrequentlyUsedItem[]>(DEFAULTS);
+  return { items, refresh: () => Promise.resolve() };
 }

@@ -10,7 +10,7 @@
  */
 
 import { config } from '../constants/config';
-import type { RealtimeUpdate } from '../types/api';
+import type { ApiTrainPosition, RealtimeUpdate } from '../types/api';
 import { logger } from '../utils/logger';
 
 type Listener = (update: RealtimeUpdate) => void;
@@ -33,6 +33,9 @@ class WSClient {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionallyClosed = false;
+
+  /** Per-provider snapshot of the last positions array we received. */
+  private latest = new Map<string, ApiTrainPosition[]>();
 
   /**
    * Subscribe a listener to one or more providers. Returns an unsubscribe
@@ -97,6 +100,26 @@ class WSClient {
     this.state = 'closed';
   }
 
+  /** All known live positions across providers, in arrival order. */
+  getLatestPositions(): ApiTrainPosition[] {
+    const out: ApiTrainPosition[] = [];
+    for (const list of this.latest.values()) for (const p of list) out.push(p);
+    return out;
+  }
+
+  /** Latest live position for a specific run, or undefined if not present. */
+  findPosition(opts: { provider: string; tripId?: string; trainNumber?: string }):
+    | ApiTrainPosition
+    | undefined {
+    const list = this.latest.get(opts.provider);
+    if (!list) return undefined;
+    return list.find(
+      p =>
+        (opts.tripId !== undefined && p.tripId === opts.tripId) ||
+        (opts.trainNumber !== undefined && p.trainNumber === opts.trainNumber),
+    );
+  }
+
   // ── Internals ────────────────────────────────────────────────────────────
 
   private ensureConnected(): void {
@@ -139,6 +162,7 @@ class WSClient {
         return;
       }
       if (!isRealtimeUpdate(parsed)) return;
+      this.latest.set(parsed.provider, parsed.positions);
       for (const l of this.listeners) {
         try {
           l(parsed);
