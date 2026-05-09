@@ -225,6 +225,57 @@ async function buildTrainFromTrip(
   return train;
 }
 
+/**
+ * Fallback when /v1/trips/{tripId}/stops is unavailable: build a Train
+ * carrying just the user's stop time (from the DepartureItem row).
+ *
+ * The DepartureBoardModal looks up the time at this station via
+ * intermediateStops[].code; we synthesize a single intermediate so that
+ * lookup still succeeds. from/to are blank since we don't know the trip's
+ * actual origin or destination without /v1/trips/{tripId}/stops.
+ */
+function buildMinimalTrainFromDeparture(
+  d: ApiDepartureItem,
+  userStopCode: string,
+  effectiveDate: Date,
+): Train {
+  prefetchRoute(d.routeId);
+  const route = getCachedRoute(d.routeId);
+  const routeName = route?.longName || route?.shortName || '';
+
+  const userTime =
+    d.departureTime != null
+      ? convertGtfsTimeForStop(d.departureTime, userStopCode)
+      : d.arrivalTime != null
+      ? convertGtfsTimeForStop(d.arrivalTime, userStopCode)
+      : { time: '', dayOffset: 0 };
+
+  const train: Train = {
+    id: simpleHash(d.tripId),
+    operator: 'Amtrak',
+    trainNumber: d.shortName || extractTrainNumber(d.tripId) || '',
+    from: '',
+    to: d.headsign || '',
+    fromCode: userStopCode,
+    toCode: '',
+    departTime: userTime.time,
+    arriveTime: userTime.time,
+    departDayOffset: userTime.dayOffset,
+    arriveDayOffset: userTime.dayOffset,
+    date: getDaysAwayLabel(calculateDaysAway(effectiveDate)),
+    daysAway: calculateDaysAway(effectiveDate),
+    travelDate: effectiveDate.getTime(),
+    routeName,
+    tripId: d.tripId,
+    intermediateStops: [
+      { time: userTime.time, name: userStopCode, code: userStopCode },
+    ],
+  };
+
+  if (train.daysAway <= 0) return attachRealtime(train);
+  return train;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 export class TrainAPIService {
@@ -280,18 +331,22 @@ export class TrainAPIService {
   }
 
   /**
-   * All trains arriving/departing at a stop on a given date.
+   * All trains arriving/departing at a stop on a given date. Issues a
+   * fan-out fetch of /v1/trips/{tripId}/stops per departure to populate
+   * origin/destination/intermediate stops; if that fan-out fails for a
+   * particular trip, we still return a minimal Train (with the user's
+   * stop populated from the departure row) so the list never silently
+   * empties on a partial backend.
    *
-   * Currently issues N+1 requests (one getTripStops per departure) since
-   * /v1/departures only returns a Trip-level row. The 1h trip-stops cache
-   * makes repeats cheap, but cold-start for a busy station is slower than
-   * the old in-memory parser.
+   * The trip-stops endpoint is cached for 1h, so repeated views of busy
+   * stations are cheap.
    */
   static async getTrainsForStation(stopId: string, date?: Date): Promise<Train[]> {
     try {
       const effectiveDate = date ?? new Date();
       const provider = stopId.includes(':') ? stopId.split(':', 1)[0] : DEFAULT_PROVIDER;
       const namespaced = stopId.includes(':') ? stopId : `${provider}:${stopId}`;
+      const userStopCode = stopId.includes(':') ? stopId.split(':')[1] : stopId;
 
       const departures = await safeAwait<ApiDepartureItem[]>(
         getDepartures({ stopId: namespaced, date: toYMD(effectiveDate) }),
@@ -300,12 +355,13 @@ export class TrainAPIService {
       logger.debug(`[api] getTrainsForStation(${stopId}): ${departures.length} departures`);
 
       const trains = await Promise.all(
-        departures.map(async (d): Promise<Train | null> => {
-          const stops = await safeAwait<ApiEnrichedStopTime[]>(
+        departures.map(async (d): Promise<Train> => {
+          const apiStops = await safeAwait<ApiEnrichedStopTime[]>(
             getTripStops(d.tripId),
             [],
           );
-          // ApiDepartureItem extends Trip (same shape), so we can pass it through.
+          const stops = apiStops.map(adaptStopTime);
+
           const trip: ApiTrip = {
             providerId: d.providerId,
             tripId: d.tripId,
@@ -316,10 +372,16 @@ export class TrainAPIService {
             shapeId: d.shapeId,
             directionId: d.directionId,
           };
-          return buildTrainFromTrip(trip, stops.map(adaptStopTime), effectiveDate);
+
+          if (stops.length > 0) {
+            const train = await buildTrainFromTrip(trip, stops, effectiveDate);
+            if (train) return train;
+          }
+
+          return buildMinimalTrainFromDeparture(d, userStopCode, effectiveDate);
         }),
       );
-      return trains.filter((t): t is Train => t !== null);
+      return trains;
     } catch (error) {
       logger.error('Error fetching trains for station:', error);
       return [];

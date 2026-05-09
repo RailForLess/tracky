@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LiveTrainMarker } from '../components/map/LiveTrainMarker';
-import { ProviderTiles, type StationTapPayload } from '../components/map/ProviderTiles';
+import { ProviderTiles, type RouteTapPayload, type StationTapPayload } from '../components/map/ProviderTiles';
 import MapSettingsPill, { MapType, RouteMode, StationMode, TrainMode } from '../components/map/MapSettingsPill';
 import DepartureBoardModal from '../components/ui/DepartureBoardModal';
 import ProfileModal from '../components/ui/ProfileModal';
@@ -694,6 +694,21 @@ function MapScreenInner() {
     [handleStationPress],
   );
 
+  // PMTiles route tap. No dedicated route-detail UI yet — show a brief
+  // confirmation so the user sees the tap was registered, with the route
+  // info already carried by the tile feature.
+  const handleProviderTileRoutePress = useCallback(
+    (payload: RouteTapPayload) => {
+      hapticLight();
+      const title = payload.longName || payload.shortName || 'Route';
+      const subtitle = payload.shortName && payload.longName
+        ? `${payload.shortName} — ${payload.providerId}`
+        : payload.providerId;
+      Alert.alert(title, subtitle);
+    },
+    []
+  );
+
   return (
     <View style={styles.container}>
       <Map
@@ -723,6 +738,7 @@ function MapScreenInner() {
               labelColor={colors.primary}
               labelHaloColor={colors.background.primary}
               onStationPress={shouldRenderStations ? handleProviderTileStationPress : undefined}
+              onRoutePress={shouldRenderRoutes ? handleProviderTileRoutePress : undefined}
             />
           ))}
 
