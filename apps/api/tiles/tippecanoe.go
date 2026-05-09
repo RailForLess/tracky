@@ -7,8 +7,9 @@ import (
 	"os/exec"
 )
 
-// GenerateTiles shells out to tippecanoe to convert a GeoJSON file into PMTiles.
-func GenerateTiles(ctx context.Context, geojsonPath, outputPath string) error {
+// GenerateTiles shells out to tippecanoe to convert route and stop GeoJSON
+// files into one PMTiles archive with separate source-layers.
+func GenerateTiles(ctx context.Context, routesGeoJSONPath, stopsGeoJSONPath, outputPath string) error {
 	if _, err := exec.LookPath("tippecanoe"); err != nil {
 		return fmt.Errorf("tippecanoe not found on PATH; please install tippecanoe (for example via your package manager, or on macOS with 'brew install tippecanoe') and ensure it is available on PATH")
 	}
@@ -19,8 +20,8 @@ func GenerateTiles(ctx context.Context, geojsonPath, outputPath string) error {
 		"-Z2", "-z12",
 		"--drop-densest-as-needed",
 		"--extend-zooms-if-still-dropping",
-		"-l", "transit_routes",
-		geojsonPath,
+		"-L", "transit_routes:" + routesGeoJSONPath,
+		"-L", "transit_stops:" + stopsGeoJSONPath,
 	}
 
 	cmd := exec.CommandContext(ctx, "tippecanoe", args...)

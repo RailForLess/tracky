@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/RailForLess/tracky/api/spec"
 )
@@ -38,14 +39,77 @@ type multiLineStringGeometry struct {
 	Coordinates [][][2]float64 `json:"coordinates"`
 }
 
-// BuildGeoJSON takes shapes, trips, and routes from all providers and
-// produces a GeoJSON FeatureCollection. Shapes are joined to routes
-// via trips to pick up color and name properties.
-func BuildGeoJSON(
+// pointGeometry is a GeoJSON Point geometry.
+type pointGeometry struct {
+	Type        string     `json:"type"`
+	Coordinates [2]float64 `json:"coordinates"`
+}
+
+// BuildRouteGeoJSON builds only route geometry features.
+func BuildRouteGeoJSON(
 	shapes []spec.ShapePoint,
 	trips []spec.Trip,
 	routes []spec.Route,
 ) ([]byte, error) {
+	features, err := buildRouteFeatures(shapes, trips, routes)
+	if err != nil {
+		return nil, err
+	}
+
+	fc := FeatureCollection{
+		Type:     "FeatureCollection",
+		Features: features,
+	}
+	return json.Marshal(fc)
+}
+
+// BuildStopGeoJSON builds only stop point features.
+func BuildStopGeoJSON(stops []spec.Stop) ([]byte, error) {
+	features, err := buildStopFeatures(stops)
+	if err != nil {
+		return nil, err
+	}
+
+	fc := FeatureCollection{
+		Type:     "FeatureCollection",
+		Features: features,
+	}
+	return json.Marshal(fc)
+}
+
+// BuildGeoJSON builds both route and stop features in one collection.
+// This is primarily useful for local debug output.
+func BuildGeoJSON(
+	shapes []spec.ShapePoint,
+	trips []spec.Trip,
+	routes []spec.Route,
+	stops []spec.Stop,
+) ([]byte, error) {
+	routeFeatures, err := buildRouteFeatures(shapes, trips, routes)
+	if err != nil {
+		return nil, err
+	}
+	stopFeatures, err := buildStopFeatures(stops)
+	if err != nil {
+		return nil, err
+	}
+
+	features := make([]Feature, 0, len(routeFeatures)+len(stopFeatures))
+	features = append(features, routeFeatures...)
+	features = append(features, stopFeatures...)
+
+	fc := FeatureCollection{
+		Type:     "FeatureCollection",
+		Features: features,
+	}
+	return json.Marshal(fc)
+}
+
+func buildRouteFeatures(
+	shapes []spec.ShapePoint,
+	trips []spec.Trip,
+	routes []spec.Route,
+) ([]Feature, error) {
 	// 1. Group shape points by composite key (providerID:shapeID),
 	//    then sort each group by sequence.
 	type shapeKey struct {
@@ -172,11 +236,39 @@ func BuildGeoJSON(
 	if orphaned > 0 {
 		log.Printf("tiles: skipped %d orphaned shapes (no matching trip/route)", orphaned)
 	}
-	log.Printf("tiles: built %d GeoJSON features from %d shape groups", len(features), len(grouped))
+	log.Printf("tiles: built %d route features from %d shape groups", len(features), len(grouped))
+	return features, nil
+}
 
-	fc := FeatureCollection{
-		Type:     "FeatureCollection",
-		Features: features,
+func buildStopFeatures(stops []spec.Stop) ([]Feature, error) {
+	features := make([]Feature, 0, len(stops))
+	for _, s := range stops {
+		geom, err := json.Marshal(pointGeometry{
+			Type:        "Point",
+			Coordinates: [2]float64{s.Lon, s.Lat}, // GeoJSON is [lon, lat]
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		code := s.Code
+		if code == "" {
+			parts := strings.Split(s.StopID, ":")
+			code = parts[len(parts)-1]
+		}
+
+		features = append(features, Feature{
+			Type: "Feature",
+			Properties: map[string]string{
+				"provider_id": s.ProviderID,
+				"stop_id":     s.StopID,
+				"code":        code,
+				"name":        s.Name,
+			},
+			Geometry: geom,
+		})
 	}
-	return json.Marshal(fc)
+
+	log.Printf("tiles: built %d stop features", len(features))
+	return features, nil
 }

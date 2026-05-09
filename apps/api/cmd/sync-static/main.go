@@ -17,6 +17,7 @@ import (
 	"github.com/RailForLess/tracky/api/providers"
 	"github.com/RailForLess/tracky/api/providers/amtrak"
 	"github.com/RailForLess/tracky/api/providers/brightline"
+	"github.com/RailForLess/tracky/api/providers/cta"
 	"github.com/RailForLess/tracky/api/providers/metra"
 	"github.com/RailForLess/tracky/api/providers/metrotransit"
 	"github.com/RailForLess/tracky/api/providers/trirail"
@@ -37,6 +38,7 @@ func main() {
 	registry := providers.NewRegistry()
 	registry.Register(amtrak.New())
 	registry.Register(brightline.New())
+	registry.Register(cta.New())
 	registry.Register(metra.New())
 	registry.Register(metrotransit.New())
 	registry.Register(trirail.New())
@@ -174,34 +176,45 @@ func buildTiles(ctx context.Context, providerID string, feed *providers.StaticFe
 		return
 	}
 
-	geojson, err := tiles.BuildGeoJSON(feed.Shapes, feed.Trips, feed.Routes)
+	routesGeoJSON, err := tiles.BuildRouteGeoJSON(feed.Shapes, feed.Trips, feed.Routes)
 	if err != nil {
-		log.Fatalf("%s: building GeoJSON: %v", providerID, err)
+		log.Fatalf("%s: building route GeoJSON: %v", providerID, err)
 	}
 
-	debugPath := filepath.Join(dir, providerID+".geojson")
-	if err := os.WriteFile(debugPath, geojson, 0644); err != nil {
-		log.Printf("warning: failed to write debug GeoJSON: %v", err)
-	} else {
-		log.Printf("wrote debug GeoJSON: %s (%.1f MB)", debugPath, float64(len(geojson))/(1024*1024))
-	}
-
-	tmpFile, err := os.CreateTemp("", fmt.Sprintf("tracky-%s-*.geojson", providerID))
+	stopsGeoJSON, err := tiles.BuildStopGeoJSON(feed.Stops)
 	if err != nil {
-		log.Fatalf("%s: creating temp file: %v", providerID, err)
+		log.Fatalf("%s: building stop GeoJSON: %v", providerID, err)
 	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
 
-	if _, err := tmpFile.Write(geojson); err != nil {
-		tmpFile.Close()
-		log.Fatalf("%s: writing GeoJSON: %v", providerID, err)
+	routesTmpFile, err := os.CreateTemp("", fmt.Sprintf("tracky-%s-routes-*.geojson", providerID))
+	if err != nil {
+		log.Fatalf("%s: creating routes temp file: %v", providerID, err)
 	}
-	tmpFile.Close()
+	routesTmpPath := routesTmpFile.Name()
+	defer os.Remove(routesTmpPath)
+
+	if _, err := routesTmpFile.Write(routesGeoJSON); err != nil {
+		routesTmpFile.Close()
+		log.Fatalf("%s: writing routes GeoJSON: %v", providerID, err)
+	}
+	routesTmpFile.Close()
+
+	stopsTmpFile, err := os.CreateTemp("", fmt.Sprintf("tracky-%s-stops-*.geojson", providerID))
+	if err != nil {
+		log.Fatalf("%s: creating stops temp file: %v", providerID, err)
+	}
+	stopsTmpPath := stopsTmpFile.Name()
+	defer os.Remove(stopsTmpPath)
+
+	if _, err := stopsTmpFile.Write(stopsGeoJSON); err != nil {
+		stopsTmpFile.Close()
+		log.Fatalf("%s: writing stops GeoJSON: %v", providerID, err)
+	}
+	stopsTmpFile.Close()
 
 	output := filepath.Join(dir, providerID+".pmtiles")
 	log.Printf("running tippecanoe → %s", output)
-	if err := tiles.GenerateTiles(ctx, tmpPath, output); err != nil {
+	if err := tiles.GenerateTiles(ctx, routesTmpPath, stopsTmpPath, output); err != nil {
 		log.Fatalf("%s: tippecanoe: %v", providerID, err)
 	}
 

@@ -188,6 +188,41 @@
               "line-cap": "round",
               "line-join": "round"
             }
+          },
+          {
+            id: "transit-stops",
+            type: "circle",
+            source: "transit",
+            "source-layer": "transit_stops",
+            minzoom: 5,
+            paint: {
+              "circle-color": "#3fa7ff",
+              "circle-stroke-color": "#0f172a",
+              "circle-stroke-width": 1.25,
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 2, 10, 4, 14, 6],
+              "circle-opacity": 0.95
+            }
+          },
+          {
+            id: "transit-stops-label",
+            type: "symbol",
+            source: "transit",
+            "source-layer": "transit_stops",
+            minzoom: 9,
+            layout: {
+              "text-field": ["coalesce", ["get", "name"], ["get", "code"]],
+              "text-size": 11,
+              "text-offset": [0, 1],
+              "text-anchor": "top",
+              "text-allow-overlap": false,
+              "text-optional": true,
+              "text-max-width": 8
+            },
+            paint: {
+              "text-color": "#d1d5db",
+              "text-halo-color": "#0b1020",
+              "text-halo-width": 1.2
+            }
           }
         ]
       },
@@ -364,10 +399,35 @@
         .addTo(map);
     });
 
+    // Click interaction: show stop info popup.
+    map.on("click", "transit-stops", (e) => {
+      const props = e.features[0].properties;
+      const name = props.name || "Unknown stop";
+      const code = props.code || "";
+      const stopID = props.stop_id || "";
+
+      new maplibregl.Popup({ offset: 10 })
+        .setLngLat(e.lngLat)
+        .setHTML(`
+          <div class="route-name">${name}</div>
+          <div class="route-detail">
+            ${props.provider_id || "unknown"}${code ? ` &middot; ${code}` : ""}${stopID ? ` &middot; ${stopID}` : ""}
+          </div>
+        `)
+        .addTo(map);
+    });
+
     map.on("mouseenter", "transit-routes", () => {
       map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", "transit-routes", () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    map.on("mouseenter", "transit-stops", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "transit-stops", () => {
       map.getCanvas().style.cursor = "";
     });
   </script>
