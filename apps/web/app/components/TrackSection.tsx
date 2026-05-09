@@ -7,6 +7,46 @@ import { Countdown } from "./Countdown";
 import { LiveMap } from "./LiveMap";
 import { DepartureBoard } from "./DepartureBoard";
 
+function WIcon({ kind, size = 20 }: { kind: "sun" | "psun" | "cloud"; size?: number }) {
+  const orange = "#FF6B35";
+  if (kind === "sun") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="3.6" fill={orange} opacity="0.9" />
+        <g stroke={orange} strokeWidth="1.6" strokeLinecap="round" opacity="0.7">
+          <line x1="12" y1="3" x2="12" y2="5.5" />
+          <line x1="12" y1="18.5" x2="12" y2="21" />
+          <line x1="3" y1="12" x2="5.5" y2="12" />
+          <line x1="18.5" y1="12" x2="21" y2="12" />
+          <line x1="5.6" y1="5.6" x2="7.4" y2="7.4" />
+          <line x1="16.6" y1="16.6" x2="18.4" y2="18.4" />
+          <line x1="5.6" y1="18.4" x2="7.4" y2="16.6" />
+          <line x1="16.6" y1="7.4" x2="18.4" y2="5.6" />
+        </g>
+      </svg>
+    );
+  }
+  if (kind === "psun") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="8.5" cy="8" r="3" fill={orange} opacity="0.9" />
+        <g stroke={orange} strokeWidth="1.4" strokeLinecap="round" opacity="0.65">
+          <line x1="8.5" y1="1.8" x2="8.5" y2="3.4" />
+          <line x1="2" y1="8" x2="3.6" y2="8" />
+          <line x1="3.7" y1="3.2" x2="4.9" y2="4.4" />
+          <line x1="13.3" y1="3.2" x2="12.1" y2="4.4" />
+        </g>
+        <path d="M17.6 21c1.88 0 3.4-1.52 3.4-3.4 0-1.78-1.37-3.24-3.13-3.39-.46-2.13-2.34-3.73-4.6-3.73-2.6 0-4.7 2.1-4.7 4.7 0 .22.02.44.05.66C7.2 16.05 6.2 17.2 6.2 18.6 6.2 19.93 7.27 21 8.6 21h9z" fill="#374151" opacity="0.55" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M17.6 19.5c1.88 0 3.4-1.52 3.4-3.4 0-1.78-1.37-3.24-3.13-3.39-.46-2.13-2.34-3.73-4.6-3.73-2.6 0-4.7 2.1-4.7 4.7 0 .22.02.44.05.66C7.2 14.55 6.2 15.7 6.2 17.1c0 1.33 1.07 2.4 2.4 2.4h9z" fill="#6B7280" opacity="0.6" />
+    </svg>
+  );
+}
+
 export function TrackSection({ trackRef }: { trackRef: RefObject<HTMLElement | null> }) {
   return (
     <section ref={trackRef} className="relative pt-16 pb-0">
@@ -53,29 +93,29 @@ export function TrackSection({ trackRef }: { trackRef: RefObject<HTMLElement | n
             <div className="reveal app-card">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-lg font-bold text-white">Acela 2151</p>
-                  <p className="text-white/40 text-xs">Boston → Washington</p>
+                  <p className="text-lg font-bold text-black">Acela 2151</p>
+                  <p className="text-black/45 text-xs">Boston → Washington</p>
                 </div>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-[#10B981]/15 st-ok font-medium">On Time</span>
+                <span className="text-xs px-2.5 py-1 rounded-full bg-[#10B981]/12 st-ok font-medium">On Time</span>
               </div>
               <div className="flex items-center justify-between mb-5">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-white">BOS</p>
-                  <p className="text-white/30 text-xs mt-0.5">6:05 AM</p>
+                  <p className="text-2xl font-bold text-black">BOS</p>
+                  <p className="text-black/45 text-xs mt-0.5">6:05 AM</p>
                 </div>
                 <div className="flex-1 mx-5 flex items-center">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="px-2 text-white/20 text-xs">6h 45m</span>
-                  <div className="h-px flex-1 bg-white/10" />
+                  <div className="h-px flex-1 bg-black/10" />
+                  <span className="px-2 text-black/30 text-xs">6h 45m</span>
+                  <div className="h-px flex-1 bg-black/10" />
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-white">WAS</p>
-                  <p className="text-white/30 text-xs mt-0.5">12:50 PM</p>
+                  <p className="text-2xl font-bold text-black">WAS</p>
+                  <p className="text-black/45 text-xs mt-0.5">12:50 PM</p>
                 </div>
               </div>
-              <div className="app-card-inner text-center py-4">
-                <p className="text-white/30 text-[10px] uppercase tracking-widest mb-1">Departs in</p>
-                <p className="text-4xl font-mono font-bold tracking-wide text-white"><Countdown /></p>
+              <div className="text-center pt-2">
+                <p className="text-black/40 text-[10px] uppercase tracking-widest mb-1">Departs in</p>
+                <p className="text-4xl font-mono font-bold tracking-wide text-black"><Countdown /></p>
               </div>
             </div>
           </div>
@@ -133,11 +173,11 @@ export function TrackSection({ trackRef }: { trackRef: RefObject<HTMLElement | n
           <div className="max-w-sm w-full">
             {/* Speed / bearing pills above the card */}
             <div className="reveal flex gap-2 mb-2 justify-center">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#18181B] border border-[#2C2C30] text-[11px] font-mono text-white/60">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#fafafa] border border-[#e5e5e5] text-[11px] font-mono text-black/60">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 124 mph
               </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#18181B] border border-[#2C2C30] text-[11px] font-mono text-white/60">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#fafafa] border border-[#e5e5e5] text-[11px] font-mono text-black/60">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l6 3.5"/></svg>
                 SW
               </span>
@@ -156,21 +196,21 @@ export function TrackSection({ trackRef }: { trackRef: RefObject<HTMLElement | n
                   {/* Dot + line */}
                   <div className="flex flex-col items-center w-3 pt-2 pr-2">
                     <div className={`w-2.5 h-2.5 rounded-full border-[1.5px] ${
-                      r.s === "departed" ? "bg-white/20 border-white/20" :
-                      r.s === "current"  ? "bg-white border-white" :
-                      "bg-transparent border-white/15"
-                    }`} style={r.s === "current" ? { boxShadow: "0 0 8px rgba(255,255,255,0.3)" } : undefined} />
-                    {i < arr.length - 1 && <div className={`w-px flex-1 mt-0.5 ${r.s === "departed" ? "bg-white/10" : "bg-white/5"}`} />}
+                      r.s === "departed" ? "bg-black/20 border-black/20" :
+                      r.s === "current"  ? "bg-black border-black" :
+                      "bg-transparent border-black/15"
+                    }`} style={r.s === "current" ? { boxShadow: "0 0 8px rgba(0,0,0,0.25)" } : undefined} />
+                    {i < arr.length - 1 && <div className={`w-px flex-1 mt-0.5 ${r.s === "departed" ? "bg-black/15" : "bg-black/8"}`} />}
                   </div>
                   {/* Station name — left aligned */}
                   <span className={`text-[13px] py-1.5 ${
-                    r.s === "current"  ? "text-white font-medium" :
-                    r.s === "departed" ? "text-white/25" : "text-white/50"
+                    r.s === "current"  ? "text-black font-medium" :
+                    r.s === "departed" ? "text-black/30" : "text-black/55"
                   }`}>{r.stop}</span>
                   {/* Scheduled time — center */}
-                  <span className={`text-[12px] font-mono py-1.5 text-center px-2 ${r.delay ? "text-white/20 line-through decoration-white/30" : r.s === "current" ? "text-white" : "text-white/20"}`}>{r.sched}</span>
+                  <span className={`text-[12px] font-mono py-1.5 text-center px-2 ${r.delay ? "text-black/25 line-through decoration-black/30" : r.s === "current" ? "text-black" : "text-black/30"}`}>{r.sched}</span>
                   {/* Actual time */}
-                  <span className={`text-[12px] font-mono py-1.5 text-center min-w-[60px] ${r.s === "current" ? "text-white" : "text-white/50"}`}>{r.actual || ""}</span>
+                  <span className={`text-[12px] font-mono py-1.5 text-center min-w-[60px] ${r.s === "current" ? "text-black" : "text-black/55"}`}>{r.actual || ""}</span>
                   {/* Delay badge — right aligned */}
                   <span className="py-1.5 text-right min-w-[40px]">
                     {r.delay && <span className="text-[10px] font-mono font-semibold st-late px-1.5 py-0.5 rounded-full bg-red-500/10">{r.delay}</span>}
@@ -219,24 +259,52 @@ export function TrackSection({ trackRef }: { trackRef: RefObject<HTMLElement | n
       <PairRow
         left={
           <div className="max-w-sm w-full">
-            <div className="reveal app-card text-center py-8">
-              <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Washington, DC</p>
-              <div className="flex items-center justify-center gap-4 mb-4">
-                <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
-                  <circle cx="24" cy="24" r="10" fill="#FF6B35" opacity="0.15" />
-                  <circle cx="24" cy="24" r="8" stroke="#FF6B35" strokeWidth="1.5" opacity="0.6" />
-                  {[0,45,90,135,180,225,270,315].map((a) => {
-                    const r2 = (a * Math.PI) / 180;
-                    return <line key={a} x1={24+14*Math.cos(r2)} y1={24+14*Math.sin(r2)} x2={24+18*Math.cos(r2)} y2={24+18*Math.sin(r2)} stroke="#FF6B35" strokeWidth="1.5" strokeLinecap="round" opacity="0.35" />;
-                  })}
-                </svg>
-                <span className="text-5xl font-light text-white">72°</span>
+            <div className="reveal app-card">
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-1.5">
+                  <svg width="11" height="13" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s7-7.2 7-13a7 7 0 1 0-14 0c0 5.8 7 13 7 13z"/>
+                    <circle cx="12" cy="9" r="2.5" fill="#FF6B35"/>
+                  </svg>
+                  <p className="text-black/45 text-[10px] uppercase tracking-[0.18em] font-mono">Washington, DC</p>
+                </div>
+                <p className="text-black/35 text-[10px] uppercase tracking-[0.18em] font-mono">Partly cloudy</p>
               </div>
-              <p className="text-white/40 text-sm">Partly cloudy</p>
-              <div className="flex justify-center gap-6 mt-6 text-xs text-white/25">
-                {[["1 PM","74°"],["2 PM","73°"],["3 PM","70°"],["4 PM","67°"]].map(([t,d]) => (
-                  <div key={t}><p className="text-white/40 font-mono">{t}</p><p>{d}</p></div>
-                ))}
+
+              {/* Big temp + condition icon */}
+              <div className="flex items-end justify-between mb-1">
+                <div className="flex items-start leading-none">
+                  <span className="text-[64px] font-light text-black tabular-nums tracking-tight">72</span>
+                  <span className="text-2xl font-light text-black/45 mt-2">°</span>
+                </div>
+                <WIcon kind="psun" size={56} />
+              </div>
+              <div className="flex items-center gap-3 mb-5 text-[11px] font-mono text-black/45">
+                <span>H 76°</span>
+                <span className="text-black/20">·</span>
+                <span>L 64°</span>
+                <span className="text-black/20">·</span>
+                <span>Feels 70°</span>
+              </div>
+
+              {/* Hourly forecast */}
+              <div className="app-card-inner">
+                <div className="grid grid-cols-5">
+                  {[
+                    { t: "Now",  k: "sun"   as const, temp: "72°" },
+                    { t: "1 PM", k: "psun"  as const, temp: "74°" },
+                    { t: "2 PM", k: "psun"  as const, temp: "73°" },
+                    { t: "3 PM", k: "cloud" as const, temp: "70°" },
+                    { t: "4 PM", k: "cloud" as const, temp: "67°" },
+                  ].map((h, i) => (
+                    <div key={h.t} className={`flex flex-col items-center gap-1.5 py-1 ${i === 0 ? "text-black" : "text-black/70"}`}>
+                      <p className="text-[10px] font-mono text-black/45">{h.t}</p>
+                      <WIcon kind={h.k} size={20} />
+                      <p className="text-[12px] font-mono">{h.temp}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
