@@ -30,6 +30,7 @@ import {
 } from '../constants/map';
 import { type ColorPalette, withTextShadow } from '../constants/theme';
 import { useColors, useTheme } from '../context/ThemeContext';
+import { GTFSRefreshProvider, useGTFSRefresh } from '../context/GTFSRefreshContext';
 import { ModalProvider, useModalActions, useModalState } from '../context/ModalContext';
 import { RealtimeProvider } from '../context/RealtimeContext';
 import { TrainProvider, useTrainContext } from '../context/TrainContext';
@@ -139,6 +140,7 @@ function MapScreenInner() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const cameraRef = useRef<CameraRef>(null);
   const modalContentRef = useRef<ModalContentHandle>(null);
+  const { triggerRefresh, isLoadingCache } = useGTFSRefresh();
 
   // Split modal context — actions (stable) vs state (reactive)
   const {
@@ -918,10 +920,18 @@ function MapScreenInner() {
       >
         {showSettingsContent && (
           <ErrorBoundary onDismiss={() => goBack()}>
-            <SettingsModal onClose={() => goBack()} onRefreshGTFS={() => {}} />
+            <SettingsModal
+              onClose={() => goBack()}
+              onRefreshGTFS={() => {
+                triggerRefresh();
+              }}
+            />
           </ErrorBoundary>
         )}
       </SlideUpModal>
+
+      {/* Full-page loading overlay while local GTFS cache loads (fallback path) */}
+      <LoadingOverlay visible={isLoadingCache} />
     </View>
   );
 }
@@ -931,11 +941,13 @@ export default function MapScreen() {
     <UnitsProvider>
       <RealtimeProvider>
         <TrainProvider>
-          <ModalProvider>
-            <ErrorBoundary>
-              <MapScreenInner />
-            </ErrorBoundary>
-          </ModalProvider>
+          <GTFSRefreshProvider>
+            <ModalProvider>
+              <ErrorBoundary>
+                <MapScreenInner />
+              </ErrorBoundary>
+            </ModalProvider>
+          </GTFSRefreshProvider>
         </TrainProvider>
       </RealtimeProvider>
     </UnitsProvider>

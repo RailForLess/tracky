@@ -4,7 +4,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert } from 'react-native';
 import { ensureFreshGTFS, isCacheStale, loadCachedGTFS, loadDeferredShapes } from '../services/gtfs-sync';
 import { LocationSuggestionsService } from '../services/location-suggestions';
-import { gtfsParser } from '../utils/gtfs-parser';
 import { logger } from '../utils/logger';
 
 interface GTFSRefreshState {
@@ -67,7 +66,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
       setRefreshStep('Refresh complete');
       setRefreshFailed(false);
       logger.info(`[GTFS] Refresh complete (usedCache=${result.usedCache})`);
-      LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
+      LocationSuggestionsService.initialize().catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
       onRefreshCompleteRef.current?.();
       // Brief display of completion then clear
       setTimeout(() => {
@@ -113,7 +112,7 @@ export const GTFSRefreshProvider: React.FC<{ children: React.ReactNode; onRefres
           loadDeferredShapes().finally(() => setIsStreamingData(false));
 
           // Pre-compute location-based suggestions in background
-          LocationSuggestionsService.initialize(gtfsParser).catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
+          LocationSuggestionsService.initialize().catch(e => logger.warn('LocationSuggestionsService.initialize failed', e));
 
           // Check staleness in background
           const stale = await isCacheStale();
