@@ -5,9 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  expo-widgets@55.0.4:
-    hash: 919eee81369cbc6e5054e203ff6e8892a0c5e504fd1106481f9af102927d792f
-    path: patches/expo-widgets@55.0.4.patch
+  expo-widgets@55.0.4: 919eee81369cbc6e5054e203ff6e8892a0c5e504fd1106481f9af102927d792f
 
 importers:
 
@@ -145,6 +143,9 @@ importers:
       '@types/react':
         specifier: ~19.2.10
         version: 19.2.14
+      '@types/react-native-vector-icons':
+        specifier: ^6.4.18
+        version: 6.4.18
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
@@ -2108,6 +2109,12 @@ packages:
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
       '@types/react': ^19.2.0
+
+  '@types/react-native-vector-icons@6.4.18':
+    resolution: {integrity: sha512-YGlNWb+k5laTBHd7+uZowB9DpIK3SXUneZqAiKQaj1jnJCZM0x71GDim5JCTMi4IFkhc9m8H/Gm28T5BjyivUw==}
+
+  '@types/react-native@0.70.19':
+    resolution: {integrity: sha512-c6WbyCgWTBgKKMESj/8b4w+zWcZSsCforson7UdXtXMecG3MxCinYi6ihhrHVPyUrVzORsvEzK8zg32z4pK6Sg==}
 
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
@@ -8974,6 +8981,15 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/react-dom@19.2.3(@types/react@19.2.14)':
+    dependencies:
+      '@types/react': 19.2.14
+
+  '@types/react-native-vector-icons@6.4.18':
+    dependencies:
+      '@types/react': 19.2.14
+      '@types/react-native': 0.70.19
+
+  '@types/react-native@0.70.19':
     dependencies:
       '@types/react': 19.2.14
 

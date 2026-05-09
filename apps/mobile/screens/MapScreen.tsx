@@ -688,7 +688,7 @@ function MapScreenInner() {
         lat: payload.lat,
         lon: payload.lon,
         isCluster: false,
-        stations: [{ id: payload.stopCode, name: payload.name, lat: payload.lat, lon: payload.lon }],
+        stations: [{ id: payload.stopId, name: payload.name, lat: payload.lat, lon: payload.lon }],
       });
     },
     [handleStationPress],

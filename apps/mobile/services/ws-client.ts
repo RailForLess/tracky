@@ -125,10 +125,18 @@ class WSClient {
   private ensureConnected(): void {
     if (this.state === 'connecting' || this.state === 'open') return;
     this.intentionallyClosed = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.connect();
   }
 
   private connect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.state = 'connecting';
     try {
       this.ws = new WebSocket(config.wsUrl);

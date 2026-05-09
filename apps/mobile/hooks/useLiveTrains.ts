@@ -51,11 +51,22 @@ export function useLiveTrains(_intervalMs: number = 15000, enabled: boolean = tr
     return out;
   }, [positions, enabled]);
 
+  const lastUpdated = useMemo(() => {
+    if (liveTrains.length === 0) return null;
+    let maxTimestamp: number | null = null;
+    for (const train of liveTrains) {
+      if (train.timestamp != null && (maxTimestamp === null || train.timestamp > maxTimestamp)) {
+        maxTimestamp = train.timestamp;
+      }
+    }
+    return maxTimestamp;
+  }, [liveTrains]);
+
   return {
     liveTrains,
     loading: liveTrains.length === 0,
     error: null as Error | null,
-    lastUpdated: liveTrains.length > 0 ? Date.now() : null,
+    lastUpdated,
     refresh: () => Promise.resolve(),
     trainCount: liveTrains.length,
   };

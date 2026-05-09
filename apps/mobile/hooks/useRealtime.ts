@@ -46,21 +46,28 @@ export function useRealtime(
     const current = trainsRef.current;
     if (current.length === 0) return;
     let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    (async () => {
-      const updated = await Promise.all(current.map(t => TrainAPIService.refreshRealtimeData(t)));
-      if (cancelled) return;
-      const anyChanged = updated.some((t, i) => hasRealtimeChanged(t, current[i]));
-      if (anyChanged) {
-        setTrainsRef.current(updated);
-      }
-      TrainActivityManager.onRealtimeUpdate(current, updated).catch(e =>
-        logger.warn('TrainActivityManager.onRealtimeUpdate failed', e),
-      );
-    })();
+    // Debounce rapid position updates
+    timeoutId = setTimeout(() => {
+      (async () => {
+        const updated = await Promise.all(current.map(t => TrainAPIService.refreshRealtimeData(t)));
+        if (cancelled) return;
+        // Stale-write guard: verify snapshot still matches
+        if (trainsRef.current !== current) return;
+        const anyChanged = updated.some((t, i) => hasRealtimeChanged(t, current[i]));
+        if (anyChanged) {
+          setTrainsRef.current(updated);
+        }
+        TrainActivityManager.onRealtimeUpdate(current, updated).catch(e =>
+          logger.warn('TrainActivityManager.onRealtimeUpdate failed', e),
+        );
+      })();
+    }, 300);
 
     return () => {
       cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [positions]);
 }

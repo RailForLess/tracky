@@ -50,18 +50,27 @@ export function RealtimeProvider({ providers, children }: RealtimeProviderProps)
 
   useEffect(() => {
     const ids = [...providerIds];
+    // Build initial state with only current provider ids
+    const next: PositionsByProvider = {};
+    for (const id of ids) {
+      next[id] = latestRef.current[id] || [];
+    }
+    latestRef.current = next;
+    setPositionsByProvider(next);
+
     const onUpdate = (msg: RealtimeUpdate) => {
       // Warm the route cache so display sites can resolve routeId → name
       // synchronously without a flicker.
       for (const p of msg.positions) {
         if (p.routeId) prefetchRoute(p.routeId);
       }
-      const next: PositionsByProvider = {
-        ...latestRef.current,
-        [msg.provider]: msg.positions,
-      };
-      latestRef.current = next;
-      setPositionsByProvider(next);
+      // Only keep current provider ids when merging updates
+      const updated: PositionsByProvider = {};
+      for (const id of ids) {
+        updated[id] = id === msg.provider ? msg.positions : (latestRef.current[id] || []);
+      }
+      latestRef.current = updated;
+      setPositionsByProvider(updated);
     };
     const unsubscribe = wsClient.subscribe(ids, onUpdate);
     return unsubscribe;

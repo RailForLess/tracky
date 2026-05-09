@@ -189,6 +189,7 @@ async function buildTrainFromTrip(
   const route = getCachedRoute(trip.routeId);
   const routeName = route?.longName || route?.shortName || '';
 
+  const provider = trip.providerId || DEFAULT_PROVIDER;
   const departFormatted = convertGtfsTimeForStop(firstStop.departure_time, firstStop.stop_id);
   const arriveFormatted = convertGtfsTimeForStop(lastStop.arrival_time, lastStop.stop_id);
 
@@ -198,8 +199,8 @@ async function buildTrainFromTrip(
     trainNumber: trip.shortName || extractTrainNumber(trip.tripId) || '',
     from: firstStop.stop_name,
     to: lastStop.stop_name,
-    fromCode: firstStop.stop_id,
-    toCode: lastStop.stop_id,
+    fromCode: `${provider}:${firstStop.stop_id}`,
+    toCode: `${provider}:${lastStop.stop_id}`,
     departTime: departFormatted.time,
     arriveTime: arriveFormatted.time,
     departDayOffset: departFormatted.dayOffset,
@@ -214,7 +215,7 @@ async function buildTrainFromTrip(
       return {
         time: formatted.time,
         name: stop.stop_name,
-        code: stop.stop_id,
+        code: `${provider}:${stop.stop_id}`,
       };
     }),
   };
@@ -243,6 +244,7 @@ function buildMinimalTrainFromDeparture(
   const route = getCachedRoute(d.routeId);
   const routeName = route?.longName || route?.shortName || '';
 
+  const provider = d.providerId || DEFAULT_PROVIDER;
   const userTime =
     d.departureTime != null
       ? convertGtfsTimeForStop(d.departureTime, userStopCode)
@@ -256,7 +258,7 @@ function buildMinimalTrainFromDeparture(
     trainNumber: d.shortName || extractTrainNumber(d.tripId) || '',
     from: '',
     to: d.headsign || '',
-    fromCode: userStopCode,
+    fromCode: `${provider}:${userStopCode}`,
     toCode: '',
     departTime: userTime.time,
     arriveTime: userTime.time,
@@ -268,7 +270,7 @@ function buildMinimalTrainFromDeparture(
     routeName,
     tripId: d.tripId,
     intermediateStops: [
-      { time: userTime.time, name: userStopCode, code: userStopCode },
+      { time: userTime.time, name: userStopCode, code: `${provider}:${userStopCode}` },
     ],
   };
 

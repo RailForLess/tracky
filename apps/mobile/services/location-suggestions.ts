@@ -29,7 +29,7 @@ let initialized = false;
 
 function adaptStop(s: ApiStop): Stop {
   return {
-    stop_id: s.code,
+    stop_id: s.providerId ? `${s.providerId}:${s.code}` : s.code,
     stop_name: s.name,
     stop_lat: s.lat,
     stop_lon: s.lon,
@@ -82,7 +82,7 @@ async function initialize(): Promise<void> {
       accuracy: Location.Accuracy.Balanced,
     });
     const { latitude, longitude } = location.coords;
-    logger.info(`[LocationSuggestions] Location: ${latitude.toFixed(3)}, ${longitude.toFixed(3)}`);
+    logger.info('[LocationSuggestions] Location received');
 
     let nearby: ApiStop[] = [];
     try {
