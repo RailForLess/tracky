@@ -208,15 +208,16 @@ body {
 /* ===== APP-STYLE DARK CARDS ===== */
 
 .app-card {
-  background: #18181B;
-  border: 1px solid #2C2C30;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
   border-radius: 20px;
   padding: 20px;
-  color: #fff;
+  color: #18181B;
 }
 
 .app-card-inner {
-  background: #1D1D1F;
+  background: #ffffff;
+  border: 1px solid #ececec;
   border-radius: 12px;
   padding: 12px;
 }
@@ -254,7 +255,7 @@ body {
   padding: 7px 10px;
   border-radius: 8px;
 }
-.board-row-alt { background: rgba(255,255,255,0.04); }
+.board-row-alt { background: rgba(0,0,0,0.04); }
 .board-cell {
   font-family: var(--font-mono), monospace;
   font-size: 13px;

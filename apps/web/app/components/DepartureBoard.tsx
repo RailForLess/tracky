@@ -43,27 +43,27 @@ export function DepartureBoard() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" style={{ animation: "pulse-soft 2s infinite" }} />
-          <span className="text-[11px] font-mono text-white/30 uppercase tracking-wider">Departures — BOS</span>
+          <span className="text-[11px] font-mono text-black/45 uppercase tracking-wider">Departures — BOS</span>
         </div>
-        <span className="text-[11px] text-white/20 font-mono">Today</span>
+        <span className="text-[11px] text-black/30 font-mono">Today</span>
       </div>
       <div className="relative">
-        {trains.map((t, i) => (
+        {trains.map((t) => (
           <div
             key={t.n}
             className="board-row"
             style={{
-              ...( t.hl ? { background: "rgba(255,255,255,0.04)", border: "1px solid #3A3A3F", borderRadius: 8 } : undefined ),
+              ...( t.hl ? { background: "rgba(0,0,0,0.04)", border: "1px solid #d8d8d8", borderRadius: 8 } : undefined ),
               transition: "transform 0.5s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease",
               ...(phase === "flash" && (t.n === "85" || t.n === "95") ? { opacity: 0.4 } : {}),
             }}
           >
-            <span className="board-cell text-white/70 font-semibold text-center">{t.n}</span>
-            <span className="text-[13px] text-white/40 truncate">{t.r}</span>
-            <span className={`board-cell text-right ${phase !== "initial" && t.n === "85" ? "text-white/30" : "text-white/50"}`}>
+            <span className="board-cell text-black/75 font-semibold text-center">{t.n}</span>
+            <span className="text-[13px] text-black/50 truncate">{t.r}</span>
+            <span className={`board-cell text-right ${phase !== "initial" && t.n === "85" ? "text-black/40" : "text-black/55"}`}>
               {phase !== "initial" && t.n === "85" ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="line-through decoration-white/30 text-white/20">7:00</span>
+                  <span className="line-through decoration-black/30 text-black/30">7:00</span>
                   <span>7:25 AM</span>
                 </span>
               ) : t.t}
