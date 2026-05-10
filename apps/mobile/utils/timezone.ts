@@ -1,5 +1,6 @@
 import tzlookup from '@photostructure/tz-lookup';
 import type { Stop } from '../types/train';
+import { lookupAgencyTimezone, lookupStop } from './api-stop-cache';
 import { formatTimeWithDayOffset, type FormattedTime } from './time-formatting';
 import { logger } from './logger';
 
@@ -149,16 +150,14 @@ export function convertGtfsTimeToLocal(
 
 /**
  * Convenience: convert a GTFS time to local timezone for a given stop code.
- * Looks up the stop via gtfsParser and derives its timezone.
- * Falls back to formatTimeWithDayOffset if stop not found.
+ * Falls back to formatTimeWithDayOffset if the stop isn't yet in the API
+ * cache (a fetch is fired in the background by lookupStop).
  */
 export function convertGtfsTimeForStop(gtfsTime24: string, stopCode: string): FormattedTime {
-  // Lazy import to avoid circular dependency
-  const { gtfsParser } = require('./gtfs-parser');
-  const stop = gtfsParser.getStop(stopCode);
+  const stop = lookupStop(stopCode);
   if (!stop) {
     return formatTimeWithDayOffset(gtfsTime24);
   }
   const stopTz = getTimezoneForStop(stop);
-  return convertGtfsTimeToLocal(gtfsTime24, gtfsParser.agencyTimezone, stopTz);
+  return convertGtfsTimeToLocal(gtfsTime24, lookupAgencyTimezone(), stopTz);
 }

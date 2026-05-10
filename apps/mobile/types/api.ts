@@ -149,3 +149,11 @@ export interface RealtimeUpdate {
   provider: string;
   positions: ApiTrainPosition[];
 }
+
+export interface ApiActiveTrain {
+  provider: string;
+  tripId: string;
+  runDate: string;
+  trainNumber: string;
+  routeId: string;
+}

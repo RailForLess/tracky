@@ -128,7 +128,7 @@ const config: ExpoConfig = {
     },
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "https://api.trackyapp.net",
     wsUrl: process.env.EXPO_PUBLIC_WS_URL ?? "wss://api.trackyapp.net/ws/realtime",
-    tilesUrl: process.env.EXPO_PUBLIC_TILES_URL ?? "https://tiles.trytracky.com",
+    tilesUrl: process.env.EXPO_PUBLIC_TILES_URL ?? "https://tiles.trackyapp.net",
   },
   owner: "railforless",
 };
