@@ -17,6 +17,10 @@ type Emitter interface {
 type MockEmitter struct{}
 
 func (MockEmitter) Emit(_ context.Context, snap *Snapshot) error {
+	if snap == nil {
+		log.Printf("[emit] nil snapshot")
+		return nil
+	}
 	positions, stopTimes := 0, 0
 	if snap.Feed != nil {
 		positions = len(snap.Feed.Positions)

@@ -26,20 +26,21 @@ func (d *DB) UpsertTrainStopTimes(ctx context.Context, sts []spec.TrainStopTime)
 		INSERT INTO train_stop_times (
 		    provider, trip_id, run_date, stop_sequence, stop_code,
 		    estimated_arr, estimated_dep, actual_arr, actual_dep, last_updated
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (provider, trip_id, run_date, stop_sequence) DO UPDATE SET
 		    stop_code     = EXCLUDED.stop_code,
 		    estimated_arr = EXCLUDED.estimated_arr,
 		    estimated_dep = EXCLUDED.estimated_dep,
 		    actual_arr    = COALESCE(EXCLUDED.actual_arr, train_stop_times.actual_arr),
 		    actual_dep    = COALESCE(EXCLUDED.actual_dep, train_stop_times.actual_dep),
-		    last_updated  = now()`
+		    last_updated  = EXCLUDED.last_updated
+		WHERE EXCLUDED.last_updated >= train_stop_times.last_updated`
 
 	batch := &pgx.Batch{}
 	for _, s := range sts {
 		batch.Queue(q,
 			s.Provider, s.TripID, s.RunDate, s.StopSequence, s.StopCode,
-			s.EstimatedArr, s.EstimatedDep, s.ActualArr, s.ActualDep,
+			s.EstimatedArr, s.EstimatedDep, s.ActualArr, s.ActualDep, s.LastUpdated,
 		)
 	}
 	br := d.pool.SendBatch(ctx, batch)

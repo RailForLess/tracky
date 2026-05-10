@@ -46,6 +46,13 @@ func FetchAndParseStatic(
 
 	files := indexZip(zr)
 
+	for _, name := range []string{"routes.txt", "stops.txt", "trips.txt", "stop_times.txt"} {
+		if _, ok := files[name]; !ok {
+			return nil, nil, nil, nil, nil, nil, nil, nil,
+				fmt.Errorf("gtfs [%s]: missing required %s", providerID, name)
+		}
+	}
+
 	if f, ok := files["agency.txt"]; ok {
 		agencies, err = parseAgency(f, providerID)
 		if err != nil {
@@ -203,6 +210,13 @@ func ParseStaticBytes(
 	}
 
 	files := indexZip(zr)
+
+	for _, name := range []string{"routes.txt", "stops.txt", "trips.txt", "stop_times.txt"} {
+		if _, ok := files[name]; !ok {
+			return nil, nil, nil, nil, nil, nil, nil, nil,
+				fmt.Errorf("gtfs [%s]: missing required %s", providerID, name)
+		}
+	}
 
 	if f, ok := files["agency.txt"]; ok {
 		agencies, err = parseAgency(f, providerID)
@@ -400,8 +414,14 @@ func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 	}
 	out := make([]spec.Stop, 0, len(rows))
 	for _, r := range rows {
-		lat, _ := strconv.ParseFloat(r["stop_lat"], 64)
-		lon, _ := strconv.ParseFloat(r["stop_lon"], 64)
+		lat, err := strconv.ParseFloat(r["stop_lat"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: stops.txt: invalid stop_lat %q for stop_id %q: %w", providerID, r["stop_lat"], r["stop_id"], err)
+		}
+		lon, err := strconv.ParseFloat(r["stop_lon"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: stops.txt: invalid stop_lon %q for stop_id %q: %w", providerID, r["stop_lon"], r["stop_id"], err)
+		}
 		// Fall back to stop_id when stop_code is empty: Amtrak (and others)
 		// encode the public station code in stop_id and leave stop_code blank.
 		code := r["stop_code"]
@@ -450,7 +470,10 @@ func parseStopTimes(f *zip.File, providerID string) ([]spec.ScheduledStopTime, e
 	}
 	out := make([]spec.ScheduledStopTime, 0, len(rows))
 	for _, r := range rows {
-		seq, _ := strconv.Atoi(r["stop_sequence"])
+		seq, err := strconv.Atoi(r["stop_sequence"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: stop_times.txt: invalid stop_sequence %q for trip_id %q: %w", providerID, r["stop_sequence"], r["trip_id"], err)
+		}
 		out = append(out, spec.ScheduledStopTime{
 			ProviderID:    providerID,
 			TripID:        providerID + ":" + r["trip_id"],
@@ -473,8 +496,14 @@ func parseCalendar(f *zip.File, providerID string) ([]spec.ServiceCalendar, erro
 	}
 	out := make([]spec.ServiceCalendar, 0, len(rows))
 	for _, r := range rows {
-		start, _ := time.Parse("20060102", r["start_date"])
-		end, _ := time.Parse("20060102", r["end_date"])
+		start, err := time.Parse("20060102", r["start_date"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: calendar.txt: invalid start_date %q for service_id %q: %w", providerID, r["start_date"], r["service_id"], err)
+		}
+		end, err := time.Parse("20060102", r["end_date"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: calendar.txt: invalid end_date %q for service_id %q: %w", providerID, r["end_date"], r["service_id"], err)
+		}
 		out = append(out, spec.ServiceCalendar{
 			ProviderID: providerID,
 			ServiceID:  r["service_id"],
@@ -499,8 +528,14 @@ func parseCalendarDates(f *zip.File, providerID string) ([]spec.ServiceException
 	}
 	out := make([]spec.ServiceException, 0, len(rows))
 	for _, r := range rows {
-		date, _ := time.Parse("20060102", r["date"])
-		exType, _ := strconv.Atoi(r["exception_type"])
+		date, err := time.Parse("20060102", r["date"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: calendar_dates.txt: invalid date %q for service_id %q: %w", providerID, r["date"], r["service_id"], err)
+		}
+		exType, err := strconv.Atoi(r["exception_type"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: calendar_dates.txt: invalid exception_type %q for service_id %q: %w", providerID, r["exception_type"], r["service_id"], err)
+		}
 		out = append(out, spec.ServiceException{
 			ProviderID:    providerID,
 			ServiceID:     r["service_id"],
@@ -518,9 +553,18 @@ func parseShapes(f *zip.File, providerID string) ([]spec.ShapePoint, error) {
 	}
 	out := make([]spec.ShapePoint, 0, len(rows))
 	for _, r := range rows {
-		lat, _ := strconv.ParseFloat(r["shape_pt_lat"], 64)
-		lon, _ := strconv.ParseFloat(r["shape_pt_lon"], 64)
-		seq, _ := strconv.Atoi(r["shape_pt_sequence"])
+		lat, err := strconv.ParseFloat(r["shape_pt_lat"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: shapes.txt: invalid shape_pt_lat %q for shape_id %q: %w", providerID, r["shape_pt_lat"], r["shape_id"], err)
+		}
+		lon, err := strconv.ParseFloat(r["shape_pt_lon"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: shapes.txt: invalid shape_pt_lon %q for shape_id %q: %w", providerID, r["shape_pt_lon"], r["shape_id"], err)
+		}
+		seq, err := strconv.Atoi(r["shape_pt_sequence"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: shapes.txt: invalid shape_pt_sequence %q for shape_id %q: %w", providerID, r["shape_pt_sequence"], r["shape_id"], err)
+		}
 		sp := spec.ShapePoint{
 			ProviderID: providerID,
 			ShapeID:    r["shape_id"],

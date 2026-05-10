@@ -65,13 +65,23 @@ type TrainStopTime struct {
 }
 
 // IsPassed returns true if the train has already passed this stop.
+// Prefers the departure actual when present (origin/through stops) and
+// falls back to the arrival actual for terminal stops that have no departure.
 func (s *TrainStopTime) IsPassed() bool {
+	if s.ActualDep != nil {
+		return true
+	}
 	return s.ActualArr != nil
 }
 
 // IsLive returns true if this stop still has a pending estimate.
+// Prefers the departure estimate (origin/through stops) and falls back
+// to the arrival estimate for terminal stops that have no departure.
 func (s *TrainStopTime) IsLive() bool {
-	return s.ActualArr == nil && s.EstimatedArr != nil
+	if s.ActualDep != nil || s.ActualArr != nil {
+		return false
+	}
+	return s.EstimatedDep != nil || s.EstimatedArr != nil
 }
 
 // RunID returns a canonical string identifier for this specific train run.

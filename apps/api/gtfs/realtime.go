@@ -41,9 +41,15 @@ func FetchAndParsePositions(
 		}
 
 		if trip := vp.Trip; trip != nil {
+			runDate, err := parseStartDate(trip.GetStartDate())
+			if err != nil {
+				// Skip entities without a valid start_date rather than
+				// emitting a position with a zero RunDate.
+				continue
+			}
 			pos.TripID = providerID + ":" + trip.GetTripId()
 			pos.RouteID = providerID + ":" + trip.GetRouteId()
-			pos.RunDate = parseStartDate(trip.GetStartDate())
+			pos.RunDate = runDate
 		}
 
 		if vehicle := vp.Vehicle; vehicle != nil {
@@ -113,22 +119,31 @@ func FetchAndParseTripUpdates(
 			continue
 		}
 
-		tripID := ""
-		runDate := time.Time{}
-
-		if trip := tu.Trip; trip != nil {
-			tripID = providerID + ":" + trip.GetTripId()
-			runDate = parseStartDate(trip.GetStartDate())
+		trip := tu.Trip
+		if trip == nil {
+			continue
 		}
+		runDate, err := parseStartDate(trip.GetStartDate())
+		if err != nil {
+			// Skip entities without a valid start_date rather than
+			// emitting stop times with a zero RunDate.
+			continue
+		}
+		tripID := providerID + ":" + trip.GetTripId()
 
 		for _, stu := range tu.StopTimeUpdate {
 			st := spec.TrainStopTime{
-				Provider:     providerID,
-				TripID:       tripID,
-				RunDate:      runDate,
-				StopCode:     providerID + ":" + stu.GetStopId(),
-				StopSequence: int(stu.GetStopSequence()),
-				LastUpdated:  now,
+				Provider:    providerID,
+				TripID:      tripID,
+				RunDate:     runDate,
+				StopCode:    providerID + ":" + stu.GetStopId(),
+				LastUpdated: now,
+			}
+			// Only set StopSequence when explicitly provided by the feed;
+			// otherwise leave it zero so callers key by StopCode rather than
+			// collapsing all stop-id-only updates into stop_sequence=0.
+			if stu.StopSequence != nil {
+				st.StopSequence = int(stu.GetStopSequence())
 			}
 
 			if arr := stu.Arrival; arr != nil && arr.Time != nil {
@@ -183,7 +198,6 @@ func fetchBytes(ctx context.Context, url string, apiKey string) ([]byte, error) 
 }
 
 // parseStartDate parses a GTFS-RT start_date string (YYYYMMDD) into a time.Time.
-func parseStartDate(s string) time.Time {
-	t, _ := time.Parse("20060102", s)
-	return t
+func parseStartDate(s string) (time.Time, error) {
+	return time.Parse("20060102", s)
 }

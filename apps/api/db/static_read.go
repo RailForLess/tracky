@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -256,7 +257,7 @@ func (d *DB) GetRunStops(ctx context.Context, provider, tripID, runDate string) 
 		    resolve_gtfs_time(sst.departure_time, $3::date, tz.timezone),
 		    tst.estimated_arr, tst.estimated_dep,
 		    tst.actual_arr,    tst.actual_dep,
-		    COALESCE(tst.last_updated, now())
+		    tst.last_updated
 		FROM scheduled_stop_times sst
 		JOIN stops s ON s.stop_id = sst.stop_id
 		LEFT JOIN provider_tz tz ON TRUE
@@ -275,15 +276,19 @@ func (d *DB) GetRunStops(ctx context.Context, provider, tripID, runDate string) 
 	var out []spec.TrainStopTime
 	for rows.Next() {
 		var t spec.TrainStopTime
+		var lastUpdated *time.Time
 		if err := rows.Scan(
 			&t.Provider, &t.TripID, &t.RunDate,
 			&t.StopCode, &t.StopSequence,
 			&t.ScheduledArr, &t.ScheduledDep,
 			&t.EstimatedArr, &t.EstimatedDep,
 			&t.ActualArr, &t.ActualDep,
-			&t.LastUpdated,
+			&lastUpdated,
 		); err != nil {
 			return nil, err
+		}
+		if lastUpdated != nil {
+			t.LastUpdated = *lastUpdated
 		}
 		out = append(out, t)
 	}
@@ -593,12 +598,23 @@ func (d *DB) GetTrainService(ctx context.Context, providerID, trainNumber, from,
 		WITH matching AS (
 		    SELECT DISTINCT service_id FROM trips
 		    WHERE provider_id = $1 AND short_name = $2
+		),
+		dates AS (
+		    SELECT c.start_date AS d FROM service_calendars c
+		    JOIN matching m ON m.service_id = c.service_id
+		    WHERE c.provider_id = $1
+		    UNION ALL
+		    SELECT c.end_date AS d FROM service_calendars c
+		    JOIN matching m ON m.service_id = c.service_id
+		    WHERE c.provider_id = $1
+		    UNION ALL
+		    SELECT e.date AS d FROM service_exceptions e
+		    JOIN matching m ON m.service_id = e.service_id
+		    WHERE e.provider_id = $1
 		)
-		SELECT to_char(GREATEST(MIN(c.start_date), COALESCE($3::date, MIN(c.start_date))), 'YYYY-MM-DD'),
-		       to_char(LEAST(MAX(c.end_date),   COALESCE($4::date, MAX(c.end_date))),   'YYYY-MM-DD')
-		FROM service_calendars c
-		JOIN matching m ON m.service_id = c.service_id
-		WHERE c.provider_id = $1`, providerID, trainNumber, nullIfEmpty(from), nullIfEmpty(to))
+		SELECT to_char(GREATEST(MIN(d), COALESCE($3::date, MIN(d))), 'YYYY-MM-DD'),
+		       to_char(LEAST(MAX(d),   COALESCE($4::date, MAX(d))),   'YYYY-MM-DD')
+		FROM dates`, providerID, trainNumber, nullIfEmpty(from), nullIfEmpty(to))
 	var minD, maxD *string
 	if err := row.Scan(&minD, &maxD); err != nil {
 		return nil, err

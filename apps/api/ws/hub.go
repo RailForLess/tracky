@@ -60,11 +60,17 @@ type topicMsg struct {
 	payload []byte
 }
 
+type clientDelivery struct {
+	client  *Client
+	payload []byte
+}
+
 // Hub manages WebSocket clients and routes messages by topic (provider ID).
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]struct{}
 	publish    chan topicMsg
+	deliver    chan clientDelivery
 	register   chan *Client
 	unregister chan *Client
 
@@ -77,6 +83,7 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]struct{}),
 		publish:    make(chan topicMsg, 256),
+		deliver:    make(chan clientDelivery, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		snapshots:  make(map[string][]byte),
@@ -108,7 +115,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.snapshots[msg.topic] = msg.payload
 			h.snapshotMu.Unlock()
 
-			h.mu.RLock()
+			h.mu.Lock()
 			for c := range h.clients {
 				if !c.subscribedTo(msg.topic) {
 					continue
@@ -120,9 +127,30 @@ func (h *Hub) Run(ctx context.Context) {
 					delete(h.clients, c)
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
+
+		case d := <-h.deliver:
+			// Hub-owned send so c.send is only written by this goroutine,
+			// avoiding a race with the close in the unregister/publish paths.
+			h.mu.Lock()
+			if _, ok := h.clients[d.client]; ok {
+				select {
+				case d.client.send <- d.payload:
+				default:
+					close(d.client.send)
+					delete(h.clients, d.client)
+				}
+			}
+			h.mu.Unlock()
 		}
 	}
+}
+
+// DeliverSnapshot enqueues payload for delivery to a single client. The send
+// is performed by the hub goroutine so it is serialized with register,
+// unregister, and publish — preventing a send on a closed c.send channel.
+func (h *Hub) DeliverSnapshot(c *Client, payload []byte) {
+	h.deliver <- clientDelivery{client: c, payload: payload}
 }
 
 // Publish sends a message to all clients subscribed to the given topic.

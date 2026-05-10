@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -63,26 +64,52 @@ func (d *Drainer) Drain(ctx context.Context) int {
 	}
 	log.Printf("drainer: replaying %d backlogged snapshots", len(items))
 
-	outcomes := Replay(ctx, items, d.Processor)
+	// Group by provider prefix (backlog/{provider}/...) so a failing provider
+	// doesn't block replay for the others. Replay stops at the first
+	// processor error, but only within its own provider's queue.
+	byProvider := make(map[string][]Item)
+	order := make([]string, 0)
+	for _, it := range items {
+		prov := providerFromKey(it.Key)
+		if _, ok := byProvider[prov]; !ok {
+			order = append(order, prov)
+		}
+		byProvider[prov] = append(byProvider[prov], it)
+	}
 
 	processed := 0
-	for _, o := range outcomes {
-		switch {
-		case o.ParseErr != nil:
-			log.Printf("drainer: %s: corrupt JSON, discarding: %v", o.Key, o.ParseErr)
-			d.tryDelete(ctx, o.Key)
-		case o.ProcessErr != nil:
-			log.Printf("drainer: %s: %v (stopping tick; will retry next cycle)", o.Key, o.ProcessErr)
-			// don't delete
-		default:
-			d.tryDelete(ctx, o.Key)
-			processed++
+	for _, prov := range order {
+		provItems := byProvider[prov]
+		log.Printf("drainer: provider=%s replaying %d snapshots", prov, len(provItems))
+		outcomes := Replay(ctx, provItems, d.Processor)
+		for _, o := range outcomes {
+			switch {
+			case o.ParseErr != nil:
+				log.Printf("drainer: %s: corrupt JSON, discarding: %v", o.Key, o.ParseErr)
+				d.tryDelete(ctx, o.Key)
+			case o.ProcessErr != nil:
+				log.Printf("drainer: %s: %v (stopping provider %s; will retry next cycle)", o.Key, o.ProcessErr, prov)
+				// don't delete
+			default:
+				d.tryDelete(ctx, o.Key)
+				processed++
+			}
 		}
 	}
 	if processed > 0 {
 		log.Printf("drainer: drained %d snapshots", processed)
 	}
 	return processed
+}
+
+// providerFromKey extracts {provider} from a key shaped like
+// backlog/{provider}/{rest}. Returns "" when the key doesn't fit.
+func providerFromKey(key string) string {
+	rest := strings.TrimPrefix(key, backlogPrefix)
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i]
+	}
+	return ""
 }
 
 // fetchAll lists every backlog object and pulls its body into memory. The

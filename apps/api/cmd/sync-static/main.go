@@ -157,7 +157,9 @@ func main() {
 
 		// ── Tiles ───────────────────────────────────────────────────────
 		if !*skipTiles {
-			buildTiles(ctx, p.ID(), feed, *tilesDir, *upload)
+			if err := buildTiles(ctx, p.ID(), feed, *tilesDir, *upload); err != nil {
+				log.Printf("warning: %s tiles: %v", p.ID(), err)
+			}
 		}
 	}
 
@@ -170,62 +172,66 @@ func sha256Hex(data []byte) string {
 }
 
 // buildTiles generates a PMTiles file for a single provider and optionally uploads it.
-func buildTiles(ctx context.Context, providerID string, feed *providers.StaticFeed, dir string, doUpload bool) {
+func buildTiles(ctx context.Context, providerID string, feed *providers.StaticFeed, dir string, doUpload bool) error {
 	if len(feed.Shapes) == 0 {
 		log.Printf("skipping tiles for %s: no shapes", providerID)
-		return
+		return nil
 	}
 
 	routesGeoJSON, err := tiles.BuildRouteGeoJSON(feed.Shapes, feed.Trips, feed.Routes)
 	if err != nil {
-		log.Fatalf("%s: building route GeoJSON: %v", providerID, err)
+		return fmt.Errorf("%s: building route GeoJSON: %w", providerID, err)
 	}
 
 	stopsGeoJSON, err := tiles.BuildStopGeoJSON(feed.Stops)
 	if err != nil {
-		log.Fatalf("%s: building stop GeoJSON: %v", providerID, err)
+		return fmt.Errorf("%s: building stop GeoJSON: %w", providerID, err)
 	}
 
 	routesTmpFile, err := os.CreateTemp("", fmt.Sprintf("tracky-%s-routes-*.geojson", providerID))
 	if err != nil {
-		log.Fatalf("%s: creating routes temp file: %v", providerID, err)
+		return fmt.Errorf("%s: creating routes temp file: %w", providerID, err)
 	}
 	routesTmpPath := routesTmpFile.Name()
 	defer os.Remove(routesTmpPath)
 
 	if _, err := routesTmpFile.Write(routesGeoJSON); err != nil {
 		routesTmpFile.Close()
-		log.Fatalf("%s: writing routes GeoJSON: %v", providerID, err)
+		return fmt.Errorf("%s: writing routes GeoJSON: %w", providerID, err)
 	}
 	routesTmpFile.Close()
 
 	stopsTmpFile, err := os.CreateTemp("", fmt.Sprintf("tracky-%s-stops-*.geojson", providerID))
 	if err != nil {
-		log.Fatalf("%s: creating stops temp file: %v", providerID, err)
+		return fmt.Errorf("%s: creating stops temp file: %w", providerID, err)
 	}
 	stopsTmpPath := stopsTmpFile.Name()
 	defer os.Remove(stopsTmpPath)
 
 	if _, err := stopsTmpFile.Write(stopsGeoJSON); err != nil {
 		stopsTmpFile.Close()
-		log.Fatalf("%s: writing stops GeoJSON: %v", providerID, err)
+		return fmt.Errorf("%s: writing stops GeoJSON: %w", providerID, err)
 	}
 	stopsTmpFile.Close()
 
 	output := filepath.Join(dir, providerID+".pmtiles")
 	log.Printf("running tippecanoe → %s", output)
 	if err := tiles.GenerateTiles(ctx, routesTmpPath, stopsTmpPath, output); err != nil {
-		log.Fatalf("%s: tippecanoe: %v", providerID, err)
+		return fmt.Errorf("%s: tippecanoe: %w", providerID, err)
 	}
 
-	stat, _ := os.Stat(output)
-	log.Printf("generated %s (%.1f MB)", output, float64(stat.Size())/(1024*1024))
+	if stat, err := os.Stat(output); err != nil {
+		log.Printf("generated %s (size unknown: %v)", output, err)
+	} else {
+		log.Printf("generated %s (%.1f MB)", output, float64(stat.Size())/(1024*1024))
+	}
 
 	if doUpload {
 		objectKey := fmt.Sprintf("%s.pmtiles", providerID)
 		log.Printf("uploading %s to S3...", objectKey)
 		if err := tiles.Upload(ctx, output, objectKey); err != nil {
-			log.Fatalf("%s: upload: %v", providerID, err)
+			return fmt.Errorf("%s: upload: %w", providerID, err)
 		}
 	}
+	return nil
 }

@@ -80,6 +80,10 @@ func (p *Provider) FetchStatic(ctx context.Context) (*providers.StaticFeed, erro
 	return p.base.FetchStatic(ctx)
 }
 
+// amtrakClient bounds Amtrak realtime requests so a stuck connection can't
+// hang an entire poll cycle when ctx has no deadline.
+var amtrakClient = &http.Client{Timeout: 30 * time.Second}
+
 // FetchRealtime fetches and decrypts the Amtrak train status API, mapping
 // the response to TrainPositions and TrainStopTimes.
 func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, error) {
@@ -89,7 +93,7 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 	}
 	req.Header.Set("User-Agent", "tracky")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := amtrakClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("amtrak: fetch: %w", err)
 	}

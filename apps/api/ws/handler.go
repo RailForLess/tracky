@@ -110,10 +110,10 @@ func readPump(hub *Hub, c *Client) {
 			added := c.addTopics(msg.Providers)
 			for _, p := range added {
 				if snapshot, ok := hub.Snapshot(p); ok {
-					select {
-					case c.send <- snapshot:
-					default:
-					}
+					// Route through the hub goroutine so c.send is only
+					// written by the hub, avoiding a race with close on
+					// unregister/backpressure.
+					hub.DeliverSnapshot(c, snapshot)
 				}
 			}
 		case "unsubscribe":

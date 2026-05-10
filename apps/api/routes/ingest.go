@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/RailForLess/tracky/api/collector"
 	"github.com/RailForLess/tracky/api/realtime"
@@ -17,6 +18,10 @@ import (
 const ingestSecretHeader = "X-Tracky-Ingest-Secret"
 const maxIngestBody = 32 << 20 // 32 MiB — applied to *decompressed* body so a
 //                                gzip bomb can't blow past it.
+
+// safeProviderID restricts characters allowed in a filename derived from
+// snap.ProviderID — prevents path traversal (../) and other shell/FS metachars.
+var safeProviderID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // HandleIngest accepts a Snapshot from the edge collector. If secret is
 // non-empty, callers must present it in the X-Tracky-Ingest-Secret header.
@@ -80,9 +85,13 @@ func HandleIngest(processor *realtime.Processor, secret string) http.HandlerFunc
 			snap.ProviderID, snap.Timestamp.UTC().Format("15:04:05"), positions, stopTimes, len(body))
 
 		if dumpDir != "" && snap.ProviderID != "" {
-			path := filepath.Join(dumpDir, snap.ProviderID+".json")
-			if err := os.WriteFile(path, body, 0o644); err != nil {
-				log.Printf("ingest[%s]: dump: %v", snap.ProviderID, err)
+			if !safeProviderID.MatchString(snap.ProviderID) {
+				log.Printf("ingest[%s]: dump skipped: provider id contains unsafe characters", snap.ProviderID)
+			} else {
+				path := filepath.Join(dumpDir, snap.ProviderID+".json")
+				if err := os.WriteFile(path, body, 0o644); err != nil {
+					log.Printf("ingest[%s]: dump: %v", snap.ProviderID, err)
+				}
 			}
 		}
 

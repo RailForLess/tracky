@@ -2,6 +2,7 @@ package routes
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +54,8 @@ func notFound(w http.ResponseWriter, msg string) {
 }
 
 func serverError(w http.ResponseWriter, err error) {
-	writeError(w, http.StatusInternalServerError, err.Error())
+	log.Printf("server error: %v", err)
+	writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
 func parseDate(s string) (string, bool) {

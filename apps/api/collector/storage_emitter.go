@@ -28,6 +28,9 @@ func NewStorageEmitter(baseURL string) *StorageEmitter {
 }
 
 func (e *StorageEmitter) Emit(ctx context.Context, snap *Snapshot) error {
+	if snap == nil {
+		return fmt.Errorf("storage emitter: nil snapshot")
+	}
 	body, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("storage emitter: marshal: %w", err)
@@ -38,7 +41,11 @@ func (e *StorageEmitter) Emit(ctx context.Context, snap *Snapshot) error {
 		return fmt.Errorf("storage emitter: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := e.Client.Do(req)
+	client := e.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("storage emitter: put: %w", err)
 	}

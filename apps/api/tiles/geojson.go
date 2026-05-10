@@ -134,29 +134,35 @@ func buildRouteFeatures(
 		routeByID[r.RouteID] = r
 	}
 
-	// 3. Build shape→route join via trips.
+	// 3. Build shape→route join via trips. Multiple routes can share a
+	// shape, so collect every distinct routeID per shape rather than
+	// keeping just the first one — otherwise later routes get dropped.
 	// Trip.ShapeID is raw GTFS (not namespaced), so the join key is
 	// providerID + ":" + *trip.ShapeID, matching our grouped keys.
-	routeByShape := make(map[shapeKey]spec.Route)
+	routesByShape := make(map[shapeKey]map[string]spec.Route)
 	for _, t := range trips {
 		if t.ShapeID == nil {
 			continue
 		}
 		k := shapeKey{t.ProviderID, *t.ShapeID}
-		if _, ok := routeByShape[k]; ok {
-			continue // already have a route for this shape
+		route, ok := routeByID[t.RouteID]
+		if !ok {
+			continue
 		}
-		if route, ok := routeByID[t.RouteID]; ok {
-			routeByShape[k] = route
+		m, exists := routesByShape[k]
+		if !exists {
+			m = make(map[string]spec.Route)
+			routesByShape[k] = m
 		}
+		m[route.RouteID] = route
 	}
 
-	// 4. Build features.
+	// 4. Build features — one per (shape, route) pair.
 	features := make([]Feature, 0, len(grouped))
 	orphaned := 0
 	for k, pts := range grouped {
-		route, ok := routeByShape[k]
-		if !ok {
+		routesForShape, ok := routesByShape[k]
+		if !ok || len(routesForShape) == 0 {
 			orphaned++
 			continue
 		}
@@ -208,29 +214,29 @@ func buildRouteFeatures(
 			geom = b
 		}
 
-		color := route.Color
-		if color == "" {
-			color = "888888"
+		for _, r := range routesForShape {
+			c := r.Color
+			if c == "" {
+				c = "888888"
+			}
+			tc := r.TextColor
+			if tc == "" {
+				tc = "FFFFFF"
+			}
+			features = append(features, Feature{
+				Type: "Feature",
+				Properties: map[string]string{
+					"provider_id": k.providerID,
+					"route_id":    r.RouteID,
+					"shape_id":    k.shapeID,
+					"color":       "#" + c,
+					"text_color":  "#" + tc,
+					"short_name":  r.ShortName,
+					"long_name":   r.LongName,
+				},
+				Geometry: geom,
+			})
 		}
-
-		textColor := route.TextColor
-		if textColor == "" {
-			textColor = "FFFFFF"
-		}
-
-		features = append(features, Feature{
-			Type: "Feature",
-			Properties: map[string]string{
-				"provider_id": k.providerID,
-				"route_id":    route.RouteID,
-				"shape_id":    k.shapeID,
-				"color":       "#" + color,
-				"text_color":  "#" + textColor,
-				"short_name":  route.ShortName,
-				"long_name":   route.LongName,
-			},
-			Geometry: geom,
-		})
 	}
 
 	if orphaned > 0 {
