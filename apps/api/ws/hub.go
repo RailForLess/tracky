@@ -73,6 +73,7 @@ type Hub struct {
 	deliver    chan clientDelivery
 	register   chan *Client
 	unregister chan *Client
+	done       chan struct{} // closed when Run exits
 
 	snapshotMu sync.RWMutex
 	snapshots  map[string][]byte
@@ -86,12 +87,25 @@ func NewHub() *Hub {
 		deliver:    make(chan clientDelivery, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		done:       make(chan struct{}),
 		snapshots:  make(map[string][]byte),
 	}
 }
 
 // Run processes register, unregister, and publish events until ctx is cancelled.
+// On exit it closes every client's send channel and signals h.done so producers
+// stuck in Publish/DeliverSnapshot fail fast instead of blocking forever.
 func (h *Hub) Run(ctx context.Context) {
+	defer func() {
+		h.mu.Lock()
+		for c := range h.clients {
+			close(c.send)
+			delete(h.clients, c)
+		}
+		h.mu.Unlock()
+		close(h.done)
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -149,19 +163,38 @@ func (h *Hub) Run(ctx context.Context) {
 // DeliverSnapshot enqueues payload for delivery to a single client. The send
 // is performed by the hub goroutine so it is serialized with register,
 // unregister, and publish — preventing a send on a closed c.send channel.
-func (h *Hub) DeliverSnapshot(c *Client, payload []byte) {
-	h.deliver <- clientDelivery{client: c, payload: payload}
+// Returns false if the hub has shut down (the payload is dropped).
+func (h *Hub) DeliverSnapshot(c *Client, payload []byte) bool {
+	select {
+	case h.deliver <- clientDelivery{client: c, payload: payload}:
+		return true
+	case <-h.done:
+		return false
+	}
 }
 
 // Publish sends a message to all clients subscribed to the given topic.
-func (h *Hub) Publish(topic string, payload []byte) {
-	h.publish <- topicMsg{topic: topic, payload: payload}
+// Returns false if the hub has shut down (the payload is dropped).
+func (h *Hub) Publish(topic string, payload []byte) bool {
+	select {
+	case h.publish <- topicMsg{topic: topic, payload: payload}:
+		return true
+	case <-h.done:
+		return false
+	}
 }
 
-// Snapshot returns the last published payload for a topic, if any.
+// Snapshot returns a copy of the last published payload for a topic, if any.
+// A copy is returned so callers can safely mutate it without racing the hub
+// goroutine or future Snapshot readers.
 func (h *Hub) Snapshot(topic string) ([]byte, bool) {
 	h.snapshotMu.RLock()
 	defer h.snapshotMu.RUnlock()
 	data, ok := h.snapshots[topic]
-	return data, ok
+	if !ok {
+		return nil, false
+	}
+	out := make([]byte, len(data))
+	copy(out, data)
+	return out, true
 }
