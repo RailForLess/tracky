@@ -1,0 +1,77 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "tracky-collector",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-05-02",
+	"observability": { "enabled": true },
+	"upload_source_maps": true,
+	"compatibility_flags": ["nodejs_compat"],
+	"placement": {
+		"hostname": "api.trackyapp.net"
+	},
+	"vars": {
+		"INGEST_URL": "https://api.trackyapp.net/ingest"
+	},
+	// Wrangler does NOT inherit these fields from the top level into a named
+	// env — durable_objects, migrations, r2_buckets, containers, and triggers
+	// must be repeated here. See node_modules/wrangler/config-schema.json.
+	"env": {
+		"dev": {
+			"vars": {
+				"INGEST_URL": "http://host.docker.internal:8080/ingest"
+			},
+			"durable_objects": {
+				"bindings": [
+					{ "name": "COLLECTOR_CONTAINER", "class_name": "CollectorContainer" }
+				]
+			},
+			"migrations": [
+				{ "tag": "v1", "new_sqlite_classes": ["CollectorContainer"] }
+			],
+			"r2_buckets": [
+				{ "binding": "BACKLOG_BUCKET", "bucket_name": "tracky-backlog", "remote": true }
+			],
+			"containers": [
+				{
+					"class_name": "CollectorContainer",
+					"image": "./container/Dockerfile",
+					"image_build_context": "../api",
+					"name": "tracky-collector",
+					"max_instances": 1
+				}
+			],
+			"triggers": {
+				"crons": ["*/1 * * * *"]
+			}
+		}
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "name": "COLLECTOR_CONTAINER", "class_name": "CollectorContainer" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["CollectorContainer"] }
+	],
+	"r2_buckets": [
+		{ "binding": "BACKLOG_BUCKET", "bucket_name": "tracky-backlog", "remote": true }
+	],
+	"containers": [
+		{
+			"class_name": "CollectorContainer",
+			"image": "./container/Dockerfile",
+			"image_build_context": "../api",
+			"name": "tracky-collector",
+			"max_instances": 1
+		}
+	],
+	"triggers": {
+		"crons": [
+			"*/1 * * * *"
+		]
+	}
+}
