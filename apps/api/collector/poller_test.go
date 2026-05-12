@@ -28,6 +28,9 @@ func (f *fakeProvider) FetchStatic(_ context.Context) (*providers.StaticFeed, er
 func (f *fakeProvider) FetchRealtime(_ context.Context) (*providers.RealtimeFeed, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if len(f.feeds) == 0 {
+		return nil, errors.New("fakeProvider: no realtime feeds configured")
+	}
 	if f.idx >= len(f.feeds) {
 		return f.feeds[len(f.feeds)-1], nil
 	}
