@@ -3,7 +3,7 @@
  * Consolidated from services/api.ts and services/realtime.ts
  */
 
-import { gtfsParser } from './gtfs-parser';
+import { getCachedTrip, prefetchTrip } from '../services/api-client';
 import { parseTimeToDate } from './time-formatting';
 import type { Train } from '../types/train';
 
@@ -41,11 +41,13 @@ export function isLikelyTrainNumber(s: string): boolean {
  * extractTrainNumber("248766") // null (opaque database ID)
  */
 export function extractTrainNumber(tripId: string): string | null {
-  // 1. GTFS static data (source of truth)
-  const fromGtfs = gtfsParser.getTrainNumber(tripId);
-  if (fromGtfs && fromGtfs !== tripId && isLikelyTrainNumber(fromGtfs)) {
-    return fromGtfs;
+  // 1. API cache (source of truth when available); fire a fetch on miss so a
+  //    later call sees it.
+  const cached = getCachedTrip(tripId);
+  if (cached?.shortName && isLikelyTrainNumber(cached.shortName)) {
+    return cached.shortName;
   }
+  if (!cached) prefetchTrip(tripId);
 
   // 2. Structured: trailing number after underscore (YYYY-MM-DD_AMTK_543)
   const underscoreMatch = tripId.match(/_(\d{1,4})$/);

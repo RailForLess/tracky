@@ -42,8 +42,6 @@
     "expo-task-manager": "~55.0.9",
     "expo-web-browser": "~55.0.9",
     "expo-widgets": "55.0.4",
-    "fflate": "^0.8.2",
-    "gtfs-realtime-bindings": "^1.1.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",

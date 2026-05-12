@@ -11,6 +11,7 @@
 import { config } from '../constants/config';
 import { fetchWithTimeout } from '../utils/fetch-with-timeout';
 import type {
+  ApiActiveTrain,
   ApiAgency,
   ApiConnectionItem,
   ApiDepartureItem,
@@ -21,7 +22,6 @@ import type {
   ApiServiceInfo,
   ApiStop,
   ApiTrainItem,
-  ApiTrainPosition,
   ApiTrainStopTime,
   ApiTrip,
 } from '../types/api';
@@ -125,6 +125,14 @@ export function getRoute(providerId: string, routeCode: string): Promise<ApiRout
   );
 }
 
+export function getRoutes(providerId: string): Promise<ApiRoute[]> {
+  const qs = buildQuery({ provider: providerId });
+  return request<ApiRoute[]>(`/v1/routes${qs}`, {
+    cacheKey: `routes:${providerId}`,
+    ttlMs: STATIC_TTL_MS,
+  });
+}
+
 export function getTrainsForRoute(
   providerId: string,
   routeCode: string,
@@ -214,57 +222,54 @@ export function search(params: {
   return request<ApiSearchResult>(`/v1/search${qs}`);
 }
 
-// ── Pending backend additions ──────────────────────────────────────────────
-//
-// The endpoints below aren't on the build-backend branch yet. They're stubbed
-// here so call sites can be written; flip them on once the backend lands.
+// ── Realtime ───────────────────────────────────────────────────────────────
 
 /**
  * Per-stop scheduled + estimated + actual times for a specific run of a trip.
- * Required for TrainDetailModal's per-stop delay display.
- *
- * Expected: GET /v1/runs/{provider}/{tripId}/{runDate}/stops
+ * Powers TrainDetailModal's per-stop delay timeline. Uncached — realtime data.
  */
-export function getRunStops(_params: {
+export function getRunStops(params: {
   provider: string;
   tripId: string;
   runDate: string;
 }): Promise<ApiTrainStopTime[]> {
-  return Promise.reject(
-    new Error('getRunStops: backend endpoint not yet implemented'),
+  const { provider, tripId, runDate } = params;
+  return request<ApiTrainStopTime[]>(
+    `/v1/runs/${encodeURIComponent(provider)}/${encodeURIComponent(tripId)}/${encodeURIComponent(runDate)}/stops`,
+  );
+}
+
+/**
+ * Currently-tracked runs for a provider, sourced from the latest realtime
+ * snapshot the backend has published. Used by the "live only" filter in the
+ * trip search; cheap enough to call on demand without caching.
+ */
+export function getActiveTrains(provider: string): Promise<ApiActiveTrain[]> {
+  const qs = buildQuery({ provider });
+  return request<{ activeTrains: ApiActiveTrain[] }>(`/v1/active${qs}`).then(
+    r => r.activeTrains,
   );
 }
 
 /**
  * Stops near a location across all providers, for "nearest station" suggestions.
- *
- * Expected: GET /v1/stops/nearby?lat=&lon=&radius_m=
  */
-export function getNearbyStops(_params: {
+export function getNearbyStops(params: {
   lat: number;
   lon: number;
   radiusMeters?: number;
+  provider?: string;
 }): Promise<ApiStop[]> {
-  return Promise.reject(
-    new Error('getNearbyStops: backend endpoint not yet implemented'),
-  );
-}
-
-/**
- * Current TrainPosition for a specific run, for hydrating saved trains
- * without subscribing to the full WS feed. (Optional — workaround is to
- * subscribe + filter.)
- *
- * Expected: GET /v1/runs/{provider}/{tripId}/{runDate}
- */
-export function getRunPosition(_params: {
-  provider: string;
-  tripId: string;
-  runDate: string;
-}): Promise<ApiTrainPosition> {
-  return Promise.reject(
-    new Error('getRunPosition: backend endpoint not yet implemented'),
-  );
+  const qs = buildQuery({
+    lat: params.lat,
+    lon: params.lon,
+    radius_m: params.radiusMeters,
+    provider: params.provider,
+  });
+  return request<ApiStop[]>(`/v1/stops/nearby${qs}`, {
+    cacheKey: `nearby:${params.lat}:${params.lon}:${params.radiusMeters ?? ''}:${params.provider ?? ''}`,
+    ttlMs: STATIC_TTL_MS,
+  });
 }
 
 // ── Cache utilities (mostly for tests / sign-out) ──────────────────────────
@@ -293,8 +298,65 @@ export function prefetchRoute(routeId: string): void {
   if (sep <= 0) return;
   const provider = routeId.slice(0, sep);
   const code = routeId.slice(sep + 1);
-  // Swallow errors — prefetching is best-effort.
-  getRoute(provider, code).catch(() => {
-    /* leave it un-cached so a later attempt can retry */
+  notifyAfter(getRoute(provider, code));
+}
+
+export function getCachedStop(providerId: string, stopCode: string): ApiStop | undefined {
+  return getCached<ApiStop>(`stop:${providerId}:${stopCode}`);
+}
+
+/**
+ * Synchronously read a previously-fetched trip from the in-memory cache.
+ */
+export function getCachedTrip(tripId: string): ApiTrip | undefined {
+  return getCached<ApiTrip>(`trip:${tripId}`);
+}
+
+/**
+ * Fire-and-forget prefetch of trip metadata.
+ */
+export function prefetchTrip(tripId: string): void {
+  if (getCached<ApiTrip>(`trip:${tripId}`) !== undefined) return;
+  notifyAfter(getTrip(tripId));
+}
+
+export function prefetchStop(providerId: string, stopCode: string): void {
+  if (getCached<ApiStop>(`stop:${providerId}:${stopCode}`) !== undefined) return;
+  notifyAfter(getStop(providerId, stopCode));
+}
+
+export function getCachedAgency(providerId: string): ApiAgency | undefined {
+  return getCached<ApiAgency>(`provider:${providerId}`);
+}
+
+export function prefetchAgency(providerId: string): void {
+  if (getCached<ApiAgency>(`provider:${providerId}`) !== undefined) return;
+  notifyAfter(getProvider(providerId));
+}
+
+// ── Cache change notifications ─────────────────────────────────────────────
+//
+// Components that read from the sync getters above can subscribe here to be
+// notified when a new value lands. Internal — used by the useApiCacheVersion
+// hook (hooks/useApiCache.ts).
+
+const cacheListeners = new Set<() => void>();
+let cacheVersion = 0;
+
+export function subscribeApiCache(listener: () => void): () => void {
+  cacheListeners.add(listener);
+  return () => cacheListeners.delete(listener);
+}
+
+export function getApiCacheVersion(): number {
+  return cacheVersion;
+}
+
+function notifyAfter<T>(p: Promise<T>): void {
+  p.then(() => {
+    cacheVersion += 1;
+    for (const l of cacheListeners) l();
+  }).catch(() => {
+    // leave un-cached so a later attempt can retry
   });
 }

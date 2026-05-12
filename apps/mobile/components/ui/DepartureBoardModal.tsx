@@ -28,7 +28,8 @@ import TrainCardContent from '../TrainCardContent';
 import MarqueeText from './MarqueeText';
 import { SkeletonBox } from './SkeletonBox';
 import { getCurrentMinutesInTimezone, getCurrentSecondsInTimezone, getTimezoneForStop } from '../../utils/timezone';
-import { gtfsParser } from '../../utils/gtfs-parser';
+import { lookupAgencyTimezone, lookupStop } from '../../utils/api-stop-cache';
+import { useApiCacheVersion } from '../../hooks/useApiCache';
 import { formatTemp, weatherApiTempUnit } from '../../utils/units';
 import { getWeatherCondition } from '../../utils/weather';
 import { SlideUpModalContext } from './SlideUpModal';
@@ -105,7 +106,7 @@ function isTrainUpcoming(
   }
 
   // Times are now in the station's local timezone, so compare "now" in that timezone
-  const currentMinutes = getCurrentMinutesInTimezone(stationTimezone ?? gtfsParser.agencyTimezone);
+  const currentMinutes = getCurrentMinutesInTimezone(stationTimezone ?? lookupAgencyTimezone());
 
   let relevantTime: string;
   if (filterMode === 'arriving' || train.toCode === stationId) {
@@ -190,13 +191,14 @@ const DepartureItem = React.memo(function DepartureItem({ train, stationTime, st
   const { colors } = useTheme();
   const trainCardStyles = useMemo(() => createTrainCardStyles(colors), [colors]);
   const departStyles = useMemo(() => createDepartureStyles(colors), [colors]);
+  const cacheVersion = useApiCacheVersion();
 
   const depDelay = train.realtime?.delay;
 
   const countdown = useMemo(() => {
     // Times are in the station's local timezone; compare "now" in same tz
-    const stopData = gtfsParser.getStop(stationId);
-    const tz = stopData ? getTimezoneForStop(stopData) : gtfsParser.agencyTimezone;
+    const stopData = lookupStop(stationId);
+    const tz = stopData ? getTimezoneForStop(stopData) : lookupAgencyTimezone();
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -224,7 +226,7 @@ const DepartureItem = React.memo(function DepartureItem({ train, stationTime, st
     const seconds = Math.round(absSec);
     if (seconds >= 60) return { value: 1, unit: 'MINUTE', past };
     return { value: seconds, unit: seconds === 1 ? 'SECOND' : 'SECONDS', past };
-  }, [stationTime, selectedDate, stationId, depDelay]);
+  }, [stationTime, selectedDate, stationId, depDelay, cacheVersion]);
 
   const countdownLabel = countdown.unit;
   const arrDelay = train.realtime?.arrivalDelay;

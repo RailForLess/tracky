@@ -44,7 +44,6 @@ import { TrainAPIService } from '../services/api';
 import { requestPermissions as requestNotificationPermissions } from '../services/notifications';
 import { TrainStorageService } from '../services/storage';
 import type { SavedTrainRef, Stop, Train, ViewportBounds } from '../types/train';
-import { gtfsParser } from '../utils/gtfs-parser';
 import { light as hapticLight } from '../utils/haptics';
 import { logger } from '../utils/logger';
 import { clusterTrains, type TrainCluster } from '../utils/train-clustering';

@@ -3,17 +3,154 @@ import { Dimensions, Keyboard, Platform, StyleSheet, TextInput } from 'react-nat
 import { type ColorPalette, BorderRadius, FontSizes, Spacing, withTextShadow } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
-import { RealtimeService } from '../services/realtime';
+import {
+  getActiveTrains,
+  getConnections,
+  getRoute,
+  getRoutes,
+  getRunStops,
+  getTrainService,
+  getTrainsForRoute,
+  getTripStops,
+  lookupTrips,
+  search as apiSearch,
+} from '../services/api-client';
 import { TrainStorageService } from '../services/storage';
-import type { EnrichedStopTime, Route, SearchResult, Stop } from '../types/train';
+import type {
+  ApiConnectionItem,
+  ApiEnrichedStopTime,
+  ApiRoute,
+  ApiSearchHit,
+  ApiTrainItem,
+} from '../types/api';
+import type { EnrichedStopTime, Route, SearchResult, Stop, Trip } from '../types/train';
 import { useTrainContext } from '../context/TrainContext';
 import { SlideUpModalContext } from './ui/SlideUpModal';
-import { gtfsParser } from '../utils/gtfs-parser';
+import { useApiCacheVersion } from '../hooks/useApiCache';
+import { lookupAgencyTimezone, lookupStop } from '../utils/api-stop-cache';
 import { logger } from '../utils/logger';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { pluralCount } from '../utils/train-display';
 import { formatDateForDisplay } from '../utils/date-helpers';
 import type { DateData } from 'react-native-calendars';
+
+const PROVIDER_ID = 'amtrak';
+
+function bareCode(namespacedId: string): string {
+  const i = namespacedId.indexOf(':');
+  return i > 0 ? namespacedId.slice(i + 1) : namespacedId;
+}
+
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function computeDelayMinutes(
+  scheduledIso: string | null | undefined,
+  liveIso: string | null | undefined,
+): number | null {
+  if (!scheduledIso || !liveIso) return null;
+  const a = Date.parse(scheduledIso);
+  const b = Date.parse(liveIso);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 60000);
+}
+
+function apiRouteToLegacy(r: ApiRoute): Route {
+  return {
+    route_id: r.routeId,
+    route_long_name: r.longName,
+    route_short_name: r.shortName,
+    route_color: r.color,
+    route_text_color: r.textColor,
+  };
+}
+
+function apiEnrichedStopTimeToLegacy(s: ApiEnrichedStopTime): EnrichedStopTime {
+  return {
+    trip_id: s.tripId,
+    arrival_time: s.arrivalTime ?? '',
+    departure_time: s.departureTime ?? '',
+    stop_id: s.stopId,
+    stop_sequence: s.stopSequence,
+    stop_name: s.stopName,
+    stop_code: s.stopCode,
+    pickup_type: s.pickupType ?? undefined,
+    drop_off_type: s.dropOffType ?? undefined,
+    timepoint: s.timepoint == null ? undefined : (s.timepoint ? 1 : 0),
+  };
+}
+
+function apiConnectionToTripResult(c: ApiConnectionItem): TripResult {
+  return {
+    tripId: c.tripId,
+    fromStop: apiEnrichedStopTimeToLegacy(c.from),
+    toStop: apiEnrichedStopTimeToLegacy(c.to),
+    intermediateStops: c.intermediate.map(apiEnrichedStopTimeToLegacy),
+  };
+}
+
+function apiTrainItemToRouteTrainItem(t: ApiTrainItem): RouteTrainItem {
+  return {
+    trainNumber: t.trainNumber,
+    displayName: t.trainNumber,
+    headsign: t.sampleHeadsign,
+    endpointLabel: '',
+  };
+}
+
+function stationHitToStop(hit: ApiSearchHit): Stop {
+  const code = bareCode(hit.id);
+  const cached = lookupStop(code);
+  if (cached) return cached;
+  // Synthetic placeholder; downstream code only reads stop_id/stop_name, and
+  // lookupStop will surface the real coords once the cache fills.
+  return {
+    stop_id: code,
+    stop_name: hit.name,
+    stop_lat: 0,
+    stop_lon: 0,
+  };
+}
+
+function searchHitToResult(hit: ApiSearchHit): SearchResult {
+  if (hit.type === 'station') {
+    return {
+      id: hit.id,
+      name: hit.name,
+      subtitle: hit.subtitle,
+      type: 'station',
+      data: stationHitToStop(hit),
+    };
+  }
+  if (hit.type === 'route') {
+    const code = bareCode(hit.id);
+    return {
+      id: hit.id,
+      name: hit.name,
+      subtitle: hit.subtitle,
+      type: 'route',
+      data: {
+        route_id: hit.id,
+        route_long_name: hit.name,
+        route_short_name: code,
+      } as Route,
+    };
+  }
+  // train
+  return {
+    id: hit.id,
+    name: hit.name,
+    subtitle: hit.subtitle,
+    type: 'train',
+    data: {
+      trip_id: hit.id,
+      trip_short_name: bareCode(hit.id),
+      route_id: '',
+      service_id: '',
+    } as Trip,
+  };
+}
 
 import { SearchResultsList } from './search/SearchResultsList';
 import { TrainFlowView } from './search/TrainFlowView';
@@ -70,7 +207,7 @@ export function getCountdownFromDeparture(departureTime: string, travelDate: Dat
   const departSecOfDay = h * 3600 + m * 60 // handles GTFS h>=24 naturally
     + (delayMinutes && delayMinutes > 0 ? delayMinutes * 60 : 0);
 
-  const tz = gtfsParser.agencyTimezone;
+  const tz = lookupAgencyTimezone();
   const now = new Date();
   const nowSec = getCurrentSecondsInTimezone(tz);
 
@@ -145,8 +282,10 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [isDataLoaded, setIsDataLoaded] = useState(gtfsParser.isLoaded);
   const searchInputRef = useRef<TextInput>(null);
+  // Subscribe to api-client cache so synthetic Stop placeholders re-resolve to
+  // real coords once a fetch lands.
+  useApiCacheVersion();
 
   // --- Station flow state (Path 2a) ---
   const [fromStation, setFromStation] = useState<Stop | null>(null);
@@ -188,24 +327,25 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   }, [savedTrains]);
 
   useEffect(() => {
-    if (!isDataLoaded) return;
+    let cancelled = false;
 
     // Popular (always shown)
-    const allRoutes = gtfsParser.getAllRoutes();
-    const popular: SuggestionItem[] = [];
-    const nerRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('northeast regional'));
-    if (nerRoute) {
-      popular.push({ type: 'route', label: 'Northeast Regional', subtitle: 'Route', routeId: nerRoute.route_id });
-    }
-    const acelaRoute = allRoutes.find(r => r.route_long_name.toLowerCase().includes('acela'));
-    if (acelaRoute) {
-      popular.push({ type: 'route', label: 'Acela', subtitle: 'Route', routeId: acelaRoute.route_id });
-    }
-    const nyp = gtfsParser.getStop('NYP');
-    if (nyp) {
-      popular.push({ type: 'station', label: nyp.stop_name, subtitle: 'NYP \u00B7 Station', stop: nyp });
-    }
-    setPopularSuggestions(popular);
+    (async () => {
+      try {
+        const allRoutes = await getRoutes(PROVIDER_ID);
+        if (cancelled) return;
+        const popular: SuggestionItem[] = [];
+        const ner = allRoutes.find(r => r.longName.toLowerCase().includes('northeast regional'));
+        if (ner) popular.push({ type: 'route', label: 'Northeast Regional', subtitle: 'Route', routeId: ner.routeId });
+        const acela = allRoutes.find(r => r.longName.toLowerCase().includes('acela'));
+        if (acela) popular.push({ type: 'route', label: 'Acela', subtitle: 'Route', routeId: acela.routeId });
+        const nyp = lookupStop('NYP');
+        if (nyp) popular.push({ type: 'station', label: nyp.stop_name, subtitle: 'NYP \u00B7 Station', stop: nyp });
+        setPopularSuggestions(popular);
+      } catch (e) {
+        logger.warn('[Search] failed to load popular routes', e);
+      }
+    })();
 
     // Nearby (from location service)
     const locationSuggestions = LocationSuggestionsService.getCachedSuggestions();
@@ -215,95 +355,129 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
 
     // History
     TrainStorageService.getTripHistory().then(history => {
-      if (history.length > 0) {
-        const routeCounts = new Map<string, { count: number; routeName: string; fromCode: string; toCode: string }>();
-        for (const trip of history) {
-          const key = `${trip.fromCode}-${trip.toCode}`;
-          const existing = routeCounts.get(key);
-          if (existing) {
-            existing.count++;
-          } else {
-            routeCounts.set(key, { count: 1, routeName: trip.routeName, fromCode: trip.fromCode, toCode: trip.toCode });
-          }
+      if (cancelled || history.length === 0) return;
+      const routeCounts = new Map<string, { count: number; routeName: string; fromCode: string; toCode: string }>();
+      for (const trip of history) {
+        const key = `${trip.fromCode}-${trip.toCode}`;
+        const existing = routeCounts.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          routeCounts.set(key, { count: 1, routeName: trip.routeName, fromCode: trip.fromCode, toCode: trip.toCode });
         }
-        const sorted = [...routeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 1);
-        setHistorySuggestions(sorted.map(r => ({
-          type: 'station' as const,
-          label: `${r.fromCode} \u2192 ${r.toCode}`,
-          subtitle: `${r.routeName} \u00B7 ${pluralCount(r.count, 'trip')}`,
-          stop: gtfsParser.getStop(r.fromCode) || undefined,
-          toStop: gtfsParser.getStop(r.toCode) || undefined,
-        })));
       }
+      const sorted = [...routeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 1);
+      setHistorySuggestions(sorted.map(r => ({
+        type: 'station' as const,
+        label: `${r.fromCode} \u2192 ${r.toCode}`,
+        subtitle: `${r.routeName} \u00B7 ${pluralCount(r.count, 'trip')}`,
+        stop: lookupStop(r.fromCode) || undefined,
+        toStop: lookupStop(r.toCode) || undefined,
+      })));
     });
-  }, [isDataLoaded]);
+
+    return () => { cancelled = true; };
+  }, []);
 
   // --- Train service date range (for constraining date picker in train flow) ---
-  const trainServiceInfo = useMemo(() => {
-    if (!selectedTrainNumber || !isDataLoaded) return null;
-    return gtfsParser.getServiceInfoForTrain(selectedTrainNumber);
-  }, [selectedTrainNumber, isDataLoaded]);
-
-  // Check if GTFS data is loaded
+  const [trainServiceInfo, setTrainServiceInfo] = useState<{ minDate: Date; maxDate: Date } | null>(null);
   useEffect(() => {
-    const checkLoaded = () => {
-      if (gtfsParser.isLoaded && !isDataLoaded) {
-        setIsDataLoaded(true);
-      }
-    };
-    checkLoaded();
-    const interval = setInterval(checkLoaded, 500);
-    return () => clearInterval(interval);
-  }, [isDataLoaded]);
+    if (!selectedTrainNumber) {
+      setTrainServiceInfo(null);
+      return;
+    }
+    let cancelled = false;
+    getTrainService(selectedTrainNumber, { provider: PROVIDER_ID })
+      .then(info => {
+        if (cancelled) return;
+        // ApiServiceInfo has YYYY-MM-DD strings; convert to Date.
+        const [yMin, mMin, dMin] = info.minDate.split('-').map(Number);
+        const [yMax, mMax, dMax] = info.maxDate.split('-').map(Number);
+        setTrainServiceInfo({
+          minDate: new Date(yMin, mMin - 1, dMin),
+          maxDate: new Date(yMax, mMax - 1, dMax),
+        });
+      })
+      .catch(e => {
+        logger.warn('[Search] failed to load train service', e);
+        if (!cancelled) setTrainServiceInfo(null);
+      });
+    return () => { cancelled = true; };
+  }, [selectedTrainNumber]);
 
   // Search logic -- branches based on current state
   useEffect(() => {
-    if (!isDataLoaded || searchQuery.length === 0) {
+    if (searchQuery.length === 0) {
       setUnifiedResults({ trains: [], routes: [], stations: [] });
       setStationResults([]);
       return;
     }
 
+    let cancelled = false;
     if (fromStation && !toStation) {
       // Station flow: picking arrival station
-      const results = gtfsParser.searchStations(searchQuery);
-      setStationResults(results);
+      apiSearch({ q: searchQuery, provider: PROVIDER_ID, types: ['station'] })
+        .then(res => {
+          if (cancelled) return;
+          setStationResults(res.stations.map(stationHitToStop));
+        })
+        .catch(e => logger.warn('[Search] station search failed', e));
     } else if (!fromStation && !selectedTrainNumber && !expandedRouteTrains) {
       // Initial view: unified search (skip when filtering within a route)
-      const results = gtfsParser.searchUnified(searchQuery);
-      setUnifiedResults(results);
+      apiSearch({ q: searchQuery, provider: PROVIDER_ID })
+        .then(res => {
+          if (cancelled) return;
+          setUnifiedResults({
+            trains: res.trains.map(searchHitToResult),
+            routes: res.routes.map(searchHitToResult),
+            stations: res.stations.map(searchHitToResult),
+          });
+        })
+        .catch(e => logger.warn('[Search] unified search failed', e));
     }
-  }, [searchQuery, isDataLoaded, fromStation, toStation, selectedTrainNumber, expandedRouteTrains]);
+    return () => { cancelled = true; };
+  }, [searchQuery, fromStation, toStation, selectedTrainNumber, expandedRouteTrains]);
 
   // Find trips when both stations AND date are selected (station flow)
   useEffect(() => {
-    if (fromStation && toStation && selectedDate) {
-      setLoadingTrips(true);
-      setTripResults([]);
-      // Defer heavy work so skeleton paints first
-      const timeout = setTimeout(() => {
-        logger.info(
-          `[Search] Finding trips: ${fromStation.stop_name} \u2192 ${toStation.stop_name} on ${selectedDate.toLocaleDateString()}`
-        );
-        const trips = gtfsParser.findTripsWithStops(fromStation.stop_id, toStation.stop_id, selectedDate);
-        logger.info(`[Search] Found ${trips.length} trips`);
-        setTripResults(trips);
-        setLoadingTrips(false);
-      }, 50);
-      return () => clearTimeout(timeout);
-    } else {
+    if (!fromStation || !toStation || !selectedDate) {
       setTripResults([]);
       setLoadingTrips(false);
+      return;
     }
+    setLoadingTrips(true);
+    setTripResults([]);
+    let cancelled = false;
+    logger.info(
+      `[Search] Finding trips: ${fromStation.stop_name} \u2192 ${toStation.stop_name} on ${selectedDate.toLocaleDateString()}`
+    );
+    getConnections({
+      fromStop: fromStation.stop_id,
+      toStop: toStation.stop_id,
+      date: ymd(selectedDate),
+    })
+      .then(conns => {
+        if (cancelled) return;
+        logger.info(`[Search] Found ${conns.length} trips`);
+        setTripResults(conns.map(apiConnectionToTripResult));
+        setLoadingTrips(false);
+      })
+      .catch(e => {
+        if (!cancelled) {
+          logger.warn('[Search] connection lookup failed', e);
+          setTripResults([]);
+          setLoadingTrips(false);
+        }
+      });
+    return () => { cancelled = true; };
   }, [fromStation, toStation, selectedDate]);
 
-  // Fetch delays for today's search results
+  // Fetch delays for today's search results \u2014 derived from /v1/runs/.../stops
   useEffect(() => {
     if (tripResults.length === 0 || !selectedDate) {
       setTripDelays(new Map());
       return;
     }
-    // Only fetch delays if the selected date is today
     const now = new Date();
     const isToday =
       selectedDate.getFullYear() === now.getFullYear() &&
@@ -315,19 +489,32 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     }
 
     let cancelled = false;
+    const runDate = ymd(selectedDate);
+
     const fetchDelays = async () => {
       const delays = new Map<string, { departDelay?: number; arriveDelay?: number }>();
       await Promise.all(
         tripResults.map(async (trip) => {
-          const [depDelay, arrDelay] = await Promise.all([
-            RealtimeService.getDelayForStop(trip.tripId, trip.fromStop.stop_id),
-            RealtimeService.getArrivalDelayForStop(trip.tripId, trip.toStop.stop_id),
-          ]);
-          if (depDelay != null || arrDelay != null) {
-            delays.set(trip.tripId, {
-              departDelay: depDelay ?? undefined,
-              arriveDelay: arrDelay ?? undefined,
+          try {
+            const stops = await getRunStops({
+              provider: PROVIDER_ID,
+              tripId: trip.tripId,
+              runDate,
             });
+            const fromCode = trip.fromStop.stop_code || trip.fromStop.stop_id;
+            const toCode = trip.toStop.stop_code || trip.toStop.stop_id;
+            const fromRow = stops.find(s => s.stopCode === fromCode);
+            const toRow = stops.find(s => s.stopCode === toCode);
+            const departDelay = computeDelayMinutes(fromRow?.scheduledDep, fromRow?.estimatedDep ?? fromRow?.actualDep);
+            const arriveDelay = computeDelayMinutes(toRow?.scheduledArr, toRow?.estimatedArr ?? toRow?.actualArr);
+            if (departDelay != null || arriveDelay != null) {
+              delays.set(trip.tripId, {
+                departDelay: departDelay ?? undefined,
+                arriveDelay: arriveDelay ?? undefined,
+              });
+            }
+          } catch {
+            // No live data for this run yet \u2014 leave delays unset.
           }
         })
       );
@@ -354,25 +541,36 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
       setTrainNotRunning(false);
       return;
     }
-    const trip = gtfsParser.getTripForTrainOnDate(selectedTrainNumber, selectedDate);
-    if (!trip) {
-      setTrainNotRunning(true);
-      setResolvedTripId(null);
-      setTrainStops([]);
-      return;
-    }
-    // Check if this trip's service is actually active on the date
-    const isActive = gtfsParser.isServiceActiveOnDate(trip.service_id, selectedDate);
-    if (!isActive) {
-      setTrainNotRunning(true);
-      setResolvedTripId(null);
-      setTrainStops([]);
-      return;
-    }
-    setTrainNotRunning(false);
-    setResolvedTripId(trip.trip_id);
-    const stops = gtfsParser.getStopTimesForTrip(trip.trip_id);
-    setTrainStops(stops);
+    let cancelled = false;
+    (async () => {
+      try {
+        const trips = await lookupTrips({
+          provider: PROVIDER_ID,
+          trainNumber: selectedTrainNumber,
+          date: ymd(selectedDate),
+        });
+        if (cancelled) return;
+        const trip = trips[0];
+        if (!trip) {
+          setTrainNotRunning(true);
+          setResolvedTripId(null);
+          setTrainStops([]);
+          return;
+        }
+        setTrainNotRunning(false);
+        setResolvedTripId(trip.tripId);
+        const stops = await getTripStops(trip.tripId);
+        if (cancelled) return;
+        setTrainStops(stops.map(apiEnrichedStopTimeToLegacy));
+      } catch (e) {
+        if (cancelled) return;
+        logger.warn('[Search] failed to resolve trip', e);
+        setTrainNotRunning(true);
+        setResolvedTripId(null);
+        setTrainStops([]);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [selectedTrainNumber, selectedDate]);
 
   // --- Handlers ---
@@ -449,37 +647,20 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     return undefined;
   }, [trainServiceInfo]);
 
+  // The picker is bounded by trainServiceInfo.{min,max}Date. We no longer
+  // mark individual non-service days as disabled (the API doesn't expose a
+  // per-day calendar) — selecting a non-service day surfaces the existing
+  // "train not running" empty state.
   const calendarMarkedDates = useMemo(() => {
-    const marks: Record<string, { disabled?: boolean; disabledColor?: string; selected?: boolean; selectedColor?: string }> = {};
-
-    if (selectedTrainNumber && trainServiceInfo && isDataLoaded) {
-      const trips = gtfsParser.getTripsByNumber(selectedTrainNumber);
-      if (trips.length > 0) {
-        const current = new Date(trainServiceInfo.minDate);
-        const end = trainServiceInfo.maxDate;
-        while (current <= end) {
-          const active = trips.some(trip => gtfsParser.isServiceActiveOnDate(trip.service_id, current));
-          if (!active) {
-            marks[toDateString(current)] = { disabled: true, disabledColor: '#555555' };
-          }
-          current.setDate(current.getDate() + 1);
-        }
-      }
-    }
-
+    const marks: Record<string, { selected?: boolean; selectedColor?: string }> = {};
     if (selectedDate) {
       const key = toDateString(selectedDate);
-      marks[key] = { ...marks[key], selected: true, selectedColor: '#FFFFFF' };
+      marks[key] = { selected: true, selectedColor: '#FFFFFF' };
     }
-
     return marks;
-  }, [selectedTrainNumber, trainServiceInfo, isDataLoaded, selectedDate]);
+  }, [selectedDate]);
 
   const handleDayPress = (day: DateData) => {
-    // Don't allow selecting disabled (greyed-out) dates
-    const mark = calendarMarkedDates[day.dateString];
-    if (mark?.disabled) return;
-
     hapticSuccess();
     const [y, m, d] = day.dateString.split('-').map(Number);
     setSelectedDate(new Date(y, m - 1, d));
@@ -497,21 +678,24 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
     setExpandedRouteName('');
   };
 
-  const handleSelectRoute = (route: Route) => {
+  const handleSelectRoute = async (route: Route) => {
     hapticSelection();
-    const trains = gtfsParser.getTrainNumbersForRoute(route.route_id);
-    if (trains.length === 1) {
-      // Single train on route -- go directly to train flow
-      handleSelectTrain(trains[0].trainNumber, trains[0].displayName);
-    } else {
+    try {
+      const code = bareCode(route.route_id);
+      const trains = (await getTrainsForRoute(PROVIDER_ID, code)).map(apiTrainItemToRouteTrainItem);
+      if (trains.length === 1) {
+        handleSelectTrain(trains[0].trainNumber, trains[0].displayName);
+        return;
+      }
       setExpandedRouteTrains(trains);
       setExpandedRouteName(route.route_long_name);
       setSearchQuery('');
       // Fetch live train numbers for status indicators
-      RealtimeService.getAllActiveTrains().then(active => {
-        const nums = new Set(active.map(t => t.trainNumber));
-        setLiveTrainNumbers(nums);
-      }).catch(e => logger.warn('Failed to fetch active trains', e));
+      getActiveTrains(PROVIDER_ID)
+        .then(active => setLiveTrainNumbers(new Set(active.map(t => t.trainNumber))))
+        .catch(e => logger.warn('Failed to fetch active trains', e));
+    } catch (e) {
+      logger.warn('[Search] failed to load route trains', e);
     }
   };
 
@@ -557,7 +741,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           setExpandedRouteName('');
         }}
         searchInputRef={searchInputRef}
-        isDataLoaded={isDataLoaded}
+        isDataLoaded={true}
         showDatePicker={showDatePicker}
         unifiedResults={unifiedResults}
         hasUnifiedResults={hasUnifiedResults}
@@ -572,8 +756,8 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         onTodayTripPress={() => {
           if (!todayTrain) return;
           hapticSelection();
-          const from = gtfsParser.getStop(todayTrain.fromCode);
-          const to = gtfsParser.getStop(todayTrain.toCode);
+          const from = lookupStop(todayTrain.fromCode);
+          const to = lookupStop(todayTrain.toCode);
           if (from && to) {
             setFromStation(from);
             setToStation(to);
@@ -585,8 +769,10 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           if (suggestion.type === 'train' && suggestion.trainNumber) {
             handleSelectTrain(suggestion.trainNumber, suggestion.displayName || suggestion.label);
           } else if (suggestion.type === 'route' && suggestion.routeId) {
-            const route = gtfsParser.getRoute(suggestion.routeId);
-            if (route) handleSelectRoute(route);
+            const code = bareCode(suggestion.routeId);
+            getRoute(PROVIDER_ID, code)
+              .then(r => handleSelectRoute(apiRouteToLegacy(r)))
+              .catch(e => logger.warn('Failed to load route', e));
           } else if (suggestion.stop && suggestion.toStop) {
             hapticSelection();
             setFromStation(suggestion.stop);
@@ -664,7 +850,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
       searchInputRef={searchInputRef}
-      isDataLoaded={isDataLoaded}
+      isDataLoaded={true}
       showDatePicker={showDatePicker}
       stationResults={stationResults}
       tripResults={tripResults}

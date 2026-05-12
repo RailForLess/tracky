@@ -2,11 +2,12 @@ import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { type ColorPalette, Spacing } from '../../../constants/theme';
+import { useApiCacheVersion } from '../../../hooks/useApiCache';
+import { lookupAgencyTimezone, lookupStop } from '../../../utils/api-stop-cache';
 import { addDelayToTime, formatDelayStatus, getDelayColorKey, parseTimeToMinutes } from '../../../utils/time-formatting';
 import { getCurrentSecondsInTimezone } from '../../../utils/timezone';
 import { pluralCount } from '../../../utils/train-display';
 import { convertDistance, distanceSuffix } from '../../../utils/units';
-import { gtfsParser } from '../../../utils/gtfs-parser';
 import { getTimezoneForStop } from '../../../utils/timezone';
 import { pluralize } from '../../../utils/train-display';
 import AnimatedRollingText from '../AnimatedRollingText';
@@ -24,6 +25,10 @@ export default function DepartureArrivalBoard({
   colors,
   handleStationPress,
 }: DepartureArrivalBoardProps) {
+  // Subscribe to api-client cache so the destination-stop tz lookup re-renders
+  // once the stop fetch lands.
+  useApiCacheVersion();
+
   return (
     <View style={styles.departArriveBoard}>
       {/* Departure Info */}
@@ -120,8 +125,8 @@ export default function DepartureArrivalBoard({
           // Compute arrival countdown
           const arriveTime = aDelayed?.time || trainData.arriveTime;
           const arriveDayOffset = aDelayed?.dayOffset ?? (trainData.arriveDayOffset || 0);
-          const destStopData = gtfsParser.getStop(trainData.toCode);
-          const destTimezone = destStopData ? getTimezoneForStop(destStopData) : gtfsParser.agencyTimezone;
+          const destStopData = lookupStop(trainData.toCode);
+          const destTimezone = destStopData ? getTimezoneForStop(destStopData) : lookupAgencyTimezone();
           const nowSec = getCurrentSecondsInTimezone(destTimezone);
           const arriveSec = parseTimeToMinutes(arriveTime) * 60
             + arriveDayOffset * 24 * 3600;
