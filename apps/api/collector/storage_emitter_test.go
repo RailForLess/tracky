@@ -60,6 +60,9 @@ func TestStorageEmitter_PutsToCorrectKey(t *testing.T) {
 func TestHTTPEmitter_PostsWithSecret(t *testing.T) {
 	var gotSecret string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
 		if r.URL.Path != "/ingest" {
 			t.Errorf("path = %s", r.URL.Path)
 		}

@@ -107,7 +107,11 @@ func TestStartPoller_EmitsOneSnapshotPerTick(t *testing.T) {
 	}()
 	waitFor(t, em, 3, time.Second)
 	cancel()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for StartPoller to stop after cancel")
+	}
 
 	for _, s := range em.snapshot() {
 		if s.ProviderID != "fake" {
