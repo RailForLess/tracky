@@ -1,0 +1,19 @@
+diff --git a/plugin/build/xcode/addXCConfigurationList.js b/plugin/build/xcode/addXCConfigurationList.js
+index e62077abc11e8f0ce5a791c290312be6e7676d30..857ed4d9924ba376a00d420a7c01d39a2920add2 100644
+--- a/plugin/build/xcode/addXCConfigurationList.js
++++ b/plugin/build/xcode/addXCConfigurationList.js
+@@ -17,6 +17,14 @@ function addXCConfigurationList(xcodeProject, props) {
+         SWIFT_OPTIMIZATION_LEVEL: `"-Onone"`,
+         CODE_SIGN_ENTITLEMENTS: `"${props.targetName}/${props.targetName}.entitlements"`,
+         APPLICATION_EXTENSION_API_ONLY: '"YES"',
++        // Disable Xcode 26's debug-dylib + SwiftUI Previews for the widget extension target.
++        // Background: expo-modules-autolinking emits Swift 6 `internal import` statements in the
++        // generated ExpoModulesProvider.swift. Under Xcode 26, the __preview.dylib build phase
++        // re-compiles widget Swift with stricter module visibility and fails to resolve
++        // `internal import ExpoWidgets` ("no such module"). The widgets here are TS-driven via
++        // expo-widgets, so native SwiftUI Previews are not used; safe to disable.
++        ENABLE_DEBUG_DYLIB: '"NO"',
++        ENABLE_PREVIEWS: '"NO"',
+         ...(props.appleTeamId ? { DEVELOPMENT_TEAM: props.appleTeamId } : {}),
+     };
+     const buildConfigurationsList = [

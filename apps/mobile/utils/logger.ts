@@ -232,11 +232,11 @@ function getRecentLogsFormatted(minutes: number): string {
 }
 
 export function openReportBugEmail() {
-  Linking.openURL('https://github.com/Mootbing/Tracky/issues/new');
+  Linking.openURL('https://github.com/RailForLess/tracky/issues/new');
 }
 
 export function openReportBadDataEmail() {
-  Linking.openURL('https://github.com/Mootbing/Tracky/issues/new');
+  Linking.openURL('https://github.com/RailForLess/tracky/issues/new');
 }
 
 export function openCrashReportEmail(err: Error | null, componentStack: string | null) {

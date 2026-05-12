@@ -12,7 +12,7 @@ const config: ExpoConfig = {
   platforms: ["ios", "android"],
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.trackytrains.app",
+    bundleIdentifier: "com.railforless.tracky.app",
     infoPlist: {
       NSSupportsLiveActivities: true,
       ITSAppUsesNonExemptEncryption: false,
@@ -20,6 +20,12 @@ const config: ExpoConfig = {
         "Tracky uses your location to show nearby stations and your position on the map.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "Tracky uses your location to show nearby stations and your position on the map.",
+      UIAppFonts: [
+        "Ionicons.ttf",
+        "MaterialCommunityIcons.ttf",
+        "MaterialIcons.ttf",
+        "FontAwesome6_Solid.ttf",
+      ],
     },
     privacyManifests: {
       NSPrivacyAccessedAPITypes: [
@@ -44,7 +50,7 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     predictiveBackGestureEnabled: false,
-    package: "com.trackytrains.app",
+    package: "com.railforless.tracky.app",
     permissions: [
       "android.permission.READ_CALENDAR",
       "android.permission.WRITE_CALENDAR",
@@ -52,12 +58,6 @@ const config: ExpoConfig = {
     ],
   },
   plugins: [
-    [
-      "react-native-maps",
-      {
-        androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
-      },
-    ],
     [
       "expo-splash-screen",
       {
@@ -88,11 +88,12 @@ const config: ExpoConfig = {
     ["expo-background-fetch"],
     "expo-font",
     "expo-web-browser",
+    "@maplibre/maplibre-react-native",
     [
       "expo-widgets",
       {
-        bundleIdentifier: "com.trackytrains.app.widgets",
-        groupIdentifier: "group.com.trackytrains.app",
+        bundleIdentifier: "com.railforless.tracky.app.widgets",
+        groupIdentifier: "group.com.railforless.tracky.app",
         widgets: [
           {
             name: "NextTrainWidget",
@@ -121,10 +122,10 @@ const config: ExpoConfig = {
   extra: {
     router: {},
     eas: {
-      projectId: "00c33d90-9f8b-406e-934e-bf66c9663310",
+      "projectId": "f1a6b072-9cd4-4965-956c-8b60bdfba2e1"
     },
   },
-  owner: "mootbing",
+  owner: "railforless",
 };
 
 export default { expo: config };
