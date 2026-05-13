@@ -1,6 +1,7 @@
 packages:
   - "apps/mobile"
   - "apps/web"
+  - "apps/collector"
   - "packages/*"
 allowBuilds:
   dtrace-provider: true
@@ -8,5 +9,6 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
+  workerd: true
 patchedDependencies:
   expo-widgets@55.0.4: patches/expo-widgets@55.0.4.patch

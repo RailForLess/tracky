@@ -1,0 +1,27 @@
+# ── Build tippecanoe from source ─────────────────────────────────────────────
+FROM debian:bookworm-slim AS tippecanoe-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential libsqlite3-dev zlib1g-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/felt/tippecanoe.git /tippecanoe \
+    && cd /tippecanoe && make -j$(nproc)
+
+# ── Build Go binary ─────────────────────────────────────────────────────────
+FROM golang:1.26-bookworm AS go-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=1 go build -o /sync-static ./cmd/sync-static
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libsqlite3-0 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=tippecanoe-build /tippecanoe/tippecanoe /usr/local/bin/tippecanoe
+COPY --from=go-build /sync-static /usr/local/bin/sync-static
+
+WORKDIR /data
+ENTRYPOINT ["sync-static", "--upload"]
