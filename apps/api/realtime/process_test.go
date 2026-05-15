@@ -33,7 +33,7 @@ func TestProcessor_PublishesToHubInLegacyShape(t *testing.T) {
 	// Snapshot is async — wait briefly for hub Run loop to land it.
 	deadline := time.After(time.Second)
 	for {
-		if payload, ok := hub.Snapshot("amtrak"); ok {
+		if payload, ok := hub.Snapshot("o-amtrak"); ok {
 			var u ws.RealtimeUpdate
 			if err := json.Unmarshal(payload, &u); err != nil {
 				t.Fatalf("unmarshal: %v", err)

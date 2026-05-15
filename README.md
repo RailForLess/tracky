@@ -378,43 +378,54 @@ On startup, the app checks for locally cached GTFS data. If the cache is missing
 - **Real-time cache** — 15s TTL prevents redundant API calls
 - **Reanimated animations** — all transitions run at 60 fps on the native thread
 
-## API Surface (High Level)
+## API Surface
 
 Tracky mobile is wired to the backend via:
 
-- REST base URL: `https://api.trackyapp.net` (default from `apps/mobile/constants/config.ts`)
-- WebSocket URL: `wss://api.trackyapp.net/ws/realtime` (default from `apps/mobile/constants/config.ts`)
+- REST base URL: `https://api.trackyapp.net` (default from [apps/mobile/constants/config.ts](apps/mobile/constants/config.ts))
+- WebSocket URL: `wss://api.trackyapp.net/ws/realtime`
 
-The endpoint contracts are wrapped in `apps/mobile/services/api-client.ts`, with higher-level train/domain adapters in `apps/mobile/services/api.ts`.
+Endpoints are implemented in [apps/api/routes/static.go](apps/api/routes/static.go) and [routes.go](apps/api/routes/routes.go), and consumed via the typed client in [apps/mobile/services/api-client.ts](apps/mobile/services/api-client.ts) plus the WebSocket client in [apps/mobile/services/ws-client.ts](apps/mobile/services/ws-client.ts).
 
-> Note: `apps/api/cmd/api/main.go` in this workspace currently exposes a minimal local server (`/health`). The `/v1/*` surface below reflects the API expected by the mobile app client.
+Date parameters are `YYYY-MM-DD`. Cacheable read endpoints set `Cache-Control: public, max-age=3600`. All `/ingest` writes require `X-Ingest-Secret`; reads are public (subject to a 30 req/s per-IP rate limit).
 
-### Endpoint Map (REST)
+### REST Endpoints
 
-| Endpoint | Purpose | Maps to app behavior |
-| --- | --- | --- |
-| `GET /health` | Liveness check for local API process | Local backend smoke check |
-| `GET /v1/search?q=&provider=&types=` | Unified search across stations, trains, routes | Search modal suggestions and station-only search flow |
-| `GET /v1/providers/{provider}` | Provider metadata (timezone, name, etc.) | Agency/timezone lookups used by cached stop/agency helpers |
-| `GET /v1/stops/{provider}/{stopCode}` | Stop metadata by code | Trip detail stop enrichment and station metadata hydration |
-| `GET /v1/stops/nearby?lat=&lon=&radius_m=&provider=` | Nearby stations around location | Search screen nearby suggestions (best-effort) |
-| `GET /v1/routes?provider=` | List routes for provider | Popular route suggestions in search |
-| `GET /v1/routes/{provider}/{routeCode}` | Single route metadata | Route selection hydration and route-name cache prefetch |
-| `GET /v1/routes/{provider}/{routeCode}/trains` | Trains that run on a route | Route expansion into train list in search |
-| `GET /v1/trains/{trainNumber}/service?provider=&from=&to=` | Service date range for a train number | Bounds the train-number date picker |
-| `GET /v1/trips/lookup?provider=&train_number=&date=` | Resolve train number + date into trip IDs | Train-number search flow and train detail resolution |
-| `GET /v1/trips/{tripId}` | Trip metadata (route/headsign/service) | `TrainAPIService.getTrainDetails` trip resolution |
-| `GET /v1/trips/{tripId}/stops` | Scheduled stop timeline for trip | Train detail timeline, trip selection, saved-trip reconstruction |
-| `GET /v1/departures?stop_id=&date=` | Departures/arrivals for a station on a date | Station departure board and nearby suggestion train rows |
-| `GET /v1/connections?from_stop=&to_stop=&date=` | Station-to-station trip options | Two-station search results |
-| `GET /v1/runs/{provider}/{tripId}/{runDate}/stops` | Per-stop scheduled/estimated/actual realtime rows | Live delay overlays in trip search and trip detail |
-| `GET /v1/active?provider=` | Currently active runs snapshot | "Live only" filtering for route train lists |
+| Method & Path | Required params | Optional params | Returns |
+| --- | --- | --- | --- |
+| `GET /health` | — | — | `ok` (text) |
+| `GET /v1/search` | `q` (query) | `provider`, `types` (CSV of `stations`, `trains`, `routes`) | `{ stations, trains, routes }` |
+| `GET /v1/providers/{provider}` | `provider` (path) | — | Provider metadata |
+| `GET /v1/stops` | `provider` (query) | `bbox` (`minLon,minLat,maxLon,maxLat`) | Array of stops |
+| `GET /v1/stops/nearby` | `lat`, `lon` (query) | `radius_m` (default 5000, max 50000), `provider` | Array of stops |
+| `GET /v1/stops/{provider}/{stopCode}` | `provider`, `stopCode` (path) | — | Stop metadata |
+| `GET /v1/routes` | `provider` (query) | — | Array of routes |
+| `GET /v1/routes/{provider}/{routeCode}` | `provider`, `routeCode` (path) | — | Route metadata |
+| `GET /v1/routes/{provider}/{routeCode}/trains` | `provider`, `routeCode` (path) | — | Array of trains on route |
+| `GET /v1/trains/{trainNumber}/service` | `trainNumber` (path), `provider` (query) | `from`, `to` (date) | Service info / date range |
+| `GET /v1/trips/lookup` | `provider`, `train_number`, `date` (query) | — | Array of trips |
+| `GET /v1/trips/{tripId}` | `tripId` (path) | — | Trip metadata |
+| `GET /v1/trips/{tripId}/stops` | `tripId` (path) | — | Scheduled stop timeline |
+| `GET /v1/departures` | `stop_id`, `date` (query) | — | Departures/arrivals for the day |
+| `GET /v1/connections` | `from_stop`, `to_stop`, `date` (query) | — | Station-to-station trip options |
+| `GET /v1/runs/{provider}/{tripId}/{runDate}/stops` | `provider`, `tripId`, `runDate` (path) | — | Per-stop scheduled / estimated / actual times (uncached, realtime) |
+| `GET /v1/realtime` | `topic` (query) | — | `{ runs: [...] }` from latest realtime snapshot for the topic |
+| `POST /ingest` | `X-Ingest-Secret` header | — | Snapshot ingest from the edge collector |
 
-### Realtime Stream (WebSocket)
+### WebSocket
 
-| Endpoint | Purpose | Maps to app behavior |
-| --- | --- | --- |
-| `WS /ws/realtime` | Pushes `realtime_update` snapshots by provider after subscribe/unsubscribe messages | Live train markers on map, saved-train realtime refresh, and route-name prefetch warming |
+`WS /ws/realtime` — clients send subscribe/unsubscribe frames and receive `realtime_update` snapshots:
+
+```jsonc
+// Client → server
+{ "action": "subscribe",   "providers": ["amtrak"] }
+{ "action": "unsubscribe", "providers": ["amtrak"] }
+
+// Server → client
+{ "type": "realtime_update", "provider": "amtrak", "positions": [...], "stopTimes": [...] }
+```
+
+Wire format defined in [apps/api/ws/poller.go](apps/api/ws/poller.go) and [apps/api/ws/handler.go](apps/api/ws/handler.go).
 
 ### Where This Is Consumed in the App
 

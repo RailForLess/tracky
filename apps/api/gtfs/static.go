@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/RailForLess/tracky/api/ids"
 	"github.com/RailForLess/tracky/api/spec"
 )
 
@@ -396,7 +397,7 @@ func parseRoutes(f *zip.File, providerID string) ([]spec.Route, error) {
 	for _, r := range rows {
 		out = append(out, spec.Route{
 			ProviderID: providerID,
-			RouteID:    providerID + ":" + r["route_id"],
+			RouteID:    ids.MustEncode(ids.KindRoute, providerID, r["route_id"]),
 			ShortName:  r["route_short_name"],
 			LongName:   r["route_long_name"],
 			Color:      r["route_color"],
@@ -429,8 +430,9 @@ func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 			code = r["stop_id"]
 		}
 		out = append(out, spec.Stop{
+			Type:               spec.StopTypeStop,
 			ProviderID:         providerID,
-			StopID:             providerID + ":" + r["stop_id"],
+			StopID:             ids.MustEncode(ids.KindStop, providerID, r["stop_id"]),
 			Code:               code,
 			Name:               r["stop_name"],
 			Lat:                lat,
@@ -451,8 +453,8 @@ func parseTrips(f *zip.File, providerID string) ([]spec.Trip, error) {
 	for _, r := range rows {
 		out = append(out, spec.Trip{
 			ProviderID:  providerID,
-			TripID:      providerID + ":" + r["trip_id"],
-			RouteID:     providerID + ":" + r["route_id"],
+			TripID:      ids.MustEncode(ids.KindTrip, providerID, r["trip_id"]),
+			RouteID:     ids.MustEncode(ids.KindRoute, providerID, r["route_id"]),
 			ServiceID:   r["service_id"],
 			ShortName:   r["trip_short_name"],
 			Headsign:    r["trip_headsign"],
@@ -476,8 +478,8 @@ func parseStopTimes(f *zip.File, providerID string) ([]spec.ScheduledStopTime, e
 		}
 		out = append(out, spec.ScheduledStopTime{
 			ProviderID:    providerID,
-			TripID:        providerID + ":" + r["trip_id"],
-			StopID:        providerID + ":" + r["stop_id"],
+			TripID:        ids.MustEncode(ids.KindTrip, providerID, r["trip_id"]),
+			StopID:        ids.MustEncode(ids.KindStop, providerID, r["stop_id"]),
 			StopSequence:  seq,
 			ArrivalTime:   optStr(r, "arrival_time"),
 			DepartureTime: optStr(r, "departure_time"),
