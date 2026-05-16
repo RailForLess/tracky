@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,5 +49,21 @@ func TestProcessor_PublishesToHubInLegacyShape(t *testing.T) {
 			t.Fatal("timed out waiting for hub snapshot")
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+func TestProcessor_ReturnsErrorForInvalidProviderID(t *testing.T) {
+	p := NewProcessor(nil, nil)
+	snap := &collector.Snapshot{
+		ProviderID: "bad-provider",
+		Feed:       &providers.RealtimeFeed{},
+	}
+
+	err := p.Process(context.Background(), snap)
+	if err == nil {
+		t.Fatal("process error = nil, want invalid provider id error")
+	}
+	if !strings.Contains(err.Error(), `realtime: invalid provider id "bad-provider"`) {
+		t.Fatalf("process error = %v", err)
 	}
 }

@@ -34,7 +34,10 @@ func (p *Processor) Process(ctx context.Context, snap *collector.Snapshot) error
 
 	// Topic is the operator's typed global id (o-<provider>) so that future
 	// versions can also publish to route/trip/vehicle topics without renaming.
-	topic := ids.MustEncode(ids.KindOperator, snap.ProviderID, "")
+	topic, err := ids.Encode(ids.KindOperator, snap.ProviderID, "")
+	if err != nil {
+		return fmt.Errorf("realtime: invalid provider id %q: %w", snap.ProviderID, err)
+	}
 	payload, err := json.Marshal(ws.RealtimeUpdate{
 		Type:      "realtime_update",
 		Provider:  snap.ProviderID,

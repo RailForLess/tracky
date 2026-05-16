@@ -395,9 +395,13 @@ func parseRoutes(f *zip.File, providerID string) ([]spec.Route, error) {
 	}
 	out := make([]spec.Route, 0, len(rows))
 	for _, r := range rows {
+		routeID, err := ids.Encode(ids.KindRoute, providerID, r["route_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseRoutes: invalid route_id %q: %w", providerID, r["route_id"], err)
+		}
 		out = append(out, spec.Route{
 			ProviderID: providerID,
-			RouteID:    ids.MustEncode(ids.KindRoute, providerID, r["route_id"]),
+			RouteID:    routeID,
 			ShortName:  r["route_short_name"],
 			LongName:   r["route_long_name"],
 			Color:      r["route_color"],
@@ -429,10 +433,14 @@ func parseStops(f *zip.File, providerID string) ([]spec.Stop, error) {
 		if code == "" {
 			code = r["stop_id"]
 		}
+		stopID, err := ids.Encode(ids.KindStop, providerID, r["stop_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseStops: invalid stop_id %q: %w", providerID, r["stop_id"], err)
+		}
 		out = append(out, spec.Stop{
 			Type:               spec.StopTypeStop,
 			ProviderID:         providerID,
-			StopID:             ids.MustEncode(ids.KindStop, providerID, r["stop_id"]),
+			StopID:             stopID,
 			Code:               code,
 			Name:               r["stop_name"],
 			Lat:                lat,
@@ -451,10 +459,18 @@ func parseTrips(f *zip.File, providerID string) ([]spec.Trip, error) {
 	}
 	out := make([]spec.Trip, 0, len(rows))
 	for _, r := range rows {
+		tripID, err := ids.Encode(ids.KindTrip, providerID, r["trip_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseTrips: invalid trip_id %q: %w", providerID, r["trip_id"], err)
+		}
+		routeID, err := ids.Encode(ids.KindRoute, providerID, r["route_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseTrips: invalid route_id %q for trip_id %q: %w", providerID, r["route_id"], r["trip_id"], err)
+		}
 		out = append(out, spec.Trip{
 			ProviderID:  providerID,
-			TripID:      ids.MustEncode(ids.KindTrip, providerID, r["trip_id"]),
-			RouteID:     ids.MustEncode(ids.KindRoute, providerID, r["route_id"]),
+			TripID:      tripID,
+			RouteID:     routeID,
 			ServiceID:   r["service_id"],
 			ShortName:   r["trip_short_name"],
 			Headsign:    r["trip_headsign"],
@@ -476,10 +492,18 @@ func parseStopTimes(f *zip.File, providerID string) ([]spec.ScheduledStopTime, e
 		if err != nil {
 			return nil, fmt.Errorf("gtfs [%s]: stop_times.txt: invalid stop_sequence %q for trip_id %q: %w", providerID, r["stop_sequence"], r["trip_id"], err)
 		}
+		tripID, err := ids.Encode(ids.KindTrip, providerID, r["trip_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseStopTimes: invalid trip_id %q: %w", providerID, r["trip_id"], err)
+		}
+		stopID, err := ids.Encode(ids.KindStop, providerID, r["stop_id"])
+		if err != nil {
+			return nil, fmt.Errorf("gtfs [%s]: parseStopTimes: invalid stop_id %q for trip_id %q: %w", providerID, r["stop_id"], r["trip_id"], err)
+		}
 		out = append(out, spec.ScheduledStopTime{
 			ProviderID:    providerID,
-			TripID:        ids.MustEncode(ids.KindTrip, providerID, r["trip_id"]),
-			StopID:        ids.MustEncode(ids.KindStop, providerID, r["stop_id"]),
+			TripID:        tripID,
+			StopID:        stopID,
 			StopSequence:  seq,
 			ArrivalTime:   optStr(r, "arrival_time"),
 			DepartureTime: optStr(r, "departure_time"),
