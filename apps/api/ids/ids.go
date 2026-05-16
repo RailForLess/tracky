@@ -84,15 +84,6 @@ func Encode(kind Kind, provider, native string) (string, error) {
 	return string(kind) + "-" + provider + "-" + native, nil
 }
 
-// MustEncode is Encode that panics on error. For tests and constants only.
-func MustEncode(kind Kind, provider, native string) string {
-	s, err := Encode(kind, provider, native)
-	if err != nil {
-		panic(err)
-	}
-	return s
-}
-
 // Decode parses a global ID. Operator IDs (o-foo) are accepted with an empty
 // Native field; all other kinds require a non-empty native after the second '-'.
 func Decode(s string) (ID, error) {

@@ -33,6 +33,14 @@ type trainProperties struct {
 	EventCode string `json:"EventCode"`
 	UpdatedAt string `json:"updated_at"`
 
+	// OrigSchDep is the train's original scheduled departure from its origin
+	// station in agency-local time, formatted as "M/D/YYYY h:mm:ss AM/PM"
+	// (e.g. "5/13/2026 4:55:00 PM"). The DATE PORTION identifies the run's
+	// service day — distinct from `now` for multi-day runs (Texas Eagle,
+	// California Zephyr, etc.) and the only way to disambiguate two
+	// simultaneous runs of the same train number.
+	OrigSchDep string `json:"OrigSchDep"`
+
 	// Stations is derived from the StationN keys by UnmarshalJSON, sorted by sequence.
 	Stations []stationEntry
 }
@@ -44,12 +52,13 @@ type trainProperties struct {
 func (p *trainProperties) UnmarshalJSON(data []byte) error {
 	// Decode known scalar fields using a shadow alias to avoid recursion.
 	type shadow struct {
-		TrainNum  string `json:"TrainNum"`
-		RouteName string `json:"RouteName"`
-		Velocity  string `json:"Velocity"`
-		Heading   string `json:"Heading"`
-		EventCode string `json:"EventCode"`
-		UpdatedAt string `json:"updated_at"`
+		TrainNum   string `json:"TrainNum"`
+		RouteName  string `json:"RouteName"`
+		Velocity   string `json:"Velocity"`
+		Heading    string `json:"Heading"`
+		EventCode  string `json:"EventCode"`
+		UpdatedAt  string `json:"updated_at"`
+		OrigSchDep string `json:"OrigSchDep"`
 	}
 	var s shadow
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -61,6 +70,7 @@ func (p *trainProperties) UnmarshalJSON(data []byte) error {
 	p.Heading = s.Heading
 	p.EventCode = s.EventCode
 	p.UpdatedAt = s.UpdatedAt
+	p.OrigSchDep = s.OrigSchDep
 
 	// Scan for StationN keys.
 	var raw map[string]json.RawMessage

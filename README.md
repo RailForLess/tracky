@@ -409,7 +409,7 @@ Date parameters are `YYYY-MM-DD`. Cacheable read endpoints set `Cache-Control: p
 | `GET /v1/departures` | `stop_id`, `date` (query) | — | Departures/arrivals for the day |
 | `GET /v1/connections` | `from_stop`, `to_stop`, `date` (query) | — | Station-to-station trip options |
 | `GET /v1/runs/{provider}/{tripId}/{runDate}/stops` | `provider`, `tripId`, `runDate` (path) | — | Per-stop scheduled / estimated / actual times (uncached, realtime) |
-| `GET /v1/realtime` | `topic` (query) | — | `{ runs: [...] }` from latest realtime snapshot for the topic |
+| `GET /v1/realtime` | `topic` (query) | — | Latest realtime snapshot for the topic — same envelope shape as the WS feed |
 | `POST /ingest` | `X-Ingest-Secret` header | — | Snapshot ingest from the edge collector |
 
 ### WebSocket

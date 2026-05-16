@@ -48,12 +48,13 @@ func FetchAndParsePositions(
 				// emitting a position with a zero RunDate.
 				continue
 			}
-			if trip.GetTripId() == "" {
+			tripID, err := ids.Encode(ids.KindTrip, providerID, trip.GetTripId())
+			if err != nil {
 				continue
 			}
-			pos.TripID = ids.MustEncode(ids.KindTrip, providerID, trip.GetTripId())
-			if rid := trip.GetRouteId(); rid != "" {
-				pos.RouteID = ids.MustEncode(ids.KindRoute, providerID, rid)
+			pos.TripID = tripID
+			if routeID, err := ids.Encode(ids.KindRoute, providerID, trip.GetRouteId()); err == nil {
+				pos.RouteID = routeID
 			}
 			pos.RunDate = runDate
 		}
@@ -81,8 +82,7 @@ func FetchAndParsePositions(
 			}
 		}
 
-		if sid := vp.GetStopId(); sid != "" {
-			stopID := ids.MustEncode(ids.KindStop, providerID, sid)
+		if stopID, err := ids.Encode(ids.KindStop, providerID, vp.GetStopId()); err == nil {
 			pos.CurrentStopCode = &stopID
 		}
 
@@ -135,16 +135,13 @@ func FetchAndParseTripUpdates(
 			// emitting stop times with a zero RunDate.
 			continue
 		}
-		if trip.GetTripId() == "" {
+		tripID, err := ids.Encode(ids.KindTrip, providerID, trip.GetTripId())
+		if err != nil {
 			continue
 		}
-		tripID := ids.MustEncode(ids.KindTrip, providerID, trip.GetTripId())
 
 		for _, stu := range tu.StopTimeUpdate {
-			var stopCode string
-			if sid := stu.GetStopId(); sid != "" {
-				stopCode = ids.MustEncode(ids.KindStop, providerID, sid)
-			}
+			stopCode, _ := ids.Encode(ids.KindStop, providerID, stu.GetStopId())
 			st := spec.TrainStopTime{
 				Provider:    providerID,
 				TripID:      tripID,
