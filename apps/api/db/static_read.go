@@ -634,26 +634,35 @@ func (d *DB) Search(ctx context.Context, providerID, query string, includeStatio
 	}
 	q := "%" + query + "%"
 
+	// Preserve the empty-slice init on no-match — searchX returns nil from a
+	// zero-row scan, which would marshal as JSON null and break clients that
+	// expect always-array fields.
 	if includeStations {
 		hits, err := d.searchStations(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search stations: %w", err)
 		}
-		out.Stations = hits
+		if hits != nil {
+			out.Stations = hits
+		}
 	}
 	if includeRoutes {
 		hits, err := d.searchRoutes(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search routes: %w", err)
 		}
-		out.Routes = hits
+		if hits != nil {
+			out.Routes = hits
+		}
 	}
 	if includeTrains {
 		hits, err := d.searchTrains(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search trains: %w", err)
 		}
-		out.Trains = hits
+		if hits != nil {
+			out.Trains = hits
+		}
 	}
 	return out, nil
 }
