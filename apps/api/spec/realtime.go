@@ -85,7 +85,10 @@ func (s *TrainStopTime) IsLive() bool {
 }
 
 // RunID returns a canonical string identifier for this specific train run.
-// Useful for logging, caching keys, and display.
+// Useful for logging, dedup, and React keys on the client. Format is
+// '<tripId>@<runDate>' — '@' is the run composite delimiter, distinct from
+// '-' (structural) and '~' (word-break) used inside typed global ids, so
+// callers can't mistake a run id for an addressable resource.
 func (s *TrainStopTime) RunID() string {
-	return s.Provider + ":" + s.TripID + ":" + s.RunDate.Format("2006-01-02")
+	return s.TripID + "@" + s.RunDate.Format("2006-01-02")
 }

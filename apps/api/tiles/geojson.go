@@ -137,8 +137,8 @@ func buildRouteFeatures(
 	// 3. Build shape→route join via trips. Multiple routes can share a
 	// shape, so collect every distinct routeID per shape rather than
 	// keeping just the first one — otherwise later routes get dropped.
-	// Trip.ShapeID is raw GTFS (not namespaced), so the join key is
-	// providerID + ":" + *trip.ShapeID, matching our grouped keys.
+	// Trip.ShapeID is raw GTFS (not namespaced), so we key on
+	// shapeKey{providerID, shapeID} to scope across providers.
 	routesByShape := make(map[shapeKey]map[string]spec.Route)
 	for _, t := range trips {
 		if t.ShapeID == nil {
