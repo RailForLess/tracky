@@ -22,6 +22,7 @@ export interface ApiAgency {
 
 export interface ApiRoute {
   providerId: string;
+  /** Typed global id, e.g. 'r-amtrak-40751'. */
   routeId: string;
   shortName: string;
   longName: string;
@@ -30,8 +31,16 @@ export interface ApiRoute {
   shapeId: string | null;
 }
 
+/**
+ * Polymorphic stop response. `type` is the discriminator — narrow on it
+ * before reading kind-specific fields.
+ */
+export type ApiStopOrHub = ApiStop | ApiHub;
+
 export interface ApiStop {
+  type: 'stop';
   providerId: string;
+  /** Typed global id, e.g. 's-amtrak-CHI'. */
   stopId: string;
   code: string;
   name: string;
@@ -41,9 +50,29 @@ export interface ApiStop {
   wheelchairBoarding: boolean | null;
 }
 
+/**
+ * Hub (meta-station) — a deduplicated grouping of stops at one physical
+ * location, e.g. CHI Union Station served by both Amtrak and Metra.
+ * Backend stub returns 501 today; the type is wired so clients can already
+ * narrow the discriminated union safely.
+ */
+export interface ApiHub {
+  type: 'hub';
+  /** Typed global id, e.g. 'h-amtrak-CHI~UNION'. */
+  hubId: string;
+  name: string;
+  lat: number;
+  lon: number;
+  timezone: string | null;
+  /** Member stop ids (s- prefixed). */
+  members: string[];
+}
+
 export interface ApiTrip {
   providerId: string;
+  /** Typed global id, e.g. 't-amtrak-251208'. */
   tripId: string;
+  /** Typed global id, e.g. 'r-amtrak-40751'. */
   routeId: string;
   serviceId: string;
   shortName: string;
@@ -150,10 +179,3 @@ export interface RealtimeUpdate {
   positions: ApiTrainPosition[];
 }
 
-export interface ApiActiveTrain {
-  provider: string;
-  tripId: string;
-  runDate: string;
-  trainNumber: string;
-  routeId: string;
-}

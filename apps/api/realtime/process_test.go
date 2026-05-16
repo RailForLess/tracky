@@ -67,3 +67,19 @@ func TestProcessor_ReturnsErrorForInvalidProviderID(t *testing.T) {
 		t.Fatalf("process error = %v", err)
 	}
 }
+
+func TestProcessor_ReturnsErrorWhenHubIsNil(t *testing.T) {
+	p := NewProcessor(nil, nil)
+	snap := &collector.Snapshot{
+		ProviderID: "amtrak",
+		Feed:       &providers.RealtimeFeed{},
+	}
+
+	err := p.Process(context.Background(), snap)
+	if err == nil {
+		t.Fatal("process error = nil, want hub initialization error")
+	}
+	if err.Error() != "realtime: hub is not initialized" {
+		t.Fatalf("process error = %v", err)
+	}
+}

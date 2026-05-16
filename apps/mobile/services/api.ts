@@ -23,13 +23,13 @@ import {
   getTrip,
   getTripStops,
   lookupTrips,
-  prefetchRoute,
 } from './api-client';
 import { wsClient } from './ws-client';
 import { formatTime, formatTimeWithDayOffset, type FormattedTime } from '../utils/time-formatting';
 import { convertGtfsTimeForStop } from '../utils/timezone';
 import { extractDateFromTripId, extractTrainNumber, isLikelyTrainNumber } from '../utils/train-helpers';
 import { calculateDaysAway, formatDateForDisplay, getDaysAwayLabel } from '../utils/date-helpers';
+import { encodeId, tryParseId, tryParseKindedId } from '../utils/ids';
 import { logger } from '../utils/logger';
 
 // Re-export for backwards compatibility
@@ -39,6 +39,31 @@ export type { FormattedTime };
 // Until multi-provider support lands, all legacy call sites assume Amtrak.
 const DEFAULT_PROVIDER = 'amtrak';
 
+/**
+ * Coerce any of the legal stop-key shapes to a typed global stop id:
+ *   's-amtrak-CHI'  → 's-amtrak-CHI'
+ *   'amtrak:CHI'    → 's-amtrak-CHI'  (legacy)
+ *   'CHI'           → 's-amtrak-CHI'  (assumes Amtrak)
+ */
+function toStopId(input: string): string {
+  if (tryParseKindedId(input, 's')) return input;
+  if (input.includes(':')) {
+    const [provider, code] = input.split(':', 2);
+    return encodeId('s', provider || DEFAULT_PROVIDER, code || input);
+  }
+  return encodeId('s', DEFAULT_PROVIDER, input);
+}
+
+/** Same idea but for trip ids. */
+function toTripId(input: string): string {
+  if (tryParseKindedId(input, 't')) return input;
+  if (input.includes(':')) {
+    const [provider, native] = input.split(':', 2);
+    return encodeId('t', provider || DEFAULT_PROVIDER, native || input);
+  }
+  return encodeId('t', DEFAULT_PROVIDER, input);
+}
+
 /** Deterministic numeric hash from a string (avoids Date.now() collisions). */
 function simpleHash(str: string): number {
   let hash = 0;
@@ -46,10 +71,6 @@ function simpleHash(str: string): number {
     hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
-}
-
-function isNamespaced(id: string): boolean {
-  return id.includes(':');
 }
 
 function toYMD(date: Date): string {
@@ -104,9 +125,8 @@ function adaptStopTime(et: ApiEnrichedStopTime): EnrichedStopTime {
 // ── Display name helpers ───────────────────────────────────────────────────
 
 /**
- * Display info for a train. Reads from the in-memory route cache; if the
- * routeId hasn't been fetched yet, kicks off a background fetch and falls
- * back to a short label so the UI doesn't show empty space.
+ * Display info for a train. Reads from the in-memory route cache only; map
+ * rendering must not fan out route lookups for every live train update.
  */
 export function getTrainDisplayName(
   tripIdOrTrainNumber: string,
@@ -122,7 +142,6 @@ export function getTrainDisplayName(
 
   let routeName: string | null = null;
   if (knownRouteId) {
-    prefetchRoute(knownRouteId);
     routeName = getCachedRoute(knownRouteId)?.longName ?? null;
   }
 
@@ -184,8 +203,6 @@ async function buildTrainFromTrip(
   const firstStop = stops[0];
   const lastStop = stops[stops.length - 1];
 
-  // Warm route cache so display name resolves once it lands
-  prefetchRoute(trip.routeId);
   const route = getCachedRoute(trip.routeId);
   const routeName = route?.longName || route?.shortName || '';
 
@@ -194,13 +211,15 @@ async function buildTrainFromTrip(
   const arriveFormatted = convertGtfsTimeForStop(lastStop.arrival_time, lastStop.stop_id);
 
   const train: Train = {
-    id: simpleHash(trip.tripId),
+    // Include effectiveDate so two runs of the same trip on different days
+    // don't collide as React keys — Amtrak reuses trip_id across service days.
+    id: simpleHash(effectiveDate ? `${trip.tripId}@${toYMD(effectiveDate)}` : trip.tripId),
     operator: 'Amtrak',
     trainNumber: trip.shortName || extractTrainNumber(trip.tripId) || '',
     from: firstStop.stop_name,
     to: lastStop.stop_name,
-    fromCode: `${provider}:${firstStop.stop_id}`,
-    toCode: `${provider}:${lastStop.stop_id}`,
+    fromCode: encodeId('s', provider, firstStop.stop_id),
+    toCode: encodeId('s', provider, lastStop.stop_id),
     departTime: departFormatted.time,
     arriveTime: arriveFormatted.time,
     departDayOffset: departFormatted.dayOffset,
@@ -215,7 +234,7 @@ async function buildTrainFromTrip(
       return {
         time: formatted.time,
         name: stop.stop_name,
-        code: `${provider}:${stop.stop_id}`,
+        code: encodeId('s', provider, stop.stop_id),
       };
     }),
   };
@@ -240,7 +259,6 @@ function buildMinimalTrainFromDeparture(
   userStopCode: string,
   effectiveDate: Date,
 ): Train {
-  prefetchRoute(d.routeId);
   const route = getCachedRoute(d.routeId);
   const routeName = route?.longName || route?.shortName || '';
 
@@ -252,13 +270,15 @@ function buildMinimalTrainFromDeparture(
       ? convertGtfsTimeForStop(d.arrivalTime, userStopCode)
       : { time: '', dayOffset: 0 };
 
+  const userStopId = encodeId('s', provider, userStopCode);
   const train: Train = {
-    id: simpleHash(d.tripId),
+    // See buildTrainFromTrip — same-tripId / different-day disambiguation.
+    id: simpleHash(`${d.tripId}@${toYMD(effectiveDate)}`),
     operator: 'Amtrak',
     trainNumber: d.shortName || extractTrainNumber(d.tripId) || '',
     from: '',
     to: d.headsign || '',
-    fromCode: `${provider}:${userStopCode}`,
+    fromCode: userStopId,
     toCode: '',
     departTime: userTime.time,
     arriveTime: userTime.time,
@@ -270,7 +290,7 @@ function buildMinimalTrainFromDeparture(
     routeName,
     tripId: d.tripId,
     intermediateStops: [
-      { time: userTime.time, name: userStopCode, code: `${provider}:${userStopCode}` },
+      { time: userTime.time, name: userStopCode, code: userStopId },
     ],
   };
 
@@ -294,34 +314,77 @@ export class TrainAPIService {
     try {
       let trip: ApiTrip | null = null;
 
-      if (isNamespaced(tripId)) {
-        trip = await safeAwait<ApiTrip | null>(getTrip(tripId), null);
+      // Accept t- ids or legacy provider:native. Bare train numbers fall
+      // through to the lookupTrips branch below.
+      const candidateTripId =
+        tryParseKindedId(tripId, 't') || tripId.includes(':') ? toTripId(tripId) : null;
+      if (candidateTripId) {
+        trip = await safeAwait<ApiTrip | null>(getTrip(candidateTripId), null);
+        logger.warn('[api] getTrainDetails direct trip lookup', {
+          inputTripId: tripId,
+          candidateTripId,
+          found: !!trip,
+          resolvedTripId: trip?.tripId,
+          routeId: trip?.routeId,
+          shortName: trip?.shortName,
+        });
       }
 
       if (!trip) {
         const trainNumber = knownTrainNumber || extractTrainNumber(tripId);
         if (!trainNumber) {
-          logger.debug(`[api] getTrainDetails(${tripId}): cannot extract train number`);
+          logger.warn('[api] getTrainDetails cannot extract train number', {
+            inputTripId: tripId,
+            knownTrainNumber,
+          });
           return null;
         }
         const inferredDate = date ?? extractDateFromTripId(tripId) ?? new Date();
+        const lookupDate = toYMD(inferredDate);
+        logger.warn('[api] getTrainDetails lookup by train number', {
+          inputTripId: tripId,
+          trainNumber,
+          lookupDate,
+          dateSource: date ? 'caller' : extractDateFromTripId(tripId) ? 'tripId' : 'new Date()',
+          inferredDateIso: inferredDate.toISOString(),
+        });
         const trips = await safeAwait<ApiTrip[]>(
           lookupTrips({
             provider: DEFAULT_PROVIDER,
             trainNumber,
-            date: toYMD(inferredDate),
+            date: lookupDate,
           }),
           [],
         );
+        logger.warn('[api] getTrainDetails lookup result', {
+          inputTripId: tripId,
+          trainNumber,
+          lookupDate,
+          count: trips.length,
+          firstTripId: trips[0]?.tripId,
+        });
         trip = trips[0] ?? null;
       }
 
       if (!trip) {
-        logger.debug(`[api] getTrainDetails(${tripId}): no matching trip`);
+        logger.warn('[api] getTrainDetails no matching scheduled trip', {
+          inputTripId: tripId,
+          knownTrainNumber,
+          date: date ? toYMD(date) : undefined,
+        });
         return null;
       }
 
       const apiStops = await safeAwait<ApiEnrichedStopTime[]>(getTripStops(trip.tripId), []);
+      logger.warn('[api] getTrainDetails trip stops result', {
+        inputTripId: tripId,
+        resolvedTripId: trip.tripId,
+        resolvedTrainNumber: trip.shortName,
+        routeId: trip.routeId,
+        stopCount: apiStops.length,
+        firstStop: apiStops[0]?.stopCode,
+        lastStop: apiStops[apiStops.length - 1]?.stopCode,
+      });
       const stops = apiStops.map(adaptStopTime);
 
       const effectiveDate = date ?? extractDateFromTripId(trip.tripId) ?? undefined;
@@ -346,12 +409,14 @@ export class TrainAPIService {
   static async getTrainsForStation(stopId: string, date?: Date): Promise<Train[]> {
     try {
       const effectiveDate = date ?? new Date();
-      const provider = stopId.includes(':') ? stopId.split(':', 1)[0] : DEFAULT_PROVIDER;
-      const namespaced = stopId.includes(':') ? stopId : `${provider}:${stopId}`;
-      const userStopCode = stopId.includes(':') ? stopId.split(':')[1] : stopId;
+      const globalStopId = toStopId(stopId);
+      // userStopCode is the native code (no prefix) — keep this for the
+      // departure-board UI which displays the bare code.
+      const parsed = tryParseKindedId(globalStopId, 's');
+      const userStopCode = parsed?.native ?? stopId;
 
       const departures = await safeAwait<ApiDepartureItem[]>(
-        getDepartures({ stopId: namespaced, date: toYMD(effectiveDate) }),
+        getDepartures({ stopId: globalStopId, date: toYMD(effectiveDate) }),
         [],
       );
       logger.debug(`[api] getTrainsForStation(${stopId}): ${departures.length} departures`);
@@ -401,12 +466,11 @@ export class TrainAPIService {
     }
   }
 
-  /** Look up a stop by its raw code (assumes Amtrak until multi-provider). */
-  static async getStop(stopId: string): Promise<Stop | null> {
+  /** Look up a stop by global id, legacy provider:code, or bare code. */
+  static async getStop(stopKey: string): Promise<Stop | null> {
     try {
-      const code = stopId.includes(':') ? stopId.split(':')[1] : stopId;
-      const provider = stopId.includes(':') ? stopId.split(':')[0] : DEFAULT_PROVIDER;
-      const apiStop = await getStop(provider, code);
+      const apiStop = await getStop(toStopId(stopKey));
+      if (apiStop.type !== 'stop') return null; // hub responses not yet supported here
       return adaptStop(apiStop);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) return null;

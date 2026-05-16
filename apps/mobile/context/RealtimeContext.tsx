@@ -8,7 +8,6 @@ import React, {
 } from 'react';
 
 import { PROVIDERS } from '../constants/providers';
-import { prefetchRoute } from '../services/api-client';
 import { wsClient } from '../services/ws-client';
 import type { ApiTrainPosition, RealtimeUpdate } from '../types/api';
 
@@ -59,11 +58,6 @@ export function RealtimeProvider({ providers, children }: RealtimeProviderProps)
     setPositionsByProvider(next);
 
     const onUpdate = (msg: RealtimeUpdate) => {
-      // Warm the route cache so display sites can resolve routeId → name
-      // synchronously without a flicker.
-      for (const p of msg.positions) {
-        if (p.routeId) prefetchRoute(p.routeId);
-      }
       // Only keep current provider ids when merging updates
       const updated: PositionsByProvider = {};
       for (const id of ids) {

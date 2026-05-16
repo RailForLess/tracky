@@ -38,6 +38,9 @@ func (p *Processor) Process(ctx context.Context, snap *collector.Snapshot) error
 	if err != nil {
 		return fmt.Errorf("realtime: invalid provider id %q: %w", snap.ProviderID, err)
 	}
+	if p.Hub == nil {
+		return fmt.Errorf("realtime: hub is not initialized")
+	}
 	payload, err := json.Marshal(ws.RealtimeUpdate{
 		Type:      "realtime_update",
 		Provider:  snap.ProviderID,

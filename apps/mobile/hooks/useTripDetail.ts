@@ -4,17 +4,18 @@
  * estimated/actual times per stop.
  *
  * Replaces several gtfsParser/RealtimeService calls with one async hook.
- * Stop coordinates fan out as parallel /v1/stops/{provider}/{stopCode}
- * requests; the 1h cache makes repeat opens of the same trip cheap.
+ * Stop coordinates fan out as parallel /v1/stops/{stopId} requests;
+ * the 1h cache makes repeat opens of the same trip cheap.
  *
- * Per-stop ETAs come from /v1/runs/{provider}/{tripId}/{runDate}/stops
+ * Per-stop ETAs come from /v1/trips/{tripId}/runs/{runDate}/stops
  * which is currently a stub on apps/api — the hook returns scheduled-only
- * times until the backend lands that endpoint.
+ * times until the backend lands real data for it.
  */
 
 import { useEffect, useState } from 'react';
 import { ApiError, getRunStops, getStop, getTripStops } from '../services/api-client';
 import type { ApiTrainStopTime } from '../types/api';
+import { encodeId, tryParseId } from '../utils/ids';
 import { logger } from '../utils/logger';
 
 export interface TripDetailStop {
@@ -72,14 +73,14 @@ export function useTripDetail(
     setState(s => ({ ...s, loading: true }));
 
     (async () => {
-      const provider = tripId.includes(':') ? tripId.split(':', 1)[0] : 'amtrak';
+      const provider = tryParseId(tripId)?.provider ?? 'amtrak';
 
       // Phase 1: scheduled stop times — single endpoint.
       let scheduled: TripDetailStop[];
       try {
         const apiStops = await getTripStops(tripId);
         scheduled = apiStops.map(et => ({
-          stopId: `${provider}:${et.stopCode}`,
+          stopId: encodeId('s', provider, et.stopCode),
           code: et.stopCode,
           name: et.stopName,
           sequence: et.stopSequence,
@@ -109,7 +110,8 @@ export function useTripDetail(
       const enrichedPromise = Promise.all(
         scheduled.map(async (stop) => {
           try {
-            const apiStop = await getStop(provider, stop.code);
+            const apiStop = await getStop(stop.stopId);
+            if (apiStop.type !== 'stop') return stop;
             return {
               ...stop,
               lat: apiStop.lat,
@@ -127,7 +129,7 @@ export function useTripDetail(
       const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const delaysPromise = (async (): Promise<{ rows: ApiTrainStopTime[]; available: boolean }> => {
         try {
-          const rows = await getRunStops({ provider, tripId, runDate: ymd });
+          const rows = await getRunStops({ tripId, runDate: ymd });
           return { rows, available: true };
         } catch (err) {
           if (!(err instanceof ApiError && err.status === 404)) {

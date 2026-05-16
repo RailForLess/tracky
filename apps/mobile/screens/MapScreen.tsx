@@ -263,6 +263,7 @@ function MapScreenInner() {
       );
       return {
         tripId: train.tripId,
+        runDate: train.runDate,
         trainNumber: train.trainNumber,
         routeName: train.routeName,
         position: train.position,
@@ -279,6 +280,7 @@ function MapScreenInner() {
       .filter(train => train.realtime?.position)
       .map(train => ({
         tripId: train.tripId || `saved-${train.id}`,
+        runDate: train.travelDate,
         trainNumber: train.trainNumber,
         routeName: train.routeName,
         position: {
@@ -332,9 +334,28 @@ function MapScreenInner() {
   // Race-condition guard: only apply API result if it matches the latest request
   const latestLiveTrainRequestRef = useRef<string | null>(null);
 
+  const parseRunDate = useCallback((runDate?: string | number | Date | null): Date | undefined => {
+    if (!runDate) return undefined;
+    if (runDate instanceof Date) return runDate;
+    if (typeof runDate === 'number') return new Date(runDate);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(runDate);
+    if (!match) {
+      const parsed = new Date(runDate);
+      return Number.isFinite(parsed.getTime()) ? parsed : undefined;
+    }
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }, []);
+
   // Handle live train marker press - zoom immediately, show skeleton, fetch in background
   const handleLiveTrainMarkerPress = useCallback(
-    (tripId: string, trainNumber: string, lat: number, lon: number, routeName?: string) => {
+    (
+      tripId: string,
+      trainNumber: string,
+      lat: number,
+      lon: number,
+      routeName?: string,
+      runDate?: string | number | Date | null,
+    ) => {
       hapticLight();
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
       cameraRef.current?.easeTo({
@@ -358,32 +379,52 @@ function MapScreenInner() {
         daysAway: 0,
         routeName: routeName || '',
         tripId,
+        travelDate: parseRunDate(runDate)?.getTime(),
         realtime: { position: { lat, lon } },
       };
 
-      latestLiveTrainRequestRef.current = tripId;
+      const requestKey = `${tripId}@${runDate ?? ''}`;
+      const parsedRunDate = parseRunDate(runDate);
+      latestLiveTrainRequestRef.current = requestKey;
       setSelectedTrain(placeholder);
       navigateToTrain(placeholder, { fromMarker: true });
 
       // Fetch full details in background
-      TrainAPIService.getTrainDetails(tripId, undefined, trainNumber)
+      logger.warn('[MapScreen] loading live train details', {
+        tripId,
+        trainNumber,
+        runDate,
+        parsedRunDate: parsedRunDate?.toISOString(),
+        routeName,
+        requestKey,
+      });
+      TrainAPIService.getTrainDetails(tripId, parsedRunDate, trainNumber)
         .then(train => {
-          if (latestLiveTrainRequestRef.current !== tripId) return; // stale
+          if (latestLiveTrainRequestRef.current !== requestKey) return; // stale
           if (train) {
+            logger.warn('[MapScreen] live train details loaded', {
+              inputTripId: tripId,
+              resolvedTripId: train.tripId,
+              trainNumber: train.trainNumber,
+              travelDate: train.travelDate ? new Date(train.travelDate).toISOString() : undefined,
+              from: train.fromCode,
+              to: train.toCode,
+            });
             setSelectedTrain(train);
           } else {
+            logger.warn('[MapScreen] live train details unavailable', { tripId, trainNumber, runDate });
             goBack();
             Alert.alert('Train Unavailable', 'Could not load details for this train. It may no longer be active.');
           }
         })
         .catch(error => {
-          if (latestLiveTrainRequestRef.current !== tripId) return; // stale
+          if (latestLiveTrainRequestRef.current !== requestKey) return; // stale
           logger.error('Error fetching train details:', error);
           goBack();
           Alert.alert('Connection Error', 'Could not load train details. Check your internet connection and try again.');
         });
     },
-    [setSelectedTrain, navigateToTrain, goBack]
+    [setSelectedTrain, navigateToTrain, goBack, parseRunDate]
   );
 
   // Zoom map to fit all given coordinates in the viewport
@@ -456,23 +497,35 @@ function MapScreenInner() {
   }, [handleTrainMarkerPress, fitMapToCoordinates]);
 
   // Stable callback for live train cluster presses
-  const handleLiveTrainClusterPress = useCallback((cluster: TrainCluster) => {
-    if (cluster.isCluster) {
-      fitMapToCoordinates(cluster.trains.map(t => ({
-        latitude: t.position.lat,
-        longitude: t.position.lon,
-      })));
-      return;
-    }
-    if (cluster.trains[0]) {
-      const trainData = cluster.trains[0];
-      if (trainData.savedTrain && trainData.savedTrain.realtime?.position) {
-        handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);
-      } else {
-        handleLiveTrainMarkerPress(trainData.tripId, trainData.trainNumber, cluster.lat, cluster.lon, trainData.routeName || undefined);
+  const handleLiveTrainClusterPress = useCallback(
+    (cluster: TrainCluster) => {
+      if (cluster.isCluster) {
+        fitMapToCoordinates(
+          cluster.trains.map(t => ({
+            latitude: t.position.lat,
+            longitude: t.position.lon,
+          }))
+        );
+        return;
       }
-    }
-  }, [handleTrainMarkerPress, handleLiveTrainMarkerPress, fitMapToCoordinates]);
+      if (cluster.trains[0]) {
+        const trainData = cluster.trains[0];
+        if (trainData.savedTrain && trainData.savedTrain.realtime?.position) {
+          handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);
+        } else {
+          handleLiveTrainMarkerPress(
+            trainData.tripId,
+            trainData.trainNumber,
+            cluster.lat,
+            cluster.lon,
+            trainData.routeName || undefined,
+            trainData.runDate,
+          );
+        }
+      }
+    },
+    [handleTrainMarkerPress, handleLiveTrainMarkerPress, fitMapToCoordinates]
+  );
 
   // Handle train selection from departure board
   // If train has a live position, zoom to it and open at half; otherwise open full
@@ -968,5 +1021,3 @@ export default function MapScreen() {
     </UnitsProvider>
   );
 }
-
-

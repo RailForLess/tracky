@@ -12,6 +12,7 @@ import { ApiError, getDepartures, getNearbyStops } from './api-client';
 import type { Stop } from '../types/train';
 import type { ApiDepartureItem, ApiStop } from '../types/api';
 import { haversineDistance } from '../utils/distance';
+import { encodeId } from '../utils/ids';
 import { logger } from '../utils/logger';
 
 export interface LocationSuggestion {
@@ -29,7 +30,7 @@ let initialized = false;
 
 function adaptStop(s: ApiStop): Stop {
   return {
-    stop_id: s.providerId ? `${s.providerId}:${s.code}` : s.code,
+    stop_id: s.stopId,
     stop_name: s.name,
     stop_lat: s.lat,
     stop_lon: s.lon,
@@ -88,10 +89,10 @@ async function initialize(): Promise<void> {
     try {
       nearby = await getNearbyStops({ lat: latitude, lon: longitude, radiusMeters: 80_000 });
     } catch (err) {
-      // The /v1/stops/nearby endpoint isn't on the backend yet; fail
-      // gracefully so the search screen renders without suggestions.
+      // Fail gracefully so the search screen renders without suggestions if
+      // the backend is unreachable or returns an error.
       if (err instanceof ApiError) {
-        logger.warn(`[LocationSuggestions] /v1/stops/nearby unavailable (${err.status})`);
+        logger.warn(`[LocationSuggestions] /v1/stops/nearby failed (${err.status})`);
       } else {
         logger.warn('[LocationSuggestions] nearby stops unavailable', err);
       }
@@ -117,7 +118,7 @@ async function initialize(): Promise<void> {
     // Upcoming trains from this stop today (best-effort).
     try {
       const departures = await getDepartures({
-        stopId: `${closest.stop.providerId}:${closest.stop.code}`,
+        stopId: closest.stop.stopId || encodeId('s', closest.stop.providerId, closest.stop.code),
         date: toYMD(new Date()),
       });
       const upcoming = departures

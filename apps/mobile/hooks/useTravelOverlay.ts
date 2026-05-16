@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getStop } from '../services/api-client';
 import { TrainStorageService } from '../services/storage';
+import { encodeId, tryParseKindedId } from '../utils/ids';
 
 const DEFAULT_PROVIDER = 'amtrak';
 
@@ -16,16 +17,20 @@ interface TravelStation {
   id: string;
 }
 
-function splitNamespaced(stopId: string): { provider: string; code: string } {
-  const i = stopId.indexOf(':');
-  if (i <= 0) return { provider: DEFAULT_PROVIDER, code: stopId };
-  return { provider: stopId.slice(0, i), code: stopId.slice(i + 1) };
+/** Accept global id, legacy 'provider:code', or bare code. */
+function toStopId(input: string): string {
+  if (tryParseKindedId(input, 's')) return input;
+  if (input.includes(':')) {
+    const [provider, code] = input.split(':', 2);
+    return encodeId('s', provider || DEFAULT_PROVIDER, code || input);
+  }
+  return encodeId('s', DEFAULT_PROVIDER, input);
 }
 
-async function resolveCoord(stopId: string): Promise<{ latitude: number; longitude: number } | null> {
+async function resolveCoord(stopKey: string): Promise<{ latitude: number; longitude: number } | null> {
   try {
-    const { provider, code } = splitNamespaced(stopId);
-    const s = await getStop(provider, code);
+    const s = await getStop(toStopId(stopKey));
+    if (s.type !== 'stop') return null;
     return { latitude: s.lat, longitude: s.lon };
   } catch {
     return null;

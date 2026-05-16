@@ -4,13 +4,13 @@ import { type ColorPalette, BorderRadius, FontSizes, Spacing, withTextShadow } f
 import { useTheme } from '../context/ThemeContext';
 import { light as hapticLight, selection as hapticSelection, success as hapticSuccess } from '../utils/haptics';
 import {
-  getActiveTrains,
+  getRealtimePositions,
   getConnections,
   getRoute,
   getRoutes,
   getRunStops,
   getTrainService,
-  getTrainsForRoute,
+  getTripsForRoute,
   getTripStops,
   lookupTrips,
   search as apiSearch,
@@ -28,6 +28,7 @@ import { useTrainContext } from '../context/TrainContext';
 import { SlideUpModalContext } from './ui/SlideUpModal';
 import { useApiCacheVersion } from '../hooks/useApiCache';
 import { lookupAgencyTimezone, lookupStop } from '../utils/api-stop-cache';
+import { encodeId } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { LocationSuggestionsService } from '../services/location-suggestions';
 import { pluralCount } from '../utils/train-display';
@@ -497,7 +498,6 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
         tripResults.map(async (trip) => {
           try {
             const stops = await getRunStops({
-              provider: PROVIDER_ID,
               tripId: trip.tripId,
               runDate,
             });
@@ -681,8 +681,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
   const handleSelectRoute = async (route: Route) => {
     hapticSelection();
     try {
-      const code = bareCode(route.route_id);
-      const trains = (await getTrainsForRoute(PROVIDER_ID, code)).map(apiTrainItemToRouteTrainItem);
+      const trains = (await getTripsForRoute(route.route_id)).map(apiTrainItemToRouteTrainItem);
       if (trains.length === 1) {
         handleSelectTrain(trains[0].trainNumber, trains[0].displayName);
         return;
@@ -691,9 +690,9 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
       setExpandedRouteName(route.route_long_name);
       setSearchQuery('');
       // Fetch live train numbers for status indicators
-      getActiveTrains(PROVIDER_ID)
-        .then(active => setLiveTrainNumbers(new Set(active.map(t => t.trainNumber))))
-        .catch(e => logger.warn('Failed to fetch active trains', e));
+      getRealtimePositions(encodeId('o', PROVIDER_ID, ''))
+        .then(positions => setLiveTrainNumbers(new Set(positions.map(p => p.trainNumber))))
+        .catch(e => logger.warn('Failed to fetch realtime positions', e));
     } catch (e) {
       logger.warn('[Search] failed to load route trains', e);
     }
@@ -769,8 +768,7 @@ export function TwoStationSearch({ onSelectTrip, onClose }: TwoStationSearchProp
           if (suggestion.type === 'train' && suggestion.trainNumber) {
             handleSelectTrain(suggestion.trainNumber, suggestion.displayName || suggestion.label);
           } else if (suggestion.type === 'route' && suggestion.routeId) {
-            const code = bareCode(suggestion.routeId);
-            getRoute(PROVIDER_ID, code)
+            getRoute(suggestion.routeId)
               .then(r => handleSelectRoute(apiRouteToLegacy(r)))
               .catch(e => logger.warn('Failed to load route', e));
           } else if (suggestion.stop && suggestion.toStop) {

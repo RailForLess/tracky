@@ -11,6 +11,8 @@ import { getTrainDisplayName } from '../services/api';
 export interface LiveTrain {
   trainNumber: string;
   tripId: string;
+  /** Service date for this run (YYYY-MM-DD). Disambiguates simultaneous runs of the same trip. */
+  runDate: string;
   position: {
     lat: number;
     lon: number;
@@ -38,6 +40,7 @@ export function useLiveTrains(_intervalMs: number = 15000, enabled: boolean = tr
       out.push({
         trainNumber: p.trainNumber,
         tripId: p.tripId,
+        runDate: p.runDate,
         position: {
           lat: p.lat,
           lon: p.lon,

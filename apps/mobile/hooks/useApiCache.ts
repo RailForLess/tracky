@@ -21,6 +21,7 @@ import {
   subscribeApiCache,
 } from '../services/api-client';
 import type { ApiAgency, ApiRoute, ApiStop } from '../types/api';
+import { encodeId, tryParseKindedId } from '../utils/ids';
 
 /**
  * Subscribe to api-client cache invalidations. Components that read via
@@ -37,13 +38,29 @@ function useCacheVersion(): number {
 
 const DEFAULT_PROVIDER = 'amtrak';
 
-export function useStop(stopCode: string | null | undefined, providerId: string = DEFAULT_PROVIDER): ApiStop | undefined {
+/**
+ * `stopKey` may be a typed global id ('s-amtrak-CHI'), a legacy namespaced
+ * id ('amtrak:CHI'), or a bare stop code ('CHI') — the latter two are
+ * assumed to belong to `providerId`.
+ */
+export function useStop(stopKey: string | null | undefined, providerId: string = DEFAULT_PROVIDER): ApiStop | undefined {
   useCacheVersion();
+  const globalId = stopKey ? toGlobalStopId(stopKey, providerId) : null;
   useEffect(() => {
-    if (stopCode) prefetchStop(providerId, stopCode);
-  }, [providerId, stopCode]);
-  if (!stopCode) return undefined;
-  return getCachedStop(providerId, stopCode);
+    if (globalId) prefetchStop(globalId);
+  }, [globalId]);
+  if (!globalId) return undefined;
+  const entry = getCachedStop(globalId);
+  return entry?.type === 'stop' ? entry : undefined;
+}
+
+function toGlobalStopId(input: string, defaultProvider: string): string {
+  if (tryParseKindedId(input, 's')) return input;
+  if (input.includes(':')) {
+    const [provider, code] = input.split(':', 2);
+    return encodeId('s', provider || defaultProvider, code || input);
+  }
+  return encodeId('s', defaultProvider, input);
 }
 
 export function useRoute(routeId: string | null | undefined): ApiRoute | undefined {

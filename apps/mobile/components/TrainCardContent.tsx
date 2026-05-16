@@ -8,7 +8,20 @@ import { createStyles } from '../screens/styles';
 import { getDelayColorKey, parseTimeToMinutes } from '../utils/time-formatting';
 import { pluralCount } from '../utils/train-display';
 import { lookupAgencyTimezone, lookupStop } from '../utils/api-stop-cache';
+import { tryParseId } from '../utils/ids';
 import { getCurrentSecondsInTimezone, getTimezoneForStop } from '../utils/timezone';
+
+/**
+ * Extract the human-friendly code for display: 's-amtrak-CHI' → 'CHI',
+ * 'amtrak:CHI' → 'CHI', 'CHI' → 'CHI'.
+ */
+function displayCode(key: string): string {
+  if (!key) return '';
+  const parsed = tryParseId(key);
+  if (parsed) return parsed.native || parsed.provider;
+  const colon = key.indexOf(':');
+  return colon >= 0 ? key.slice(colon + 1) : key;
+}
 import AnimatedRollingText from './ui/AnimatedRollingText';
 import MarqueeText from './ui/MarqueeText';
 import TimeDisplay from './ui/TimeDisplay';
@@ -149,7 +162,7 @@ export default function TrainCardContent({
                 <View style={[styles.arrowIcon, { backgroundColor: depBg }]}>
                   <MaterialCommunityIcons name="arrow-top-right" size={10} color={colors.background.primary} />
                 </View>
-                <Text style={styles.timeCode}>{fromCode}</Text>
+                <Text style={styles.timeCode}>{displayCode(fromCode)}</Text>
                 <TimeDisplay
                   time={departDelayMinutes && departDelayMinutes > 0 && departDelayedTime ? departDelayedTime : departTime}
                   dayOffset={departDelayMinutes && departDelayMinutes > 0 && departDelayedDayOffset != null ? departDelayedDayOffset : departDayOffset}
@@ -168,7 +181,7 @@ export default function TrainCardContent({
                 <View style={[styles.arrowIcon, { backgroundColor: arrBg }]}>
                   <MaterialCommunityIcons name="arrow-bottom-left" size={10} color={colors.background.primary} />
                 </View>
-                <Text style={styles.timeCode}>{toCode}</Text>
+                <Text style={styles.timeCode}>{displayCode(toCode)}</Text>
                 <TimeDisplay
                   time={arriveDelayMinutes && arriveDelayMinutes > 0 && arriveDelayedTime ? arriveDelayedTime : arriveTime}
                   dayOffset={arriveDelayMinutes && arriveDelayMinutes > 0 && arriveDelayedDayOffset != null ? arriveDelayedDayOffset : arriveDayOffset}

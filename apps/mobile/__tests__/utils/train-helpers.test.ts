@@ -7,7 +7,6 @@ jest.mock('../../services/api-client', () => ({
     if (tripId === '2151') return { shortName: '2151' };
     return undefined;
   }),
-  prefetchTrip: jest.fn(),
 }));
 
 describe('train-helpers utilities', () => {

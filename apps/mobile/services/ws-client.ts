@@ -2,8 +2,11 @@
  * Singleton WebSocket client for the realtime feed at `wsUrl` (config.ts).
  *
  * Usage:
- *   const off = wsClient.subscribe(['amtrak'], (update) => { ... });
+ *   const off = wsClient.subscribe(['o-amtrak'], (update) => { ... });
  *   off(); // unsubscribe + drop topic if no other listeners want it
+ *
+ * Topics are typed global ids (see utils/ids.ts). Today only operator topics
+ * are published; future versions will also publish route/trip/vehicle topics.
  *
  * Wire format: see apps/api/ws/poller.go (RealtimeUpdate envelope).
  * Subscription protocol: see apps/api/ws/handler.go (clientMsg).
@@ -11,6 +14,7 @@
 
 import { config } from '../constants/config';
 import type { ApiTrainPosition, RealtimeUpdate } from '../types/api';
+import { encodeId } from '../utils/ids';
 import { logger } from '../utils/logger';
 
 type Listener = (update: RealtimeUpdate) => void;
@@ -19,17 +23,23 @@ type ConnectionState = 'idle' | 'connecting' | 'open' | 'closed';
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-interface ProviderSubscription {
+interface TopicSubscription {
   refCount: number;
   /** True once the server has acknowledged (i.e. we sent subscribe while open). */
   sentToServer: boolean;
+}
+
+/** Normalize a caller-supplied topic id. Bare provider names become o- ids. */
+function toTopic(topicOrProvider: string): string {
+  if (topicOrProvider.includes('-')) return topicOrProvider;
+  return encodeId('o', topicOrProvider, '');
 }
 
 class WSClient {
   private ws: WebSocket | null = null;
   private state: ConnectionState = 'idle';
   private listeners = new Set<Listener>();
-  private subscriptions = new Map<string, ProviderSubscription>();
+  private subscriptions = new Map<string, TopicSubscription>();
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionallyClosed = false;
@@ -38,39 +48,42 @@ class WSClient {
   private latest = new Map<string, ApiTrainPosition[]>();
 
   /**
-   * Subscribe a listener to one or more providers. Returns an unsubscribe
-   * function. Listeners are invoked for *every* RealtimeUpdate the socket
-   * delivers — filter by `update.provider` in the listener if needed.
+   * Subscribe a listener to one or more topics (typed global ids). For
+   * backwards compatibility, bare provider names are auto-encoded as o- ids.
+   * Returns an unsubscribe function. Listeners are invoked for *every*
+   * RealtimeUpdate the socket delivers — filter by `update.provider` in the
+   * listener if needed.
    */
-  subscribe(providers: string[], listener: Listener): () => void {
+  subscribe(topicsOrProviders: string[], listener: Listener): () => void {
     this.listeners.add(listener);
+    const topics = topicsOrProviders.map(toTopic);
 
-    for (const p of providers) {
-      const existing = this.subscriptions.get(p);
+    for (const t of topics) {
+      const existing = this.subscriptions.get(t);
       if (existing) {
         existing.refCount += 1;
       } else {
-        this.subscriptions.set(p, { refCount: 1, sentToServer: false });
+        this.subscriptions.set(t, { refCount: 1, sentToServer: false });
       }
     }
 
     this.ensureConnected();
-    this.flushSubscribeIfOpen(providers);
+    this.flushSubscribeIfOpen(topics);
 
     return () => {
       this.listeners.delete(listener);
       const drop: string[] = [];
-      for (const p of providers) {
-        const s = this.subscriptions.get(p);
+      for (const t of topics) {
+        const s = this.subscriptions.get(t);
         if (!s) continue;
         s.refCount -= 1;
         if (s.refCount <= 0) {
-          drop.push(p);
-          this.subscriptions.delete(p);
+          drop.push(t);
+          this.subscriptions.delete(t);
         }
       }
       if (drop.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
-        this.send({ action: 'unsubscribe', providers: drop });
+        this.send({ action: 'unsubscribe', topics: drop });
       }
       // No listeners → close the socket so we don't hold a connection open.
       if (this.listeners.size === 0) {
@@ -150,15 +163,15 @@ class WSClient {
       this.state = 'open';
       this.reconnectAttempts = 0;
       // (Re-)subscribe everything we had registered.
-      const providers = Array.from(this.subscriptions.keys());
-      if (providers.length > 0) {
-        this.send({ action: 'subscribe', providers });
-        for (const p of providers) {
-          const s = this.subscriptions.get(p);
+      const topics = Array.from(this.subscriptions.keys());
+      if (topics.length > 0) {
+        this.send({ action: 'subscribe', topics });
+        for (const t of topics) {
+          const s = this.subscriptions.get(t);
           if (s) s.sentToServer = true;
         }
       }
-      logger.debug(`[ws-client] connected, subscribed to ${providers.join(',')}`);
+      logger.debug(`[ws-client] connected, subscribed to ${topics.join(',')}`);
     };
 
     this.ws.onmessage = event => {
@@ -207,7 +220,7 @@ class WSClient {
     }, delay);
   }
 
-  private send(msg: { action: 'subscribe' | 'unsubscribe'; providers: string[] }): void {
+  private send(msg: { action: 'subscribe' | 'unsubscribe'; topics: string[] }): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     try {
       this.ws.send(JSON.stringify(msg));
@@ -216,16 +229,16 @@ class WSClient {
     }
   }
 
-  private flushSubscribeIfOpen(providers: string[]): void {
+  private flushSubscribeIfOpen(topics: string[]): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    const toSend = providers.filter(p => {
-      const s = this.subscriptions.get(p);
+    const toSend = topics.filter(t => {
+      const s = this.subscriptions.get(t);
       return s && !s.sentToServer;
     });
     if (toSend.length === 0) return;
-    this.send({ action: 'subscribe', providers: toSend });
-    for (const p of toSend) {
-      const s = this.subscriptions.get(p);
+    this.send({ action: 'subscribe', topics: toSend });
+    for (const t of toSend) {
+      const s = this.subscriptions.get(t);
       if (s) s.sentToServer = true;
     }
   }

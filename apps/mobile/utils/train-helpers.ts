@@ -3,7 +3,7 @@
  * Consolidated from services/api.ts and services/realtime.ts
  */
 
-import { getCachedTrip, prefetchTrip } from '../services/api-client';
+import { getCachedTrip } from '../services/api-client';
 import { parseTimeToDate } from './time-formatting';
 import type { Train } from '../types/train';
 
@@ -30,8 +30,9 @@ export function isLikelyTrainNumber(s: string): boolean {
 
 /**
  * Extract the actual train number from a tripId
- * Uses GTFS trips.txt trip_short_name as source of truth
+ * Uses cached GTFS trips.txt trip_short_name as source of truth
  * Falls back to parsing trip_id if trips data not available
+ * Pure helper: never starts network requests while rendering live trains.
  * Returns null if no valid train number can be extracted
  * @param tripId - GTFS trip identifier
  * @returns Train number string or null
@@ -41,13 +42,11 @@ export function isLikelyTrainNumber(s: string): boolean {
  * extractTrainNumber("248766") // null (opaque database ID)
  */
 export function extractTrainNumber(tripId: string): string | null {
-  // 1. API cache (source of truth when available); fire a fetch on miss so a
-  //    later call sees it.
+  // 1. API cache (source of truth when available).
   const cached = getCachedTrip(tripId);
   if (cached?.shortName && isLikelyTrainNumber(cached.shortName)) {
     return cached.shortName;
   }
-  if (!cached) prefetchTrip(tripId);
 
   // 2. Structured: trailing number after underscore (YYYY-MM-DD_AMTK_543)
   const underscoreMatch = tripId.match(/_(\d{1,4})$/);
@@ -86,4 +85,3 @@ export function getAdjustedTrainDates(
 
   return { departDate, arriveDate };
 }
-
