@@ -2,8 +2,8 @@
  * Shared display/formatting utilities for train UI components.
  */
 import type { Train } from '../types/train';
+import { lookupAgencyTimezone, lookupStop } from './api-stop-cache';
 import { parseTimeToMinutes, timeToMinutes } from './time-formatting';
-import { gtfsParser } from './gtfs-parser';
 import { getCurrentSecondsInTimezone, getTimezoneForStop } from './timezone';
 
 /**
@@ -19,8 +19,8 @@ export function getCountdownForTrain(train: Train): {
     const days = Math.round(train.daysAway);
     return { value: days, unit: days === 1 ? 'DAY' : 'DAYS', past: false };
   }
-  const fromStop = gtfsParser.getStop(train.fromCode);
-  const fromTz = fromStop ? getTimezoneForStop(fromStop) : gtfsParser.agencyTimezone;
+  const fromStop = lookupStop(train.fromCode);
+  const fromTz = fromStop ? getTimezoneForStop(fromStop) : lookupAgencyTimezone();
   const nowSec = getCurrentSecondsInTimezone(fromTz);
   const departSec = parseTimeToMinutes(train.departTime) * 60
     + (train.realtime?.delay && train.realtime.delay > 0 ? train.realtime.delay * 60 : 0);

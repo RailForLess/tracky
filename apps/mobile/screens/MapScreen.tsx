@@ -6,9 +6,8 @@ import { Camera, CameraRef, GeoJSONSource, Layer, Map, Marker, UserLocation, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { AnimatedRoute } from '../components/map/AnimatedRoute';
-import { AnimatedStationMarker } from '../components/map/AnimatedStationMarker';
 import { LiveTrainMarker } from '../components/map/LiveTrainMarker';
+import { ProviderTiles, type RouteTapPayload, type StationTapPayload } from '../components/map/ProviderTiles';
 import MapSettingsPill, { MapType, RouteMode, StationMode, TrainMode } from '../components/map/MapSettingsPill';
 import DepartureBoardModal from '../components/ui/DepartureBoardModal';
 import ProfileModal from '../components/ui/ProfileModal';
@@ -33,24 +32,20 @@ import { type ColorPalette, withTextShadow } from '../constants/theme';
 import { useColors, useTheme } from '../context/ThemeContext';
 import { GTFSRefreshProvider, useGTFSRefresh } from '../context/GTFSRefreshContext';
 import { ModalProvider, useModalActions, useModalState } from '../context/ModalContext';
+import { RealtimeProvider } from '../context/RealtimeContext';
 import { TrainProvider, useTrainContext } from '../context/TrainContext';
 import { UnitsProvider } from '../context/UnitsContext';
 import { useLiveTrains } from '../hooks/useLiveTrains';
 import { useMapLocation } from '../hooks/useMapLocation';
 import { useRealtime } from '../hooks/useRealtime';
-import { useShapes } from '../hooks/useShapes';
-import { useStations } from '../hooks/useStations';
 import { useTravelOverlay } from '../hooks/useTravelOverlay';
+import { PROVIDERS } from '../constants/providers';
 import { TrainAPIService } from '../services/api';
 import { requestPermissions as requestNotificationPermissions } from '../services/notifications';
 import { TrainStorageService } from '../services/storage';
 import type { SavedTrainRef, Stop, Train, ViewportBounds } from '../types/train';
-import { ClusteringConfig } from '../utils/clustering-config';
-import { gtfsParser } from '../utils/gtfs-parser';
 import { light as hapticLight } from '../utils/haptics';
 import { logger } from '../utils/logger';
-import { getRouteColor, getStrokeWidthForZoom } from '../utils/route-colors';
-import { clusterStations, getStationAbbreviation } from '../utils/station-clustering';
 import { clusterTrains, type TrainCluster } from '../utils/train-clustering';
 import { ModalContent, ModalContentHandle } from './ModalContent';
 import { createStyles } from './styles';
@@ -243,10 +238,6 @@ function MapScreenInner() {
     return () => clearTimeout(timer);
   }, [isOverlayMode, travelStations]);
 
-  // Use lazy-loaded stations and shapes based on viewport
-  const stations = useStations(viewportBounds ?? undefined);
-  const { visibleShapes } = useShapes(viewportBounds ?? undefined);
-
   // Fetch all live trains from GTFS-RT (only when trainMode is 'all')
   const { liveTrains } = useLiveTrains(15000, trainMode === 'all');
 
@@ -272,6 +263,7 @@ function MapScreenInner() {
       );
       return {
         tripId: train.tripId,
+        runDate: train.runDate,
         trainNumber: train.trainNumber,
         routeName: train.routeName,
         position: train.position,
@@ -288,6 +280,7 @@ function MapScreenInner() {
       .filter(train => train.realtime?.position)
       .map(train => ({
         tripId: train.tripId || `saved-${train.id}`,
+        runDate: train.travelDate,
         trainNumber: train.trainNumber,
         routeName: train.routeName,
         position: {
@@ -341,9 +334,28 @@ function MapScreenInner() {
   // Race-condition guard: only apply API result if it matches the latest request
   const latestLiveTrainRequestRef = useRef<string | null>(null);
 
+  const parseRunDate = useCallback((runDate?: string | number | Date | null): Date | undefined => {
+    if (!runDate) return undefined;
+    if (runDate instanceof Date) return runDate;
+    if (typeof runDate === 'number') return new Date(runDate);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(runDate);
+    if (!match) {
+      const parsed = new Date(runDate);
+      return Number.isFinite(parsed.getTime()) ? parsed : undefined;
+    }
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }, []);
+
   // Handle live train marker press - zoom immediately, show skeleton, fetch in background
   const handleLiveTrainMarkerPress = useCallback(
-    (tripId: string, trainNumber: string, lat: number, lon: number, routeName?: string) => {
+    (
+      tripId: string,
+      trainNumber: string,
+      lat: number,
+      lon: number,
+      routeName?: string,
+      runDate?: string | number | Date | null,
+    ) => {
       hapticLight();
       const latitudeOffset = getLatitudeOffsetForModal(FOCUS_LATITUDE_DELTA, 'half');
       cameraRef.current?.easeTo({
@@ -367,32 +379,52 @@ function MapScreenInner() {
         daysAway: 0,
         routeName: routeName || '',
         tripId,
+        travelDate: parseRunDate(runDate)?.getTime(),
         realtime: { position: { lat, lon } },
       };
 
-      latestLiveTrainRequestRef.current = tripId;
+      const requestKey = `${tripId}@${runDate ?? ''}`;
+      const parsedRunDate = parseRunDate(runDate);
+      latestLiveTrainRequestRef.current = requestKey;
       setSelectedTrain(placeholder);
       navigateToTrain(placeholder, { fromMarker: true });
 
       // Fetch full details in background
-      TrainAPIService.getTrainDetails(tripId, undefined, trainNumber)
+      logger.warn('[MapScreen] loading live train details', {
+        tripId,
+        trainNumber,
+        runDate,
+        parsedRunDate: parsedRunDate?.toISOString(),
+        routeName,
+        requestKey,
+      });
+      TrainAPIService.getTrainDetails(tripId, parsedRunDate, trainNumber)
         .then(train => {
-          if (latestLiveTrainRequestRef.current !== tripId) return; // stale
+          if (latestLiveTrainRequestRef.current !== requestKey) return; // stale
           if (train) {
+            logger.warn('[MapScreen] live train details loaded', {
+              inputTripId: tripId,
+              resolvedTripId: train.tripId,
+              trainNumber: train.trainNumber,
+              travelDate: train.travelDate ? new Date(train.travelDate).toISOString() : undefined,
+              from: train.fromCode,
+              to: train.toCode,
+            });
             setSelectedTrain(train);
           } else {
+            logger.warn('[MapScreen] live train details unavailable', { tripId, trainNumber, runDate });
             goBack();
             Alert.alert('Train Unavailable', 'Could not load details for this train. It may no longer be active.');
           }
         })
         .catch(error => {
-          if (latestLiveTrainRequestRef.current !== tripId) return; // stale
+          if (latestLiveTrainRequestRef.current !== requestKey) return; // stale
           logger.error('Error fetching train details:', error);
           goBack();
           Alert.alert('Connection Error', 'Could not load train details. Check your internet connection and try again.');
         });
     },
-    [setSelectedTrain, navigateToTrain, goBack]
+    [setSelectedTrain, navigateToTrain, goBack, parseRunDate]
   );
 
   // Zoom map to fit all given coordinates in the viewport
@@ -450,17 +482,6 @@ function MapScreenInner() {
     [navigateToStation, fitMapToCoordinates]
   );
 
-  // Stable callback for station marker presses — receives cluster from child
-  const handleStationMarkerPress = useCallback((cluster: {
-    id: string;
-    lat: number;
-    lon: number;
-    isCluster: boolean;
-    stations: Array<{ id: string; name: string; lat: number; lon: number }>;
-  }) => {
-    handleStationPress(cluster);
-  }, [handleStationPress]);
-
   // Stable callback for saved train cluster presses
   const handleSavedTrainClusterPress = useCallback((cluster: TrainCluster) => {
     if (cluster.isCluster) {
@@ -476,23 +497,35 @@ function MapScreenInner() {
   }, [handleTrainMarkerPress, fitMapToCoordinates]);
 
   // Stable callback for live train cluster presses
-  const handleLiveTrainClusterPress = useCallback((cluster: TrainCluster) => {
-    if (cluster.isCluster) {
-      fitMapToCoordinates(cluster.trains.map(t => ({
-        latitude: t.position.lat,
-        longitude: t.position.lon,
-      })));
-      return;
-    }
-    if (cluster.trains[0]) {
-      const trainData = cluster.trains[0];
-      if (trainData.savedTrain && trainData.savedTrain.realtime?.position) {
-        handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);
-      } else {
-        handleLiveTrainMarkerPress(trainData.tripId, trainData.trainNumber, cluster.lat, cluster.lon, trainData.routeName || undefined);
+  const handleLiveTrainClusterPress = useCallback(
+    (cluster: TrainCluster) => {
+      if (cluster.isCluster) {
+        fitMapToCoordinates(
+          cluster.trains.map(t => ({
+            latitude: t.position.lat,
+            longitude: t.position.lon,
+          }))
+        );
+        return;
       }
-    }
-  }, [handleTrainMarkerPress, handleLiveTrainMarkerPress, fitMapToCoordinates]);
+      if (cluster.trains[0]) {
+        const trainData = cluster.trains[0];
+        if (trainData.savedTrain && trainData.savedTrain.realtime?.position) {
+          handleTrainMarkerPress(trainData.savedTrain, cluster.lat, cluster.lon);
+        } else {
+          handleLiveTrainMarkerPress(
+            trainData.tripId,
+            trainData.trainNumber,
+            cluster.lat,
+            cluster.lon,
+            trainData.routeName || undefined,
+            trainData.runDate,
+          );
+        }
+      }
+    },
+    [handleTrainMarkerPress, handleLiveTrainMarkerPress, fitMapToCoordinates]
+  );
 
   // Handle train selection from departure board
   // If train has a live position, zoom to it and open at half; otherwise open full
@@ -567,10 +600,11 @@ function MapScreenInner() {
         duration: MAP_ANIMATION_DURATION,
       });
 
-      // Create a Stop object and navigate
+      // Synthesize a Stop and navigate. The DepartureBoardModal will fetch
+      // full detail from the API via the stationCode/lat/lon we already have.
       const stop: Stop = {
         stop_id: stationCode,
-        stop_name: gtfsParser.getStopName(stationCode),
+        stop_name: stationCode,
         stop_lat: lat,
         stop_lon: lon,
       };
@@ -584,28 +618,15 @@ function MapScreenInner() {
     requestNotificationPermissions();
   }, []);
 
-  // Track when GTFS data is loaded — event-based, no polling
-  const [gtfsLoaded, setGtfsLoaded] = React.useState(gtfsParser.isLoaded);
-
+  // Load saved trains on mount (was gated on GTFS cache load — now API-backed)
   React.useEffect(() => {
-    if (gtfsLoaded) return;
-    return gtfsParser.onLoaded(() => {
-      logger.info('[MapScreen] GTFS data ready');
-      setGtfsLoaded(true);
-    });
-  }, [gtfsLoaded]);
-
-  // Load saved trains after GTFS is ready
-  React.useEffect(() => {
-    if (!gtfsLoaded) return;
-
     (async () => {
       const trains = await TrainStorageService.getSavedTrains();
       logger.debug(`[MapScreen] Loading ${trains.length} saved trains with realtime data`);
       const trainsWithRealtime = await Promise.all(trains.map(train => TrainAPIService.refreshRealtimeData(train)));
       setSavedTrains(trainsWithRealtime);
     })();
-  }, [setSavedTrains, gtfsLoaded]);
+  }, [setSavedTrains]);
 
   useRealtime(savedTrains, setSavedTrains, 20000);
 
@@ -658,15 +679,23 @@ function MapScreenInner() {
     }, VIEWPORT_DEBOUNCE_MS);
   }, []);
 
-  // Initialize viewport bounds when map first becomes ready
+  // When location resolves AFTER the map mounts, the Camera's initialViewState
+  // (read once at mount) leaves the camera at world view. Jump it into place.
+  const initialCameraSet = useRef(false);
   React.useEffect(() => {
-    if (mapReady && regionRef.current && !viewportBounds) {
+    if (mapReady && regionRef.current && !initialCameraSet.current) {
+      initialCameraSet.current = true;
+      const r = regionRef.current;
+      cameraRef.current?.jumpTo({
+        center: [r.longitude, r.latitude],
+        zoom: latDeltaToZoom(r.latitudeDelta),
+      });
       setViewportState({
-        bounds: regionToViewportBounds(regionRef.current),
-        latDelta: regionRef.current.latitudeDelta,
+        bounds: regionToViewportBounds(r),
+        latDelta: r.latitudeDelta,
       });
     }
-  }, [mapReady, viewportBounds]);
+  }, [mapReady]);
 
   // Cleanup timers on unmount
   React.useEffect(() => {
@@ -700,30 +729,37 @@ function MapScreenInner() {
     }
   }, [getCurrentSnap]);
 
-  // Calculate dynamic stroke width based on zoom level
-  const baseStrokeWidth = useMemo(() => {
-    return getStrokeWidthForZoom(debouncedLatDelta);
-  }, [debouncedLatDelta]);
-
-  // Routes are always visible (no zoom-based fading)
   const shouldRenderRoutes = routeMode !== 'hidden';
+  const shouldRenderStations = stationMode !== 'hidden';
 
-  // Cluster stations based on zoom level and station mode
-  const stationClusters = useMemo(() => {
-    if (stationMode === 'hidden') return [];
-    if (stationMode === 'all') {
-      // Return all stations without clustering
-      return stations.map(s => ({
-        id: s.id,
-        lat: s.lat,
-        lon: s.lon,
+  // Adapter: convert PMTiles station tap → existing handleStationPress contract
+  const handleProviderTileStationPress = useCallback(
+    (payload: StationTapPayload) => {
+      handleStationPress({
+        id: payload.stopId,
+        lat: payload.lat,
+        lon: payload.lon,
         isCluster: false,
-        stations: [s],
-      }));
-    }
-    // 'auto' mode - use clustering
-    return clusterStations(stations, debouncedLatDelta);
-  }, [stations, debouncedLatDelta, stationMode]);
+        stations: [{ id: payload.stopId, name: payload.name, lat: payload.lat, lon: payload.lon }],
+      });
+    },
+    [handleStationPress],
+  );
+
+  // PMTiles route tap. No dedicated route-detail UI yet — show a brief
+  // confirmation so the user sees the tap was registered, with the route
+  // info already carried by the tile feature.
+  const handleProviderTileRoutePress = useCallback(
+    (payload: RouteTapPayload) => {
+      hapticLight();
+      const title = payload.longName || payload.shortName || 'Route';
+      const subtitle = payload.shortName && payload.longName
+        ? `${payload.shortName} — ${payload.providerId}`
+        : payload.providerId;
+      Alert.alert(title, subtitle);
+    },
+    []
+  );
 
   return (
     <View style={styles.container}>
@@ -744,40 +780,19 @@ function MapScreenInner() {
         <UserLocation heading accuracy />
 
         {showNormalMapContent &&
-          shouldRenderRoutes &&
-          visibleShapes.map(shape => {
-            const colorScheme = getRouteColor(shape.id, colors.accentBlue);
-            return (
-              <AnimatedRoute
-                key={shape.id}
-                id={shape.id}
-                coordinates={shape.coordinates}
-                strokeColor={colorScheme.stroke}
-                strokeWidth={Math.max(2, baseStrokeWidth)}
-              />
-            );
-          })}
-
-        {showNormalMapContent &&
-          stationClusters.map(cluster => {
-            // Show full name when zoomed in enough
-            const showFullName = !cluster.isCluster && debouncedLatDelta < ClusteringConfig.fullNameThreshold;
-            const displayName = cluster.isCluster
-              ? `${cluster.stations.length}+`
-              : showFullName
-                ? cluster.stations[0].name
-                : getStationAbbreviation(cluster.stations[0].id, cluster.stations[0].name);
-            return (
-              <AnimatedStationMarker
-                key={cluster.id}
-                cluster={cluster}
-                showFullName={showFullName}
-                displayName={displayName}
-                color={colors.accentBlue}
-                onPress={handleStationMarkerPress}
-              />
-            );
-          })}
+          (shouldRenderRoutes || shouldRenderStations) &&
+          PROVIDERS.map(provider => (
+            <ProviderTiles
+              key={provider.id}
+              provider={provider}
+              stationColor={colors.accentBlue}
+              stationStrokeColor={colors.background.primary}
+              labelColor={colors.primary}
+              labelHaloColor={colors.background.primary}
+              onStationPress={shouldRenderStations ? handleProviderTileStationPress : undefined}
+              onRoutePress={shouldRenderRoutes ? handleProviderTileRoutePress : undefined}
+            />
+          ))}
 
         {/* Render saved trains when mode is 'saved' */}
         {showNormalMapContent &&
@@ -983,7 +998,7 @@ function MapScreenInner() {
         )}
       </SlideUpModal>
 
-      {/* Full-page loading overlay while GTFS cache loads */}
+      {/* Full-page loading overlay while local GTFS cache loads (fallback path) */}
       <LoadingOverlay visible={isLoadingCache} />
     </View>
   );
@@ -992,15 +1007,17 @@ function MapScreenInner() {
 export default function MapScreen() {
   return (
     <UnitsProvider>
-      <TrainProvider>
-        <GTFSRefreshProvider>
-          <ModalProvider>
-            <ErrorBoundary>
-              <MapScreenInner />
-            </ErrorBoundary>
-          </ModalProvider>
-        </GTFSRefreshProvider>
-      </TrainProvider>
+      <RealtimeProvider>
+        <TrainProvider>
+          <GTFSRefreshProvider>
+            <ModalProvider>
+              <ErrorBoundary>
+                <MapScreenInner />
+              </ErrorBoundary>
+            </ModalProvider>
+          </GTFSRefreshProvider>
+        </TrainProvider>
+      </RealtimeProvider>
     </UnitsProvider>
   );
 }

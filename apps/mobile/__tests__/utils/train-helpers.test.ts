@@ -1,16 +1,12 @@
 import { extractTrainNumber, isLikelyTrainNumber } from '../../utils/train-helpers';
 
-// Mock the gtfsParser
-jest.mock('../../utils/gtfs-parser', () => ({
-  gtfsParser: {
-    getTrainNumber: jest.fn((tripId: string) => {
-      // Simulate GTFS parser behavior — returns trip_short_name or null
-      if (tripId === 'Amtrak-43-20240104') return '43';
-      if (tripId === '2151') return '2151';
-      // Simulate GTFS lookup miss — returns null
-      return null;
-    }),
-  },
+// Mock the API-client trip cache used by train-helpers.
+jest.mock('../../services/api-client', () => ({
+  getCachedTrip: jest.fn((tripId: string) => {
+    if (tripId === 'Amtrak-43-20240104') return { shortName: '43' };
+    if (tripId === '2151') return { shortName: '2151' };
+    return undefined;
+  }),
 }));
 
 describe('train-helpers utilities', () => {

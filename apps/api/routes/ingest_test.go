@@ -57,7 +57,7 @@ func TestIngest_Accepts204(t *testing.T) {
 	}
 	// Hub publish is async — wait briefly.
 	for range 50 {
-		if _, ok := hub.Snapshot("amtrak"); ok {
+		if _, ok := hub.Snapshot("o-amtrak"); ok {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

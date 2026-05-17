@@ -4,10 +4,18 @@
  */
 
 import type { Train } from '../types/train';
+import { runKey } from './ids';
 import { ClusteringConfig } from './clustering-config';
 
 export interface LiveTrainData {
   tripId: string;
+  /**
+   * Service date for this run. Two simultaneous runs of the same trip
+   * (e.g. yesterday's still en route + today's just departed) share
+   * `tripId` — runDate is what disambiguates them. Accepts the same union
+   * `runKey()` does: YYYY-MM-DD string, Date, or epoch millis.
+   */
+  runDate?: string | number | Date | null;
   trainNumber: string;
   routeName: string | null;
   position: {
@@ -56,7 +64,7 @@ export function clusterTrains(trains: LiveTrainData[], latitudeDelta: number): T
   // If zoomed in enough, show individual trains
   if (latitudeDelta < ClusteringConfig.trainClusterThreshold) {
     return trains.map(train => ({
-      id: train.tripId,
+      id: runKey(train),
       lat: train.position.lat,
       lon: train.position.lon,
       trains: [train],
@@ -71,7 +79,7 @@ export function clusterTrains(trains: LiveTrainData[], latitudeDelta: number): T
   const cellSize = latitudeDelta * ClusteringConfig.clusterDistanceMultiplier;
   if (cellSize <= 0) {
     return trains.map(train => ({
-      id: train.tripId,
+      id: runKey(train),
       lat: train.position.lat,
       lon: train.position.lon,
       trains: [train],
@@ -111,7 +119,7 @@ export function clusterTrains(trains: LiveTrainData[], latitudeDelta: number): T
 
     if (bucket.length === 1) {
       clusters.push({
-        id: bucket[0].tripId,
+        id: runKey(bucket[0]),
         lat: avgLat,
         lon: avgLon,
         trains: bucket,

@@ -10,7 +10,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { light as hapticLight } from '../../utils/haptics';
 import { isThruwayName, TrainIcon } from '../TrainIcon';
 import { addDelayToTime, formatDelayStatus, formatTimeWithDayOffset, getDelayColorKey, parseTimeToMinutes, timeToMinutes } from '../../utils/time-formatting';
-import { RealtimeService } from '../../services/realtime';
 import { fetchWithTimeout } from '../../utils/fetch-with-timeout';
 
 import { useTrainContext } from '../../context/TrainContext';
@@ -18,7 +17,9 @@ import { useUnits } from '../../context/UnitsContext';
 import { TrainStorageService } from '../../services/storage';
 import type { Train } from '../../types/train';
 import { haversineDistance } from '../../utils/distance';
-import { gtfsParser } from '../../utils/gtfs-parser';
+import { lookupAgencyTimezone, lookupStop } from '../../utils/api-stop-cache';
+import { useApiCacheVersion } from '../../hooks/useApiCache';
+import { useTripDetail } from '../../hooks/useTripDetail';
 import { logger, openReportBadDataEmail } from '../../utils/logger';
 import { convertGtfsTimeToLocal, getCurrentMinutesInTimezone, getCurrentSecondsInTimezone, getTimezoneForStop } from '../../utils/timezone';
 import { calculateDuration, getCountdownForTrain, pluralize, pluralCount } from '../../utils/train-display';
@@ -122,7 +123,6 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   const { tempUnit, distanceUnit } = useUnits();
   const trainData = train || selectedTrain;
 
-  const [allStops, setAllStops] = React.useState<StopInfo[]>([]);
   const [isWhereIsMyTrainExpanded, setIsWhereIsMyTrainExpanded] = React.useState(true);
 
   const [weatherData, setWeatherData] = React.useState<WeatherData | null>(null);
@@ -131,56 +131,55 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   const [error, setError] = React.useState<string | null>(null);
   const [stopWeather, setStopWeather] = React.useState<Record<string, { temp: number; icon: string }>>({});
   const stopWeatherKeyRef = React.useRef<string | null>(null);
-  const [stopDelays, setStopDelays] = React.useState<Map<string, { departureDelay?: number; arrivalDelay?: number }>>(new Map());
 
   const isLiveTrain = trainData?.realtime?.position !== undefined;
 
-  // Load stops from GTFS — only re-run when the trip actually changes
+  // Subscribe to api-client cache updates so lookupStop / lookupAgencyTimezone
+  // re-render this component when fetches land.
+  useApiCacheVersion();
+
   const tripId = trainData?.tripId;
-  React.useEffect(() => {
-    if (!tripId) return;
+  const runDate = React.useMemo(
+    () => (trainData?.travelDate ? new Date(trainData.travelDate) : new Date()),
+    [trainData?.travelDate],
+  );
+  const tripDetail = useTripDetail(tripId, runDate);
+  const agencyTz = lookupAgencyTimezone();
 
-    try {
-      const stops = gtfsParser.getStopTimesForTrip(tripId);
-      if (stops && stops.length > 0) {
-        const agencyTzVal = gtfsParser.agencyTimezone;
-        const formattedStops = stops.map(stop => {
-          const stopData = gtfsParser.getStop(stop.stop_id);
-          const stopTz = stopData ? getTimezoneForStop(stopData) : agencyTzVal;
-          const formatted = stop.departure_time
-            ? convertGtfsTimeToLocal(stop.departure_time, agencyTzVal, stopTz)
-            : { time: '', dayOffset: 0 };
-          return {
-            time: formatted.time,
-            dayOffset: formatted.dayOffset,
-            name: stop.stop_name,
-            code: stop.stop_id,
-            timezone: stopTz || agencyTzVal,
-          };
-        });
-        setAllStops(formattedStops);
-      }
-    } catch (e) {
-      logger.error('Failed to load stops:', e);
-    }
-  }, [tripId]);
+  const allStops = React.useMemo<StopInfo[]>(() => {
+    if (tripDetail.stops.length === 0) return [];
+    return tripDetail.stops.map(s => {
+      const stopTz = s.timezone || agencyTz;
+      const gtfsTime = s.scheduledDeparture || s.scheduledArrival || '';
+      const formatted = gtfsTime
+        ? convertGtfsTimeToLocal(gtfsTime, agencyTz, stopTz)
+        : { time: '', dayOffset: 0 };
+      return {
+        time: formatted.time,
+        dayOffset: formatted.dayOffset,
+        name: s.name,
+        code: s.code,
+        timezone: stopTz,
+      };
+    });
+  }, [tripDetail.stops, agencyTz]);
 
-  // Fetch per-stop delays for the timeline — re-run when realtime delay changes
+  // Per-stop delays come from /v1/runs/{provider}/{tripId}/{runDate}/stops via
+  // useTripDetail. Until that endpoint lands the map is empty (the timeline
+  // still renders scheduled times — just without "+5 min" badges).
   const daysAway = trainData?.daysAway;
-  const currentDelay = trainData?.realtime?.delay;
-  React.useEffect(() => {
-    if (!tripId || (daysAway != null && daysAway > 0)) {
-      setStopDelays(new Map());
-      return;
+  const stopDelays = React.useMemo(() => {
+    const m = new Map<string, { departureDelay?: number; arrivalDelay?: number }>();
+    if (daysAway != null && daysAway > 0) return m;
+    for (const s of tripDetail.stops) {
+      if (s.arrivalDelayMin == null && s.departureDelayMin == null) continue;
+      m.set(s.code, {
+        departureDelay: s.departureDelayMin ?? undefined,
+        arrivalDelay: s.arrivalDelayMin ?? undefined,
+      });
     }
-    let cancelled = false;
-    const fetchDelays = async () => {
-      const delays = await RealtimeService.getDelaysForAllStops(tripId);
-      if (!cancelled) setStopDelays(delays);
-    };
-    fetchDelays();
-    return () => { cancelled = true; };
-  }, [tripId, daysAway, currentDelay]);
+    return m;
+  }, [tripDetail.stops, daysAway]);
 
   // Fetch weather data for destination — only when destination or unit changes
   const toCode = trainData?.toCode;
@@ -191,7 +190,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     const fetchWeather = async () => {
       try {
         setIsLoadingWeather(true);
-        const destStop = gtfsParser.getStop(toCode);
+        const destStop = lookupStop(toCode);
         if (!destStop) return;
 
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${destStop.stop_lat}&longitude=${destStop.stop_lon}&current=temperature_2m,weather_code&temperature_unit=${weatherApiTempUnit(tempUnit)}&timezone=auto`;
@@ -236,7 +235,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
       const promises = allStops.map(async (stop) => {
         try {
-          const stopData = gtfsParser.getStop(stop.code);
+          const stopData = lookupStop(stop.code);
           if (!stopData) return;
 
           const targetDate = new Date(baseDate);
@@ -306,8 +305,8 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     if (!trainData || allStops.length === 0) return null;
 
     try {
-      const originStop = gtfsParser.getStop(trainData.fromCode);
-      const destStop = gtfsParser.getStop(trainData.toCode);
+      const originStop = lookupStop(trainData.fromCode);
+      const destStop = lookupStop(trainData.toCode);
 
       logger.debug('Timezone: origin stop lookup', {
         fromCode: trainData.fromCode,
@@ -409,8 +408,8 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
   let distanceMiles: number | null = null;
   if (trainData) {
     try {
-      const fromStop = gtfsParser.getStop(trainData.fromCode);
-      const toStop = gtfsParser.getStop(trainData.toCode);
+      const fromStop = lookupStop(trainData.fromCode);
+      const toStop = lookupStop(trainData.toCode);
       if (fromStop && toStop) {
         distanceMiles = haversineDistance(fromStop.stop_lat, fromStop.stop_lon, toStop.stop_lat, toStop.stop_lon);
       }
@@ -424,7 +423,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     if (!onStationSelect) return;
     hapticLight();
     try {
-      const stop = gtfsParser.getStop(stationCode);
+      const stop = lookupStop(stationCode);
       if (stop) {
         onStationSelect(stationCode, stop.stop_lat, stop.stop_lon);
       }
@@ -435,7 +434,6 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
 
   // Find next stop for live trains
   // Each stop's time is now in that stop's local timezone
-  const agencyTz = gtfsParser.agencyTimezone;
   const nextStopIndex = React.useMemo(() => {
     if (!isLiveTrain || allStops.length === 0) return -1;
 
@@ -463,7 +461,7 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
     if (!isLiveTrain || nextStopIndex < 0 || nextStopIndex >= allStops.length) return null;
     const stop = allStops[nextStopIndex];
     if (!stop) return null;
-    const stopData = gtfsParser.getStop(stop.code);
+    const stopData = lookupStop(stop.code);
     return stopData ? getTimezoneForStop(stopData) : null;
   }, [isLiveTrain, nextStopIndex, allStops]);
   React.useEffect(() => {
@@ -579,8 +577,8 @@ export default function TrainDetailModal({ train, onClose, onStationSelect, onTr
               : (liveDelayKey === 'onTime' || isLiveTrain) ? colors.success
               : colors.primary;
             // Check if the train has completed (arrival time has passed)
-            const destStop = gtfsParser.getStop(trainData.toCode);
-            const destTz = destStop ? getTimezoneForStop(destStop) : gtfsParser.agencyTimezone;
+            const destStop = lookupStop(trainData.toCode);
+            const destTz = destStop ? getTimezoneForStop(destStop) : agencyTz;
             const nowSec = getCurrentSecondsInTimezone(destTz);
             const arrivalDelay = trainData.realtime?.arrivalDelay;
             const arriveSec = parseTimeToMinutes(trainData.arriveTime) * 60

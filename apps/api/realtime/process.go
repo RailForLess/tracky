@@ -11,6 +11,7 @@ import (
 
 	"github.com/RailForLess/tracky/api/collector"
 	"github.com/RailForLess/tracky/api/db"
+	"github.com/RailForLess/tracky/api/ids"
 	"github.com/RailForLess/tracky/api/ws"
 )
 
@@ -31,8 +32,15 @@ func (p *Processor) Process(ctx context.Context, snap *collector.Snapshot) error
 		return fmt.Errorf("realtime: nil snapshot or feed")
 	}
 
-	// Wire format matches the existing ws.RealtimeUpdate so iOS clients
-	// see no change vs. the legacy in-process poller.
+	// Topic is the operator's typed global id (o-<provider>) so that future
+	// versions can also publish to route/trip/vehicle topics without renaming.
+	topic, err := ids.Encode(ids.KindOperator, snap.ProviderID, "")
+	if err != nil {
+		return fmt.Errorf("realtime: invalid provider id %q: %w", snap.ProviderID, err)
+	}
+	if p.Hub == nil {
+		return fmt.Errorf("realtime: hub is not initialized")
+	}
 	payload, err := json.Marshal(ws.RealtimeUpdate{
 		Type:      "realtime_update",
 		Provider:  snap.ProviderID,
@@ -41,7 +49,7 @@ func (p *Processor) Process(ctx context.Context, snap *collector.Snapshot) error
 	if err != nil {
 		return fmt.Errorf("realtime: marshal: %w", err)
 	}
-	p.Hub.Publish(snap.ProviderID, payload)
+	p.Hub.Publish(topic, payload)
 
 	if p.DB != nil && len(snap.Feed.StopTimes) > 0 {
 		if err := p.DB.UpsertTrainStopTimes(ctx, snap.Feed.StopTimes); err != nil {

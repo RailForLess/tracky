@@ -10,6 +10,7 @@ import (
 	gtfsrt "github.com/MobilityData/gtfs-realtime-bindings/golang/gtfs"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/RailForLess/tracky/api/ids"
 	"github.com/RailForLess/tracky/api/spec"
 )
 
@@ -47,8 +48,14 @@ func FetchAndParsePositions(
 				// emitting a position with a zero RunDate.
 				continue
 			}
-			pos.TripID = providerID + ":" + trip.GetTripId()
-			pos.RouteID = providerID + ":" + trip.GetRouteId()
+			tripID, err := ids.Encode(ids.KindTrip, providerID, trip.GetTripId())
+			if err != nil {
+				continue
+			}
+			pos.TripID = tripID
+			if routeID, err := ids.Encode(ids.KindRoute, providerID, trip.GetRouteId()); err == nil {
+				pos.RouteID = routeID
+			}
 			pos.RunDate = runDate
 		}
 
@@ -75,8 +82,7 @@ func FetchAndParsePositions(
 			}
 		}
 
-		if vp.StopId != nil {
-			stopID := providerID + ":" + vp.GetStopId()
+		if stopID, err := ids.Encode(ids.KindStop, providerID, vp.GetStopId()); err == nil {
 			pos.CurrentStopCode = &stopID
 		}
 
@@ -129,14 +135,18 @@ func FetchAndParseTripUpdates(
 			// emitting stop times with a zero RunDate.
 			continue
 		}
-		tripID := providerID + ":" + trip.GetTripId()
+		tripID, err := ids.Encode(ids.KindTrip, providerID, trip.GetTripId())
+		if err != nil {
+			continue
+		}
 
 		for _, stu := range tu.StopTimeUpdate {
+			stopCode, _ := ids.Encode(ids.KindStop, providerID, stu.GetStopId())
 			st := spec.TrainStopTime{
 				Provider:    providerID,
 				TripID:      tripID,
 				RunDate:     runDate,
-				StopCode:    providerID + ":" + stu.GetStopId(),
+				StopCode:    stopCode,
 				LastUpdated: now,
 			}
 			// Only set StopSequence when explicitly provided by the feed;

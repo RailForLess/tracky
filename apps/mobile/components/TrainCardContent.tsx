@@ -3,11 +3,25 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { type ColorPalette, FontSizes, Spacing, withTextShadow } from '../constants/theme';
 import { useColors } from '../context/ThemeContext';
+import { useApiCacheVersion } from '../hooks/useApiCache';
 import { createStyles } from '../screens/styles';
 import { getDelayColorKey, parseTimeToMinutes } from '../utils/time-formatting';
 import { pluralCount } from '../utils/train-display';
-import { gtfsParser } from '../utils/gtfs-parser';
+import { lookupAgencyTimezone, lookupStop } from '../utils/api-stop-cache';
+import { tryParseId } from '../utils/ids';
 import { getCurrentSecondsInTimezone, getTimezoneForStop } from '../utils/timezone';
+
+/**
+ * Extract the human-friendly code for display: 's-amtrak-CHI' → 'CHI',
+ * 'amtrak:CHI' → 'CHI', 'CHI' → 'CHI'.
+ */
+function displayCode(key: string): string {
+  if (!key) return '';
+  const parsed = tryParseId(key);
+  if (parsed) return parsed.native || parsed.provider;
+  const colon = key.indexOf(':');
+  return colon >= 0 ? key.slice(colon + 1) : key;
+}
 import AnimatedRollingText from './ui/AnimatedRollingText';
 import MarqueeText from './ui/MarqueeText';
 import TimeDisplay from './ui/TimeDisplay';
@@ -66,6 +80,7 @@ export default function TrainCardContent({
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const localStyles = useMemo(() => createLocalStyles(colors), [colors]);
+  const cacheVersion = useApiCacheVersion();
 
   const DELAY_COLORS = {
     delayed: colors.delayed,
@@ -76,14 +91,14 @@ export default function TrainCardContent({
 
   const isArrived = useMemo(() => {
     if (!isPast || !arriveTime) return false;
-    const toStop = gtfsParser.getStop(toCode);
-    const arriveTz = toStop ? getTimezoneForStop(toStop) : gtfsParser.agencyTimezone;
+    const toStop = lookupStop(toCode);
+    const arriveTz = toStop ? getTimezoneForStop(toStop) : lookupAgencyTimezone();
     const nowSec = getCurrentSecondsInTimezone(arriveTz);
     const arriveSec = parseTimeToMinutes(arriveTime) * 60
       + (arriveDayOffset ?? 0) * 24 * 3600;
     const delaySec = (arriveDelayMinutes ?? 0) * 60;
     return nowSec >= arriveSec + delaySec + (daysAway ?? 0) * 86400;
-  }, [isPast, arriveTime, arriveDayOffset, arriveDelayMinutes, toCode, daysAway]);
+  }, [isPast, arriveTime, arriveDayOffset, arriveDelayMinutes, toCode, daysAway, cacheVersion]);
 
   const shouldFadeTitle = fadeOnlyOnArrival ? isArrived : isPast;
   const pastColor = isPast ? { color: colors.secondary } : undefined;
@@ -147,7 +162,7 @@ export default function TrainCardContent({
                 <View style={[styles.arrowIcon, { backgroundColor: depBg }]}>
                   <MaterialCommunityIcons name="arrow-top-right" size={10} color={colors.background.primary} />
                 </View>
-                <Text style={styles.timeCode}>{fromCode}</Text>
+                <Text style={styles.timeCode}>{displayCode(fromCode)}</Text>
                 <TimeDisplay
                   time={departDelayMinutes && departDelayMinutes > 0 && departDelayedTime ? departDelayedTime : departTime}
                   dayOffset={departDelayMinutes && departDelayMinutes > 0 && departDelayedDayOffset != null ? departDelayedDayOffset : departDayOffset}
@@ -166,7 +181,7 @@ export default function TrainCardContent({
                 <View style={[styles.arrowIcon, { backgroundColor: arrBg }]}>
                   <MaterialCommunityIcons name="arrow-bottom-left" size={10} color={colors.background.primary} />
                 </View>
-                <Text style={styles.timeCode}>{toCode}</Text>
+                <Text style={styles.timeCode}>{displayCode(toCode)}</Text>
                 <TimeDisplay
                   time={arriveDelayMinutes && arriveDelayMinutes > 0 && arriveDelayedTime ? arriveDelayedTime : arriveTime}
                   dayOffset={arriveDelayMinutes && arriveDelayMinutes > 0 && arriveDelayedDayOffset != null ? arriveDelayedDayOffset : arriveDayOffset}

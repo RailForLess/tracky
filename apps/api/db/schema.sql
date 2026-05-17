@@ -6,9 +6,15 @@
 -- covered by these idempotent forms (e.g. adding a column), drop in a real
 -- migration runner; until then this stays simple.
 --
--- Identifiers (route_id, stop_id, trip_id) are namespaced upstream as
--- "<provider_id>:<native_id>" so they're globally unique. service_id is
--- NOT namespaced; queries must always pair it with provider_id.
+-- Identifiers (route_id, stop_id, trip_id) are typed global ids upstream:
+--   route_id:  r-<provider_id>-<native_id>     e.g. 'r-amtrak-40751'
+--   stop_id:   s-<provider_id>-<native_id>     e.g. 's-amtrak-CHI'
+--   trip_id:   t-<provider_id>-<native_id>     e.g. 't-amtrak-251208'
+-- '-' is the structural separator. '~' is permitted inside provider or native
+-- as a word-break (e.g. 'metra~electric'). See apps/api/ids for the parser.
+-- The provider_id column is the bare provider name ('amtrak') — kept as a
+-- denormalized facet for indexed filtering and FK cleanliness. service_id is
+-- NOT a global id; queries must always pair it with provider_id.
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

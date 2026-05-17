@@ -22,29 +22,29 @@ func (c *Client) subscribedTo(topic string) bool {
 	return ok
 }
 
-// addTopics unions providers into the client's subscription set and returns
+// addTopics unions topics into the client's subscription set and returns
 // the topics that were not already subscribed (caller uses this to send the
 // cached snapshot only for newly added topics).
-func (c *Client) addTopics(providers []string) []string {
+func (c *Client) addTopics(topics []string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var added []string
-	for _, p := range providers {
-		if _, ok := c.topics[p]; !ok {
-			c.topics[p] = struct{}{}
-			added = append(added, p)
+	for _, t := range topics {
+		if _, ok := c.topics[t]; !ok {
+			c.topics[t] = struct{}{}
+			added = append(added, t)
 		}
 	}
 	return added
 }
 
-// removeTopics drops the given providers from the subscription set. Topics
+// removeTopics drops the given topics from the subscription set. Topics
 // that aren't currently subscribed are silently ignored.
-func (c *Client) removeTopics(providers []string) {
+func (c *Client) removeTopics(topics []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, p := range providers {
-		delete(c.topics, p)
+	for _, t := range topics {
+		delete(c.topics, t)
 	}
 }
 
@@ -65,7 +65,7 @@ type clientDelivery struct {
 	payload []byte
 }
 
-// Hub manages WebSocket clients and routes messages by topic (provider ID).
+// Hub manages WebSocket clients and routes messages by topic (typed global id).
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]struct{}

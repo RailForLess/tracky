@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
+	"github.com/RailForLess/tracky/api/ids"
 	"github.com/RailForLess/tracky/api/providers"
 	"github.com/RailForLess/tracky/api/providers/base"
 	"github.com/RailForLess/tracky/api/spec"
@@ -132,19 +134,36 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 			continue
 		}
 		props := f.Properties
-		tripID := "amtrak:" + props.TrainNum
-		runDate := now.UTC().Truncate(24 * time.Hour)
+		tripID, err := ids.Encode(ids.KindTrip, "amtrak", props.TrainNum)
+		if err != nil {
+			// No train number (or other malformed input) → row is unidentifiable; skip.
+			continue
+		}
+		// Parse OrigSchDep — the train's original scheduled departure from
+		// its origin station — to derive the service date. Two simultaneous
+		// runs of the same train number on different service days (e.g.
+		// yesterday's Texas Eagle still en route + today's just departed)
+		// are only distinguishable here. Skip if the feed omits/malforms
+		// this field rather than collapsing every row to today.
+		runDate, ok := parseAmtrakOrigDate(props.OrigSchDep)
+		if !ok {
+			log.Printf("amtrak: train %q missing/unparseable OrigSchDep %q; skipping", props.TrainNum, props.OrigSchDep)
+			continue
+		}
 
 		// --- TrainPosition ---
 		lon := f.Geometry.Coordinates[0]
 		lat := f.Geometry.Coordinates[1]
 
+		// RouteID is informational; if encoding fails (empty/malformed feed
+		// data), leave it unset rather than dropping the whole position.
+		routeID, _ := ids.Encode(ids.KindRoute, "amtrak", props.RouteName)
 		pos := spec.TrainPosition{
 			Provider:    "amtrak",
 			TripID:      tripID,
 			RunDate:     runDate,
 			TrainNumber: props.TrainNum,
-			RouteID:     props.RouteName,
+			RouteID:     routeID,
 			Lat:         &lat,
 			Lon:         &lon,
 			LastUpdated: now,
@@ -160,8 +179,9 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 
 		if props.EventCode != "" {
 			stopCode, status := deriveStopAndStatus(props.EventCode, props.Stations)
-			code := "amtrak:" + stopCode
-			pos.CurrentStopCode = &code
+			if code, err := ids.Encode(ids.KindStop, "amtrak", stopCode); err == nil {
+				pos.CurrentStopCode = &code
+			}
 			if status != "" {
 				pos.CurrentStatus = &status
 			}
@@ -175,11 +195,15 @@ func (p *Provider) FetchRealtime(ctx context.Context) (*providers.RealtimeFeed, 
 
 		// --- TrainStopTimes from StationN entries ---
 		for _, station := range props.Stations {
+			stopID, err := ids.Encode(ids.KindStop, "amtrak", station.Code)
+			if err != nil {
+				continue
+			}
 			st := spec.TrainStopTime{
 				Provider:     "amtrak",
 				TripID:       tripID,
 				RunDate:      runDate,
-				StopCode:     "amtrak:" + station.Code,
+				StopCode:     stopID,
 				StopSequence: station.Sequence,
 				LastUpdated:  now,
 			}
@@ -262,6 +286,23 @@ func parseAmtrakTime(s, tz string) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// parseAmtrakOrigDate extracts the service date from an OrigSchDep string
+// like "5/13/2026 4:55:00 PM" (US format, single-digit month/day allowed,
+// 12-hour clock). Only the date portion matters — the time-of-day and
+// origin timezone don't affect which calendar day the run belongs to — so
+// we return UTC midnight of that day to match the shape stamped by the
+// GTFS-RT parser elsewhere.
+func parseAmtrakOrigDate(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("1/2/2006 3:04:05 PM", s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), true
 }
 
 // getDecryptedData implements the two-pass decryption scheme:

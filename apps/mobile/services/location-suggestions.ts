@@ -1,7 +1,18 @@
+/**
+ * Location-based suggestions for the search screen empty state.
+ *
+ * Backed by the new API client. The nearby-stops endpoint is a stub on
+ * apps/api today, so this returns no suggestions until the backend lands
+ * GET /v1/stops/nearby. Upcoming-train and routes-at-stop derivations
+ * fall out of /v1/departures.
+ */
+
 import * as Location from 'expo-location';
-import type { GTFSParser } from '../utils/gtfs-parser';
-import type { Route, Stop } from '../types/train';
+import { ApiError, getDepartures, getNearbyStops } from './api-client';
+import type { Stop } from '../types/train';
+import type { ApiDepartureItem, ApiStop } from '../types/api';
 import { haversineDistance } from '../utils/distance';
+import { encodeId } from '../utils/ids';
 import { logger } from '../utils/logger';
 
 export interface LocationSuggestion {
@@ -17,7 +28,47 @@ export interface LocationSuggestion {
 let cachedSuggestions: LocationSuggestion[] | null = null;
 let initialized = false;
 
-async function initialize(parser: GTFSParser): Promise<void> {
+function adaptStop(s: ApiStop): Stop {
+  return {
+    stop_id: s.stopId,
+    stop_name: s.name,
+    stop_lat: s.lat,
+    stop_lon: s.lon,
+    stop_timezone: s.timezone ?? undefined,
+  };
+}
+
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function pickClosest(stops: ApiStop[], lat: number, lon: number): { stop: ApiStop; distMi: number } | null {
+  if (stops.length === 0) return null;
+  let best: ApiStop | null = null;
+  let bestDist = Infinity;
+  for (const s of stops) {
+    const d = haversineDistance(lat, lon, s.lat, s.lon);
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  return best ? { stop: best, distMi: bestDist } : null;
+}
+
+function formatTimeFromIso(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+async function initialize(): Promise<void> {
   if (initialized) return;
   initialized = true;
 
@@ -32,73 +83,58 @@ async function initialize(parser: GTFSParser): Promise<void> {
       accuracy: Location.Accuracy.Balanced,
     });
     const { latitude, longitude } = location.coords;
-    logger.info(`[LocationSuggestions] Location: ${latitude.toFixed(3)}, ${longitude.toFixed(3)}`);
+    logger.info('[LocationSuggestions] Location received');
 
-    // Find nearest station
-    const allStops = parser.getAllStops();
-    if (allStops.length === 0) return;
-
-    let nearestStop: Stop | null = null;
-    let nearestDist = Infinity;
-    for (const stop of allStops) {
-      const dist = haversineDistance(latitude, longitude, stop.stop_lat, stop.stop_lon);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestStop = stop;
+    let nearby: ApiStop[] = [];
+    try {
+      nearby = await getNearbyStops({ lat: latitude, lon: longitude, radiusMeters: 80_000 });
+    } catch (err) {
+      // Fail gracefully so the search screen renders without suggestions if
+      // the backend is unreachable or returns an error.
+      if (err instanceof ApiError) {
+        logger.warn(`[LocationSuggestions] /v1/stops/nearby failed (${err.status})`);
+      } else {
+        logger.warn('[LocationSuggestions] nearby stops unavailable', err);
       }
+      return;
     }
 
-    if (!nearestStop) return;
-    logger.info(`[LocationSuggestions] Nearest: ${nearestStop.stop_name} (${nearestDist.toFixed(1)} mi)`);
+    const closest = pickClosest(nearby, latitude, longitude);
+    if (!closest) return;
+    const nearestStop = adaptStop(closest.stop);
+    const distLabel = closest.distMi < 1
+      ? `${(closest.distMi * 5280).toFixed(0)} ft away`
+      : `${closest.distMi.toFixed(1)} mi away`;
 
-    const suggestions: LocationSuggestion[] = [];
+    const suggestions: LocationSuggestion[] = [
+      {
+        type: 'station',
+        label: nearestStop.stop_name,
+        subtitle: `${nearestStop.stop_id} · ${distLabel}`,
+        stop: nearestStop,
+      },
+    ];
 
-    // 1. Nearest station
-    const distLabel = nearestDist < 1
-      ? `${(nearestDist * 5280).toFixed(0)} ft away`
-      : `${nearestDist.toFixed(1)} mi away`;
-    suggestions.push({
-      type: 'station',
-      label: nearestStop.stop_name,
-      subtitle: `${nearestStop.stop_id} · ${distLabel}`,
-      stop: nearestStop,
-    });
-
-    // 2. Up to 2 upcoming trains from nearest station
-    const upcoming = parser.getUpcomingTrainsFromStop(nearestStop.stop_id, 2);
-    for (const train of upcoming) {
-      const [hStr, mStr] = train.departureTime.split(':');
-      let h = parseInt(hStr, 10);
-      const m = mStr;
-      const dayOffset = Math.floor(h / 24);
-      h = h % 24;
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      const timeStr = `${h12}:${m} ${ampm}`;
-
-      suggestions.push({
-        type: 'train',
-        label: `${train.routeName} ${train.trainNumber}`,
-        subtitle: `Departs ${nearestStop.stop_id} at ${timeStr}`,
-        trainNumber: train.trainNumber,
-        displayName: `${train.routeName} ${train.trainNumber}`,
+    // Upcoming trains from this stop today (best-effort).
+    try {
+      const departures = await getDepartures({
+        stopId: closest.stop.stopId || encodeId('s', closest.stop.providerId, closest.stop.code),
+        date: toYMD(new Date()),
       });
-    }
-
-    // 3. Up to 2 routes serving nearest station (skip routes already shown via trains)
-    const shownRouteIds = new Set(upcoming.map(t => t.trip.route_id));
-    const routes = parser.getRoutesServingStop(nearestStop.stop_id);
-    let routeCount = 0;
-    for (const route of routes) {
-      if (routeCount >= 2) break;
-      if (shownRouteIds.has(route.route_id)) continue;
-      suggestions.push({
-        type: 'route',
-        label: route.route_long_name,
-        subtitle: `Serves ${nearestStop.stop_id}`,
-        routeId: route.route_id,
-      });
-      routeCount++;
+      const upcoming = departures
+        .filter((d): d is ApiDepartureItem & { departureTime: string } => Boolean(d.departureTime))
+        .slice(0, 2);
+      for (const d of upcoming) {
+        suggestions.push({
+          type: 'train',
+          label: `${d.shortName || d.tripId} ${d.headsign}`.trim(),
+          subtitle: `Departs ${nearestStop.stop_id} at ${formatTimeFromIso(d.departureTime)}`,
+          trainNumber: d.shortName,
+          displayName: `${d.shortName || ''} ${d.headsign}`.trim(),
+        });
+      }
+    } catch (err) {
+      logger.warn('[LocationSuggestions] departures unavailable', err);
     }
 
     cachedSuggestions = suggestions;

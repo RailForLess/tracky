@@ -103,14 +103,12 @@ func (d *DB) GetProvider(ctx context.Context, providerID string) (*spec.Agency, 
 	return &a, nil
 }
 
-// GetStopByCode returns a stop by (provider_id, code).
-func (d *DB) GetStopByCode(ctx context.Context, providerID, stopCode string) (*spec.Stop, error) {
+// GetStop returns a stop by its typed global id (e.g. 's-amtrak-CHI').
+func (d *DB) GetStop(ctx context.Context, stopID string) (*spec.Stop, error) {
 	row := d.pool.QueryRow(ctx, `
 		SELECT stop_id, provider_id, code, name, lat, lon, timezone, wheelchair_boarding
-		FROM stops
-		WHERE provider_id = $1 AND code = $2
-		LIMIT 1`, providerID, stopCode)
-	var s spec.Stop
+		FROM stops WHERE stop_id = $1`, stopID)
+	s := spec.Stop{Type: spec.StopTypeStop}
 	if err := row.Scan(&s.StopID, &s.ProviderID, &s.Code, &s.Name, &s.Lat, &s.Lon, &s.Timezone, &s.WheelchairBoarding); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -120,19 +118,13 @@ func (d *DB) GetStopByCode(ctx context.Context, providerID, stopCode string) (*s
 	return &s, nil
 }
 
-// GetStopByID returns a stop by its namespaced stop_id.
-func (d *DB) GetStopByID(ctx context.Context, stopID string) (*spec.Stop, error) {
-	row := d.pool.QueryRow(ctx, `
-		SELECT stop_id, provider_id, code, name, lat, lon, timezone, wheelchair_boarding
-		FROM stops WHERE stop_id = $1`, stopID)
-	var s spec.Stop
-	if err := row.Scan(&s.StopID, &s.ProviderID, &s.Code, &s.Name, &s.Lat, &s.Lon, &s.Timezone, &s.WheelchairBoarding); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &s, nil
+// GetHub returns a meta-station (hub) by its typed global id (e.g. 'h-amtrak-CHI').
+//
+// Stubbed: the hubs table doesn't exist yet, so this always returns ErrNotFound.
+// The signature is in place so the polymorphic /v1/stops/{id} handler can wire
+// to it once dedup is implemented.
+func (d *DB) GetHub(_ context.Context, _ string) (*spec.Hub, error) {
+	return nil, ErrNotFound
 }
 
 // GetRoute returns a route by its full namespaced route_id.
@@ -220,7 +212,7 @@ func (d *DB) ListStopsNearby(ctx context.Context, lat, lon, radiusM float64, pro
 
 	var out []spec.Stop
 	for rows.Next() {
-		var s spec.Stop
+		s := spec.Stop{Type: spec.StopTypeStop}
 		if err := rows.Scan(&s.StopID, &s.ProviderID, &s.Code, &s.Name, &s.Lat, &s.Lon, &s.Timezone, &s.WheelchairBoarding); err != nil {
 			return nil, err
 		}
@@ -320,7 +312,7 @@ func (d *DB) ListStops(ctx context.Context, providerID string, bbox BBox) ([]spe
 
 	var out []spec.Stop
 	for rows.Next() {
-		var s spec.Stop
+		s := spec.Stop{Type: spec.StopTypeStop}
 		if err := rows.Scan(&s.StopID, &s.ProviderID, &s.Code, &s.Name, &s.Lat, &s.Lon, &s.Timezone, &s.WheelchairBoarding); err != nil {
 			return nil, err
 		}
@@ -511,11 +503,11 @@ func (d *DB) GetConnections(ctx context.Context, fromStopID, toStopID, date stri
 	// Hydrate stop names for from/to and load intermediate stops per trip.
 	out := make([]ConnectionItem, 0, len(pairs))
 	for _, p := range pairs {
-		fromStop, err := d.GetStopByID(ctx, fromStopID)
+		fromStop, err := d.GetStop(ctx, fromStopID)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
-		toStop, err := d.GetStopByID(ctx, toStopID)
+		toStop, err := d.GetStop(ctx, toStopID)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
@@ -567,8 +559,10 @@ func (d *DB) intermediateStops(ctx context.Context, tripID string, fromSeq, toSe
 	return out, rows.Err()
 }
 
-// GetTrainsForRoute returns unique train numbers operating on a route.
-func (d *DB) GetTrainsForRoute(ctx context.Context, routeID string) ([]TrainItem, error) {
+// GetTripsForRoute returns unique train numbers operating on a route. The name
+// reflects the new endpoint (/v1/routes/{r}/trips) — the return shape is still
+// the aggregated train-number view that powers the mobile route detail screen.
+func (d *DB) GetTripsForRoute(ctx context.Context, routeID string) ([]TrainItem, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT provider_id, short_name, MIN(headsign) AS sample_headsign, COUNT(*) AS trip_count
 		FROM trips
@@ -640,26 +634,35 @@ func (d *DB) Search(ctx context.Context, providerID, query string, includeStatio
 	}
 	q := "%" + query + "%"
 
+	// Preserve the empty-slice init on no-match — searchX returns nil from a
+	// zero-row scan, which would marshal as JSON null and break clients that
+	// expect always-array fields.
 	if includeStations {
 		hits, err := d.searchStations(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search stations: %w", err)
 		}
-		out.Stations = hits
+		if hits != nil {
+			out.Stations = hits
+		}
 	}
 	if includeRoutes {
 		hits, err := d.searchRoutes(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search routes: %w", err)
 		}
-		out.Routes = hits
+		if hits != nil {
+			out.Routes = hits
+		}
 	}
 	if includeTrains {
 		hits, err := d.searchTrains(ctx, providerID, q)
 		if err != nil {
 			return nil, fmt.Errorf("search trains: %w", err)
 		}
-		out.Trains = hits
+		if hits != nil {
+			out.Trains = hits
+		}
 	}
 	return out, nil
 }

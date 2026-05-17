@@ -18,6 +18,17 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// Mock expo-constants — many files reach it transitively through constants/config.ts;
+// the real module pokes into native registries that don't exist in the node test env.
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: { extra: {} },
+    manifest: {},
+    manifest2: {},
+  },
+}));
+
 // Mock expo-location
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(),

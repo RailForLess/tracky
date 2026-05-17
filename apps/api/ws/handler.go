@@ -25,8 +25,8 @@ var upgrader = websocket.Upgrader{
 }
 
 type clientMsg struct {
-	Action    string   `json:"action"`    // "subscribe" | "unsubscribe"
-	Providers []string `json:"providers"` // e.g. ["cta", "amtrak"]
+	Action string   `json:"action"` // "subscribe" | "unsubscribe"
+	Topics []string `json:"topics"` // typed global ids, e.g. ["o-amtrak", "o-cta"]
 }
 
 // Handler returns an http.HandlerFunc that upgrades connections to WebSocket.
@@ -107,9 +107,9 @@ func readPump(hub *Hub, c *Client) {
 			// Additive: add to the existing subscription set instead of replacing it.
 			// Send cached snapshots only for newly added topics so a client that
 			// re-subscribes to something it already had doesn't get a duplicate.
-			added := c.addTopics(msg.Providers)
-			for _, p := range added {
-				if snapshot, ok := hub.Snapshot(p); ok {
+			added := c.addTopics(msg.Topics)
+			for _, t := range added {
+				if snapshot, ok := hub.Snapshot(t); ok {
 					// Route through the hub goroutine so c.send is only
 					// written by the hub, avoiding a race with close on
 					// unregister/backpressure.
@@ -117,13 +117,13 @@ func readPump(hub *Hub, c *Client) {
 				}
 			}
 		case "unsubscribe":
-			// Targeted: remove only the listed providers. An empty/missing list
+			// Targeted: remove only the listed topics. An empty/missing list
 			// clears all subscriptions (preserves the original "unsubscribe = stop
 			// everything" shortcut).
-			if len(msg.Providers) == 0 {
+			if len(msg.Topics) == 0 {
 				c.clearTopics()
 			} else {
-				c.removeTopics(msg.Providers)
+				c.removeTopics(msg.Topics)
 			}
 		}
 	}

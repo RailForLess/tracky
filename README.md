@@ -378,61 +378,62 @@ On startup, the app checks for locally cached GTFS data. If the cache is missing
 - **Real-time cache** — 15s TTL prevents redundant API calls
 - **Reanimated animations** — all transitions run at 60 fps on the native thread
 
-## API Usage
+## API Surface
 
-### Get All Active Trains
+Tracky mobile is wired to the backend via:
 
-```typescript
-import { RealtimeService } from './services/realtime';
+- REST base URL: `https://api.trackyapp.net` (default from [apps/mobile/constants/config.ts](apps/mobile/constants/config.ts))
+- WebSocket URL: `wss://api.trackyapp.net/ws/realtime`
 
-const trains = await RealtimeService.getAllActiveTrains();
-// Returns ~150-160 active trains with position, speed, bearing
+Endpoints are implemented in [apps/api/routes/static.go](apps/api/routes/static.go) and [routes.go](apps/api/routes/routes.go), and consumed via the typed client in [apps/mobile/services/api-client.ts](apps/mobile/services/api-client.ts) plus the WebSocket client in [apps/mobile/services/ws-client.ts](apps/mobile/services/ws-client.ts).
+
+Date parameters are `YYYY-MM-DD`. Cacheable read endpoints set `Cache-Control: public, max-age=3600`. All `/ingest` writes require `X-Ingest-Secret`; reads are public (subject to a 30 req/s per-IP rate limit).
+
+### REST Endpoints
+
+| Method & Path | Required params | Optional params | Returns |
+| --- | --- | --- | --- |
+| `GET /health` | — | — | `ok` (text) |
+| `GET /v1/search` | `q` (query) | `provider`, `types` (CSV of `stations`, `trains`, `routes`) | `{ stations, trains, routes }` |
+| `GET /v1/providers/{provider}` | `provider` (path) | — | Provider metadata |
+| `GET /v1/stops` | `provider` (query) | `bbox` (`minLon,minLat,maxLon,maxLat`) | Array of stops |
+| `GET /v1/stops/nearby` | `lat`, `lon` (query) | `radius_m` (default 5000, max 50000), `provider` | Array of stops |
+| `GET /v1/stops/{provider}/{stopCode}` | `provider`, `stopCode` (path) | — | Stop metadata |
+| `GET /v1/routes` | `provider` (query) | — | Array of routes |
+| `GET /v1/routes/{provider}/{routeCode}` | `provider`, `routeCode` (path) | — | Route metadata |
+| `GET /v1/routes/{provider}/{routeCode}/trains` | `provider`, `routeCode` (path) | — | Array of trains on route |
+| `GET /v1/trains/{trainNumber}/service` | `trainNumber` (path), `provider` (query) | `from`, `to` (date) | Service info / date range |
+| `GET /v1/trips/lookup` | `provider`, `train_number`, `date` (query) | — | Array of trips |
+| `GET /v1/trips/{tripId}` | `tripId` (path) | — | Trip metadata |
+| `GET /v1/trips/{tripId}/stops` | `tripId` (path) | — | Scheduled stop timeline |
+| `GET /v1/departures` | `stop_id`, `date` (query) | — | Departures/arrivals for the day |
+| `GET /v1/connections` | `from_stop`, `to_stop`, `date` (query) | — | Station-to-station trip options |
+| `GET /v1/runs/{provider}/{tripId}/{runDate}/stops` | `provider`, `tripId`, `runDate` (path) | — | Per-stop scheduled / estimated / actual times (uncached, realtime) |
+| `GET /v1/realtime` | `topic` (query) | — | Latest realtime snapshot for the topic — same envelope shape as the WS feed |
+| `POST /ingest` | `X-Ingest-Secret` header | — | Snapshot ingest from the edge collector |
+
+### WebSocket
+
+`WS /ws/realtime` — clients send subscribe/unsubscribe frames and receive `realtime_update` snapshots:
+
+```jsonc
+// Client → server
+{ "action": "subscribe",   "providers": ["amtrak"] }
+{ "action": "unsubscribe", "providers": ["amtrak"] }
+
+// Server → client
+{ "type": "realtime_update", "provider": "amtrak", "positions": [...], "stopTimes": [...] }
 ```
 
-### Get a Specific Train's Position
+Wire format defined in [apps/api/ws/poller.go](apps/api/ws/poller.go) and [apps/api/ws/handler.go](apps/api/ws/handler.go).
 
-```typescript
-const position = await RealtimeService.getPositionForTrip('543');
-// Accepts train number ("543") or full trip ID ("2026-01-16_AMTK_543")
-```
+### Where This Is Consumed in the App
 
-### Check Delay at a Stop
-
-```typescript
-const delay = await RealtimeService.getDelayForStop('543', 'NYP');
-console.log(RealtimeService.formatDelay(delay));
-// "On Time", "Delayed 5m", or "Early 2m"
-```
-
-### Get Full Train Details (Schedule + Real-Time)
-
-```typescript
-import { TrainAPIService } from './services/api';
-
-const train = await TrainAPIService.getTrainDetails('543');
-// Includes full itinerary, real-time position, and delay status
-```
-
-### Search Stations
-
-```typescript
-import { gtfsParser } from './utils/gtfs-parser';
-
-const stations = await gtfsParser.searchStations('Boston');
-```
-
-### Find Trips Between Two Stations
-
-```typescript
-const trips = await gtfsParser.findTripsWithStops('BOS', 'NYP');
-```
-
-### Refresh Real-Time Data for a Saved Train
-
-```typescript
-const updated = await TrainAPIService.refreshRealtimeData(existingSavedTrain);
-// updated.realtime now has the latest position and delay
-```
+- Search and trip planning: `apps/mobile/components/TwoStationSearch.tsx`
+- Departure boards: `apps/mobile/components/ui/DepartureBoardModal.tsx`
+- Train detail per-stop enrichment: `apps/mobile/hooks/useTripDetail.ts`
+- Saved train reconstruction and refresh: `apps/mobile/services/storage.ts`, `apps/mobile/services/api.ts`
+- Live map and realtime fanout: `apps/mobile/context/RealtimeContext.tsx`, `apps/mobile/services/ws-client.ts`, `apps/mobile/hooks/useLiveTrains.ts`
 
 ## Tech Stack
 
