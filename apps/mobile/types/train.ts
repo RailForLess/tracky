@@ -21,6 +21,7 @@ export interface Train {
   arriveNext?: boolean;
   intermediateStops?: IntermediateStop[];
   // Real-time data
+  providerId?: string;
   tripId?: string;
   realtime?: {
     position?: { lat: number; lon: number };

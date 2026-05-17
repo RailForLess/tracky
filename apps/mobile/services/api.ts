@@ -157,11 +157,13 @@ export function getTrainDisplayName(
 // ── Realtime helpers (read-only snapshot from ws-client) ───────────────────
 
 function findPositionForTrain(args: {
+  providerId?: string;
   tripId?: string;
   trainNumber?: string;
 }): ApiTrainPosition | undefined {
+  const provider = args.providerId || tryParseId(args.tripId ?? '')?.provider || DEFAULT_PROVIDER;
   return wsClient.findPosition({
-    provider: DEFAULT_PROVIDER,
+    provider,
     tripId: args.tripId,
     trainNumber: args.trainNumber,
   });
@@ -169,6 +171,7 @@ function findPositionForTrain(args: {
 
 function attachRealtime(train: Train): Train {
   const pos = findPositionForTrain({
+    providerId: train.providerId,
     tripId: train.tripId,
     trainNumber: train.trainNumber,
   });
@@ -228,6 +231,7 @@ async function buildTrainFromTrip(
     daysAway: effectiveDate ? calculateDaysAway(effectiveDate) : 0,
     travelDate: effectiveDate ? effectiveDate.getTime() : undefined,
     routeName,
+    providerId: provider,
     tripId: trip.tripId,
     intermediateStops: stops.slice(1, -1).map(stop => {
       const formatted = convertGtfsTimeForStop(stop.departure_time, stop.stop_id);
@@ -288,6 +292,7 @@ function buildMinimalTrainFromDeparture(
     daysAway: calculateDaysAway(effectiveDate),
     travelDate: effectiveDate.getTime(),
     routeName,
+    providerId: provider,
     tripId: d.tripId,
     intermediateStops: [
       { time: userTime.time, name: userStopCode, code: userStopId },
